@@ -1,8 +1,10 @@
 # Pre-Coding Setup & Environment Readiness Checklist
+
 ## Instagram Comment Automation MVP
 
 **Date:** 2026-09-01  
-**Purpose:** Verify that the local machine, cloud accounts, credentials, and development tools are ready before implementation starts.
+**Purpose:** Verify that the local machine, cloud accounts, credentials, and development tools are
+ready before implementation starts.
 
 This document is intentionally practical. Complete the checklist from top to bottom.
 
@@ -163,7 +165,8 @@ vercel whoami
 
 ### PostgreSQL CLI — optional
 
-The project does not require `psql` for normal runtime operation, but it is useful for troubleshooting and manually testing migrations.
+The project does not require `psql` for normal runtime operation, but it is useful for
+troubleshooting and manually testing migrations.
 
 Check:
 
@@ -298,7 +301,8 @@ Before application coding, at minimum verify:
 - [ ] transaction pooler connection string is available
 - [ ] migration/direct connection string is available
 
-Actual programmatic connection can be tested immediately after the first backend skeleton is created.
+Actual programmatic connection can be tested immediately after the first backend skeleton is
+created.
 
 ---
 
@@ -632,23 +636,23 @@ Real `.env` files must not appear as untracked files intended for commit.
 
 # 15. Tools required vs optional
 
-| Tool / Service | Required before coding? | Required before real Instagram test? |
-|---|---:|---:|
-| Node.js | YES | YES |
-| npm | YES | YES |
-| pnpm | YES | YES |
-| Git | YES | YES |
-| GitHub | YES | YES |
-| Lovable | No | No |
-| Vercel CLI | Recommended | YES |
-| Vercel project | No | YES |
-| Supabase project | YES | YES |
-| `psql` CLI | No | No |
-| Meta Developer account | No for basic coding | YES |
-| Meta App | No for basic coding | YES |
-| Instagram Professional account | No for basic coding | YES |
-| Second Instagram account | No | Recommended |
-| Beads | NO | NO |
+| Tool / Service                 | Required before coding? | Required before real Instagram test? |
+| ------------------------------ | ----------------------: | -----------------------------------: |
+| Node.js                        |                     YES |                                  YES |
+| npm                            |                     YES |                                  YES |
+| pnpm                           |                     YES |                                  YES |
+| Git                            |                     YES |                                  YES |
+| GitHub                         |                     YES |                                  YES |
+| Lovable                        |                      No |                                   No |
+| Vercel CLI                     |             Recommended |                                  YES |
+| Vercel project                 |                      No |                                  YES |
+| Supabase project               |                     YES |                                  YES |
+| `psql` CLI                     |                      No |                                   No |
+| Meta Developer account         |     No for basic coding |                                  YES |
+| Meta App                       |     No for basic coding |                                  YES |
+| Instagram Professional account |     No for basic coding |                                  YES |
+| Second Instagram account       |                      No |                          Recommended |
+| Beads                          |                      NO |                                   NO |
 
 ---
 
@@ -933,7 +937,8 @@ Run the real:
 At the time this checklist was written:
 
 - Node.js 24 is an active LTS release.
-- Vercel CLI supports `vercel login`, `vercel whoami`, `vercel link`, and environment variable workflows.
+- Vercel CLI supports `vercel login`, `vercel whoami`, `vercel link`, and environment variable
+  workflows.
 - Supabase recommends its transaction pooler for temporary/serverless PostgreSQL clients.
 - Supabase supports Postgres.js.
 - Instagram API with Instagram Login uses Instagram Professional Business/Creator accounts.
@@ -942,4 +947,5 @@ At the time this checklist was written:
   - `instagram_business_manage_comments`
 - Instagram Login uses the `graph.instagram.com` host.
 
-Re-check Meta configuration details when implementing the real integration because Meta API setup and versions can change.
+Re-check Meta configuration details when implementing the real integration because Meta API setup
+and versions can change.
