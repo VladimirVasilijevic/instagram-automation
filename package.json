@@ -5,14 +5,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "pnpm --recursive --parallel --if-present run dev",
+    "build": "pnpm --recursive --if-present run build",
+    "test": "pnpm --recursive --if-present run test",
+    "typecheck": "pnpm --recursive --if-present run typecheck",
     "prepare": "husky",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "check": "pnpm format:check && pnpm lint",
-    "check:fix": "pnpm format && pnpm lint:fix",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check:fix": "pnpm format && pnpm lint:fix"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +29,7 @@
     "husky": "9.1.7",
     "lint-staged": "17.4.1",
     "prettier": "3.9.6",
+    "typescript": "6.0.3",
     "typescript-eslint": "8.68.0"
   }
 }

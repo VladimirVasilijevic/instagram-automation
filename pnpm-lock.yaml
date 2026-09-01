@@ -26,9 +26,26 @@ importers:
       prettier:
         specifier: 3.9.6
         version: 3.9.6
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
       typescript-eslint:
         specifier: 8.68.0
         version: 8.68.0(eslint@10.9.1)(typescript@6.0.3)
+
+  apps/api: {}
+
+  apps/web: {}
+
+  packages/application: {}
+
+  packages/contracts: {}
+
+  packages/domain: {}
+
+  packages/infrastructure: {}
+
+  packages/ports: {}
 
 packages:
 
