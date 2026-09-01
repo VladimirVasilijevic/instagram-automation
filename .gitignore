@@ -6,4 +6,4 @@ dist/
 .vercel/
 .DS_Store
 coverage/
-
+supabase/.temp/
