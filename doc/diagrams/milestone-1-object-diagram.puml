@@ -1,0 +1,90 @@
+@startuml
+title Milestone 1 — Running Backend Objects
+
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam object {
+  BackgroundColor #F8FAFC
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+
+object "environment : Environment" as environment {
+  API_PORT = 3000
+  DATABASE_URL = [server secret]
+  NODE_ENV = development
+}
+
+object "app : OpenAPIHono" as app {
+  basePath = /
+  docsEnabled = true
+}
+
+object "database : Database" as database {
+  maxConnections = 1
+  preparedStatements = false
+}
+
+object "sql : PostgresClient" as sql {
+  provider = Supabase
+  mode = transaction pooler
+}
+
+object "logger : Logger" as logger {
+  destination = server console
+}
+
+object "healthRoute : Route" as healthRoute {
+  method = GET
+  path = /api/health
+}
+
+object "databaseHealthRoute : Route" as databaseHealthRoute {
+  method = GET
+  path = /api/health/database
+}
+
+object "openApiRoute : DocumentationRoute" as openApiRoute {
+  method = GET
+  path = /api/openapi.json
+}
+
+object "swaggerRoute : DocumentationRoute" as swaggerRoute {
+  method = GET
+  path = /api/docs
+}
+
+object "healthResponse : Response" as healthResponse {
+  statusCode = 200
+  body = status: ok
+}
+
+object "databaseResponse : Response" as databaseResponse {
+  statusCode = 200 or 503
+  body = connected or unavailable
+}
+
+environment --> database : DATABASE_URL
+environment --> app : API_PORT
+database *-- sql
+app o-- healthRoute
+app o-- databaseHealthRoute
+app o-- openApiRoute
+app o-- swaggerRoute
+app o-- logger
+healthRoute --> healthResponse : creates
+databaseHealthRoute --> database : checkHealth()
+databaseHealthRoute --> logger : on failure
+databaseHealthRoute --> databaseResponse : creates
+swaggerRoute --> openApiRoute : loads contract
+
+note bottom of databaseResponse
+  Raw database errors never appear
+  in the HTTP response object.
+end note
+
+@enduml

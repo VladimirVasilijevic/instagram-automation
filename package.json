@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "pnpm --recursive --parallel --if-present run dev",
+    "docs:code": "pnpm --recursive --if-present run docs:code",
     "build": "pnpm --recursive --if-present run build",
     "test": "pnpm --recursive --if-present run test",
     "typecheck": "pnpm --recursive --if-present run typecheck",

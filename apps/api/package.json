@@ -2,5 +2,27 @@
   "name": "@instagram-automation/api",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --env-file=../../.env.local src/server.ts",
+    "docs:code": "typedoc --options typedoc.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@hono/swagger-ui": "0.6.1",
+    "@hono/zod-openapi": "1.6.1",
+    "hono": "4.13.5",
+    "postgres": "3.4.9",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "tsx": "4.23.13",
+    "typedoc": "0.28.20",
+    "vitest": "4.1.11"
+  }
 }

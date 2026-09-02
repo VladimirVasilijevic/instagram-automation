@@ -1,0 +1,76 @@
+@startuml
+title Milestone 1 — API Call Sequences
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam sequence {
+  ParticipantBackgroundColor #EFF6FF
+  ParticipantBorderColor #2563EB
+  ParticipantFontColor #0F172A
+  LifeLineBorderColor #64748B
+}
+
+actor Client
+participant "OpenAPIHono router" as Hono
+participant "Swagger UI" as Swagger
+participant "OpenAPI registry" as OpenAPI
+participant "Health route" as Health
+participant "Database health route" as DatabaseHealth
+participant "Database" as Database
+participant "Postgres.js" as Postgres
+database "Supabase PostgreSQL" as Supabase
+participant "Logger" as Logger
+
+group GET /api/docs
+  Client -> Hono: GET /api/docs
+  Hono -> Swagger: render UI configured for /api/openapi.json
+  Swagger --> Hono: HTML
+  Hono --> Client: 200 text/html
+end
+
+group GET /api/openapi.json
+  Client -> Hono: GET /api/openapi.json
+  Hono -> OpenAPI: generate registered route contract
+  OpenAPI --> Hono: OpenAPI 3.0 document
+  Hono --> Client: 200 application/json
+end
+
+group GET /api/health
+  Client -> Hono: GET /api/health
+  Hono -> Health: invoke handler
+  Health --> Hono: { status: "ok" }
+  Hono --> Client: 200 JSON
+end
+
+group GET /api/health/database
+  Client -> Hono: GET /api/health/database
+  Hono -> DatabaseHealth: invoke handler
+  DatabaseHealth -> Database: checkHealth()
+  Database -> Postgres: sql`select 1`
+  Postgres -> Supabase: SELECT 1 over TLS
+
+  alt database connected
+    Supabase --> Postgres: one row
+    Postgres --> Database: query completed
+    Database --> DatabaseHealth: success
+    DatabaseHealth --> Hono: { status: "ok", database: "connected" }
+    Hono --> Client: 200 JSON
+  else database unavailable
+    Supabase --> Postgres: connection/query error
+    Postgres --> Database: reject
+    Database --> DatabaseHealth: reject
+    DatabaseHealth -> Logger: error("Database health check failed", safe context)
+    DatabaseHealth --> Hono: { status: "error", database: "unavailable" }
+    Hono --> Client: 503 JSON (sanitized)
+  end
+end
+
+group unknown route
+  Client -> Hono: GET /unknown
+  Hono --> Client: 404 { error: { code: "NOT_FOUND" } }
+end
+
+@enduml

@@ -1,0 +1,85 @@
+@startuml
+title Milestone 1 — Frontend + API + Database Connectivity
+
+left to right direction
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 14
+skinparam ArrowColor #334155
+skinparam ArrowThickness 1.5
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam rectangle {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+  FontColor #0F172A
+}
+skinparam database {
+  BackgroundColor #ECFDF5
+  BorderColor #059669
+  FontColor #064E3B
+}
+skinparam cloud {
+  BackgroundColor #FFF7ED
+  BorderColor #EA580C
+  FontColor #7C2D12
+}
+
+actor "User" as user
+
+node "Client device" as device {
+  node "Browser" as browser {
+    component "React + Vite UI\napps/web" as web
+    component "API client" as client
+
+    web -down-> client : user actions
+  }
+}
+
+node "Application runtime\nLocal: API :3000 | Production: Vercel HTTPS" as runtime {
+  node "Hono API — apps/api" as api {
+    component "Error middleware\n+ Zod validation" as pipeline
+    component "GET /api/health\n→ status: ok" as health
+    component "GET /api/health/database\n→ database: connected" as dbHealth
+    component "GET /api/openapi.json\nOpenAPI contract" as openapi
+    component "GET /api/docs\nSwagger UI" as swagger
+    component "PostgreSQL connection\nPostgres.js" as postgres
+
+    pipeline -down-> health
+    pipeline -down-> dbHealth
+    pipeline -down-> openapi
+    pipeline -down-> swagger
+    swagger -right-> openapi : loads contract
+    dbHealth -down-> postgres : SELECT 1
+  }
+}
+
+database "Supabase PostgreSQL" as database
+cloud "Meta Instagram API\nMilestone 3+" as meta #F1F5F9
+
+user -right-> web : HTTPS / browser
+client -right-> pipeline : HTTP via API_BASE_URL
+postgres -right-> database : SQL over TLS\nDATABASE_URL
+database -[hidden]right-> meta
+
+note bottom of web
+  Served by Vite on localhost:5173 during development.
+  Deployed as the frontend on Vercel in production.
+end note
+
+note bottom of meta
+  Not integrated during Milestone 1.
+  OAuth, media, and webhooks are later milestones.
+end note
+
+legend bottom left
+  |= Milestone 1 proof path |
+  | Browser → React → Hono API → Supabase PostgreSQL |
+endlegend
+
+@enduml

@@ -1,0 +1,103 @@
+@startuml
+title Milestone 1 — Backend Class and Module Relationships
+
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam class {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+
+class Environment <<validated value>> {
+  +API_PORT: number
+  +DATABASE_URL: string
+  +NODE_ENV: string
+}
+
+class EnvironmentParser <<module>> {
+  +parseEnvironment(input): Environment
+}
+
+interface DatabaseHealthChecker {
+  +checkHealth(): Promise<void>
+}
+
+interface Database {
+  +checkHealth(): Promise<void>
+  +close(): Promise<void>
+}
+
+class DatabaseFactory <<module>> {
+  +createDatabase(connectionString): Database
+}
+
+class PostgresClient <<external: Postgres.js>> {
+  +sql(query)
+  +end(options)
+}
+
+interface Logger {
+  +error(message, context): void
+  +info(message, context): void
+}
+
+class AppDependencies <<value>> {
+  +database: DatabaseHealthChecker
+  +docsEnabled?: boolean
+  +logger: Logger
+}
+
+class AppFactory <<module>> {
+  +createApp(dependencies): OpenAPIHono
+}
+
+class HealthRoutes <<module>> {
+  +registerHealthRoutes(app, dependencies): void
+}
+
+class OpenAPIHonoApplication <<external: OpenAPIHono>> {
+  +get(path, handler)
+  +openapi(route, handler)
+  +doc(path, configuration)
+  +onError(handler)
+  +notFound(handler)
+  +fetch(request): Response
+}
+
+class SwaggerUI <<external middleware>> {
+  +swaggerUI(options): Middleware
+}
+
+class Server <<entry point>> {
+  +start(): void
+  -shutDown(signal): void
+}
+
+Database -up-|> DatabaseHealthChecker
+EnvironmentParser ..> Environment : creates
+DatabaseFactory ..> Database : creates
+DatabaseFactory ..> PostgresClient : wraps
+AppDependencies o-- DatabaseHealthChecker
+AppDependencies o-- Logger
+AppFactory ..> AppDependencies
+AppFactory ..> OpenAPIHonoApplication : creates/configures
+AppFactory ..> HealthRoutes : registers
+AppFactory ..> SwaggerUI : registers when enabled
+HealthRoutes ..> DatabaseHealthChecker : checks
+HealthRoutes ..> Logger : logs failures
+Server ..> EnvironmentParser
+Server ..> DatabaseFactory
+Server ..> AppFactory
+Server ..> Database : closes on shutdown
+
+note bottom of AppFactory
+  Hono stays at the HTTP boundary.
+  Database access is injected for testability.
+end note
+
+@enduml

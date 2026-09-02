@@ -1,0 +1,26 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/app.ts",
+    "src/config/environment.ts",
+    "src/database/database.ts",
+    "src/logging/logger.ts",
+    "src/routes/health.ts"
+  ],
+  "excludePrivate": true,
+  "out": "../../dist/docs/api-code",
+  "readme": "none",
+  "requiredToBeDocumented": [
+    "Function",
+    "Interface",
+    "Method",
+    "Property",
+    "TypeAlias",
+    "Variable"
+  ],
+  "treatWarningsAsErrors": true,
+  "validation": {
+    "invalidLink": true,
+    "notDocumented": true
+  }
+}

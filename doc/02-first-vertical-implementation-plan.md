@@ -92,6 +92,33 @@ Prove the basic infrastructure before Instagram:
 Browser → React → API → PostgreSQL
 ```
 
+## Architecture
+
+![Milestone 1 architecture](diagrams/milestone-1-architecture.svg)
+
+Editable source: [`diagrams/milestone-1-architecture.puml`](diagrams/milestone-1-architecture.puml)
+
+### Backend class relationships
+
+![Milestone 1 backend class diagram](diagrams/milestone-1-class-diagram.svg)
+
+Editable source:
+[`diagrams/milestone-1-class-diagram.puml`](diagrams/milestone-1-class-diagram.puml)
+
+### Running backend objects
+
+![Milestone 1 backend object diagram](diagrams/milestone-1-object-diagram.svg)
+
+Editable source:
+[`diagrams/milestone-1-object-diagram.puml`](diagrams/milestone-1-object-diagram.puml)
+
+### API call sequences
+
+![Milestone 1 API call sequences](diagrams/milestone-1-call-sequence.svg)
+
+Editable source:
+[`diagrams/milestone-1-call-sequence.puml`](diagrams/milestone-1-call-sequence.puml)
+
 ## Frontend
 
 - [ ] Create React + Vite app in `apps/web`
@@ -103,11 +130,11 @@ Browser → React → API → PostgreSQL
 
 ## Backend
 
-- [ ] Create Node.js API in `apps/api`
-- [ ] Add Hono
-- [ ] Add Zod
-- [ ] Add error middleware
-- [ ] Add `GET /api/health`
+- [x] Create Node.js API in `apps/api`
+- [x] Add Hono
+- [x] Add Zod
+- [x] Add error middleware
+- [x] Add `GET /api/health`
 
 Expected:
 
@@ -117,18 +144,33 @@ Expected:
 
 ## Database
 
-- [ ] Create Supabase project
-- [ ] Configure `DATABASE_URL`
-- [ ] Configure `DATABASE_MIGRATION_URL`
-- [ ] Add Postgres.js
-- [ ] Add PostgreSQL connection module
-- [ ] Add `GET /api/health/database`
-- [ ] Endpoint runs `select 1`
+- [x] Create Supabase project
+- [x] Configure `DATABASE_URL`
+- [x] Configure `DATABASE_MIGRATION_URL`
+- [x] Add Postgres.js
+- [x] Add PostgreSQL connection module
+- [x] Add `GET /api/health/database`
+- [x] Endpoint runs `select 1`
 
 Expected:
 
 ```json
 { "status": "ok", "database": "connected" }
+```
+
+## Developer documentation
+
+- [x] Add TSDoc comments to exported backend declarations
+- [x] Add strict TypeDoc generation
+- [x] Generate an OpenAPI specification from Hono and Zod route definitions
+- [x] Add local Swagger UI with manual request execution
+- [x] Add architecture, class, object, and call-sequence diagrams
+
+Local documentation endpoints:
+
+```text
+http://localhost:3000/api/docs
+http://localhost:3000/api/openapi.json
 ```
 
 ## Deployment
