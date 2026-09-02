@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The backend has two complementary forms of executable documentation:
+The codebase has complementary forms of executable documentation:
 
 ```text
 TSDoc comments → TypeDoc HTML
@@ -13,9 +13,10 @@ PlantUML sources under `doc/diagrams/` document higher-level structure and reque
 
 ## Exported TypeScript declarations
 
-Every exported backend function, interface, type, variable, property, and interface method must have
-a `/** ... */` TSDoc comment. Document behavior, parameters, return values, and meaningful failure
-conditions. Do not repeat the implementation or include secrets and real credentials.
+Every exported application function, component, interface, type, variable, property, and interface
+method must have a `/** ... */` TSDoc comment. Document behavior, parameters, return values, and
+meaningful failure conditions. Do not repeat the implementation or include secrets and real
+credentials.
 
 Example:
 
@@ -37,15 +38,16 @@ Generate and validate the code documentation from the repository root:
 pnpm docs:code
 ```
 
-TypeDoc writes the generated HTML site to:
+TypeDoc writes the generated HTML sites to:
 
 ```text
 dist/docs/api-code/index.html
+dist/docs/web-code/index.html
 ```
 
-`dist/` is ignored because the HTML is generated output. The source comments and
-`apps/api/typedoc.json` are committed and remain authoritative. TypeDoc treats missing required
-comments, invalid links, and warnings as failures.
+`dist/` is ignored because the HTML is generated output. The source comments and the TypeDoc
+configuration in `apps/api/typedoc.json` and `apps/web/typedoc.json` are committed and remain
+authoritative. TypeDoc treats missing required comments, invalid links, and warnings as failures.
 
 ## Interactive HTTP API documentation
 
@@ -110,6 +112,8 @@ pnpm build
 | ------------------- | ---------------------------------------------------------------- |
 | TSDoc               | Standard format for exported TypeScript comments                 |
 | TypeDoc             | Validates comments and generates browsable code documentation    |
+| Vitest              | Runs automated frontend and API tests                            |
+| Testing Library     | Verifies user-visible React behavior and accessibility semantics |
 | Zod                 | Defines runtime-safe request and response schemas                |
 | `@hono/zod-openapi` | Converts Hono route definitions and Zod schemas into OpenAPI     |
 | OpenAPI             | Machine-readable contract for HTTP operations                    |

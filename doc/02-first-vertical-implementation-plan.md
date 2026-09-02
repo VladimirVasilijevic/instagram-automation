@@ -119,14 +119,28 @@ Editable source:
 Editable source:
 [`diagrams/milestone-1-call-sequence.puml`](diagrams/milestone-1-call-sequence.puml)
 
+### Frontend component relationships
+
+![Milestone 1 frontend components](diagrams/milestone-1-frontend-components.svg)
+
+Editable source:
+[`diagrams/milestone-1-frontend-components.puml`](diagrams/milestone-1-frontend-components.puml)
+
+### Frontend request sequence
+
+![Milestone 1 frontend request sequence](diagrams/milestone-1-frontend-call-sequence.svg)
+
+Editable source:
+[`diagrams/milestone-1-frontend-call-sequence.puml`](diagrams/milestone-1-frontend-call-sequence.puml)
+
 ## Frontend
 
-- [ ] Create React + Vite app in `apps/web`
-- [ ] Add TypeScript
-- [ ] Add Tailwind
-- [ ] Create minimal mobile-first page
-- [ ] Add backend API client
-- [ ] Add configurable API base URL
+- [x] Create React + Vite app in `apps/web`
+- [x] Add TypeScript
+- [x] Add Tailwind through PostCSS
+- [x] Create minimal mobile-first status page
+- [x] Add validated backend health API client
+- [x] Add portable same-origin `/api` routing with a development proxy
 
 ## Backend
 
@@ -162,6 +176,7 @@ Expected:
 
 - [x] Add TSDoc comments to exported backend declarations
 - [x] Add strict TypeDoc generation
+- [x] Document exported frontend declarations
 - [x] Generate an OpenAPI specification from Hono and Zod route definitions
 - [x] Add local Swagger UI with manual request execution
 - [x] Add architecture, class, object, and call-sequence diagrams
@@ -171,6 +186,13 @@ Local documentation endpoints:
 ```text
 http://localhost:3000/api/docs
 http://localhost:3000/api/openapi.json
+```
+
+Generated TypeDoc sites:
+
+```text
+dist/docs/api-code/index.html
+dist/docs/web-code/index.html
 ```
 
 ## Deployment
@@ -185,9 +207,10 @@ http://localhost:3000/api/openapi.json
 ## Done when
 
 ```text
-✓ frontend works locally and in production
-✓ API works locally and in production
-✓ database works locally and in production
+✓ frontend works locally
+✓ API works locally
+✓ database works locally
+□ frontend, API, and database proof deployed and verified in production
 ```
 
 ---

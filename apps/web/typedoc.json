@@ -1,0 +1,21 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/App.tsx", "src/api/health.ts", "src/components/StatusCard.tsx"],
+  "excludePrivate": true,
+  "out": "../../dist/docs/web-code",
+  "readme": "none",
+  "requiredToBeDocumented": [
+    "Function",
+    "Interface",
+    "Method",
+    "Property",
+    "TypeAlias",
+    "Variable"
+  ],
+  "treatWarningsAsErrors": true,
+  "tsconfig": "tsconfig.app.json",
+  "validation": {
+    "invalidLink": true,
+    "notDocumented": true
+  }
+}

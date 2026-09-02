@@ -1,0 +1,64 @@
+@startuml
+title Milestone 1 — Frontend Health Request Sequence
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam sequence {
+  ParticipantBackgroundColor #EFF6FF
+  ParticipantBorderColor #2563EB
+  ParticipantFontColor #0F172A
+  LifeLineBorderColor #64748B
+}
+
+actor User
+participant "React App" as App
+participant "health API client" as Client
+participant "Vite /api proxy\n(local development only)" as Proxy
+participant "Hono API" as Hono
+participant "Database module" as Database
+database "Supabase PostgreSQL" as Supabase
+
+User -> App: open page or select Refresh status
+App -> App: show both cards as Checking
+
+par API process health
+  App -> Client: getApiHealth(signal)
+  Client -> Proxy: GET /api/health
+  Proxy -> Hono: GET /api/health
+  Hono --> Proxy: 200 { status: "ok" }
+  Proxy --> Client: same response
+  Client --> App: validated ApiHealthResponse
+  App -> App: show API as Connected
+else Database health
+  App -> Client: getDatabaseHealth(signal)
+  Client -> Proxy: GET /api/health/database
+  Proxy -> Hono: GET /api/health/database
+  Hono -> Database: checkHealth()
+  Database -> Supabase: SELECT 1 over TLS
+
+  alt database connected
+    Supabase --> Database: one row
+    Database --> Hono: success
+    Hono --> Proxy: 200 connected response
+    Proxy --> Client: same response
+    Client --> App: validated connected response
+    App -> App: show Database as Connected
+  else database unavailable
+    Supabase --> Database: connection/query error
+    Database --> Hono: reject
+    Hono --> Proxy: 503 sanitized unavailable response
+    Proxy --> Client: same response
+    Client --> App: validated unavailable response
+    App -> App: show Database as Unavailable
+  end
+end
+
+note over Client,Proxy
+  Production hosting replaces the development proxy
+  while preserving the same-origin /api paths.
+end note
+
+@enduml

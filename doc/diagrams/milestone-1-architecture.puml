@@ -34,14 +34,25 @@ actor "User" as user
 
 node "Client device" as device {
   node "Browser" as browser {
-    component "React + Vite UI\napps/web" as web
-    component "API client" as client
+    component "React status UI\napps/web" as web
+    component "Standard fetch API client" as client
 
     web -down-> client : user actions
   }
 }
 
-node "Application runtime\nLocal: API :3000 | Production: Vercel HTTPS" as runtime {
+rectangle "Replaceable build/development adapter" as buildAdapter {
+  component "Vite" as vite
+  component "PostCSS + Tailwind CSS" as css
+
+  vite -right-> css : processes styles
+}
+
+node "Local development routing" as localRouting {
+  component "Vite /api proxy\nlocalhost:5173 → localhost:3000" as proxy
+}
+
+node "Application runtime\nLocal: API :3000 | Planned production: HTTPS" as runtime {
   node "Hono API — apps/api" as api {
     component "Error middleware\n+ Zod validation" as pipeline
     component "GET /api/health\n→ status: ok" as health
@@ -63,13 +74,17 @@ database "Supabase PostgreSQL" as database
 cloud "Meta Instagram API\nMilestone 3+" as meta #F1F5F9
 
 user -right-> web : HTTPS / browser
-client -right-> pipeline : HTTP via API_BASE_URL
+client -right-> proxy : same-origin /api/*
+proxy -right-> pipeline : development HTTP
 postgres -right-> database : SQL over TLS\nDATABASE_URL
 database -[hidden]right-> meta
+vite ..> web : builds and serves
+vite ..> proxy : configures locally
 
-note bottom of web
-  Served by Vite on localhost:5173 during development.
-  Deployed as the frontend on Vercel in production.
+note bottom of buildAdapter
+  Vite is isolated to scripts, configuration, and index.html.
+  React source uses no Vite-only application APIs.
+  Production routing and deployment remain pending.
 end note
 
 note bottom of meta
@@ -79,7 +94,7 @@ end note
 
 legend bottom left
   |= Milestone 1 proof path |
-  | Browser → React → Hono API → Supabase PostgreSQL |
+  | Browser → React → same-origin /api → Hono → Supabase PostgreSQL |
 endlegend
 
 @enduml

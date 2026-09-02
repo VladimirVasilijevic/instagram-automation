@@ -1,0 +1,57 @@
+@startuml
+title Milestone 1 — Frontend Component Relationships
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam rectangle {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+  FontColor #0F172A
+}
+
+package "Application source — apps/web/src" {
+  component "main.tsx\nBrowser mount" as main
+  component "App\nHealth state + refresh" as app
+  component "StatusCard\nReusable presentation" as card
+  component "health API client\ngetApiHealth()\ngetDatabaseHealth()" as client
+  component "index.css\nTailwind import + base styles" as styles
+
+  main --> app : renders
+  main --> styles : imports
+  app --> card : renders twice
+  app --> client : calls
+}
+
+package "Standard platform dependencies" {
+  component "React + React DOM" as react
+  component "Browser fetch + AbortController" as browser
+
+  main --> react
+  app --> react
+  client --> browser
+}
+
+rectangle "Replaceable tool adapter" {
+  component "Vite\ndev server + bundler + /api proxy" as vite
+  component "PostCSS + Tailwind CSS" as postcss
+
+  vite --> postcss : processes CSS
+}
+
+vite ..> main : loads entry
+vite ..> styles : bundles
+
+note right of vite
+  No import.meta.env, import.meta.glob,
+  or import.meta.hot in application source.
+end note
+
+@enduml

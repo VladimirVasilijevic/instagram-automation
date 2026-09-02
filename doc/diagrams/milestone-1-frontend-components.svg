@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="726px" preserveAspectRatio="none" style="width:723px;height:726px;" version="1.1" viewBox="0 0 723 726" width="723px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="302" x="216.5" y="13.897">Milestone 1 — Frontend Component Relationships</text><!--MD5=[9f176f482a26834ad3afbfe0aab9119e]
+cluster Application source — apps/web/src--><polygon fill="#FFFFFF" points="294,198.056,527,198.056,534,221.762,701,221.762,701,591.996,294,591.996,294,198.056" style="stroke: #000000; stroke-width: 1.5;"/><line style="stroke: #000000; stroke-width: 1.5;" x1="294" x2="534" y1="221.762" y2="221.762"/><text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="227" x="298" y="213.953">Application source — apps/web/src</text><!--MD5=[e9dd8fb9597c807028574feedf914509]
+cluster Standard platform dependencies--><polygon fill="#FFFFFF" points="196,624.996,417,624.996,424,648.702,605,648.702,605,714.706,196,714.706,196,624.996" style="stroke: #000000; stroke-width: 1.5;"/><line style="stroke: #000000; stroke-width: 1.5;" x1="196" x2="424" y1="648.702" y2="648.702"/><text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="215" x="200" y="640.893">Standard platform dependencies</text><!--MD5=[827bd198b29828150bfb8384dd612fa4]
+cluster Replaceable tool adapter--><rect fill="#F8FAFC" height="254.97" style="stroke: #64748B; stroke-width: 1.5;" width="248" x="22" y="41.646"/><text fill="#0F172A" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="164" x="64" y="57.543">Replaceable tool adapter</text><!--MD5=[53ccf4b3ee6cf4337a0ab93ac09644f3]
+entity main--><rect fill="#EFF6FF" height="55.412" style="stroke: #2563EB; stroke-width: 1.5;" width="113" x="318.5" y="234.056"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="313.5" y="239.056"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="313.5" y="279.468"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="51" x="328.5" y="257.953">main.tsx</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="93" x="328.5" y="275.659">Browser mount</text><!--MD5=[4541fb81c80c07473fe4b07432ef0971]
+entity app--><rect fill="#EFF6FF" height="55.412" style="stroke: #2563EB; stroke-width: 1.5;" width="148" x="310" y="368.466"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="305" y="373.466"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="305" y="413.878"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="24" x="320" y="392.363">App</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="128" x="320" y="410.069">Health state + refresh</text><!--MD5=[0568ea600d1c2ace8679ac75c80dfc89]
+entity card--><rect fill="#EFF6FF" height="55.412" style="stroke: #2563EB; stroke-width: 1.5;" width="154" x="331" y="511.736"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="326" y="516.736"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="326" y="557.148"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="66" x="341" y="535.633">StatusCard</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="134" x="341" y="553.339">Reusable presentation</text><!--MD5=[4a65e84059005d12693a083370a06717]
+entity client--><rect fill="#EFF6FF" height="73.118" style="stroke: #2563EB; stroke-width: 1.5;" width="144" x="520" y="502.886"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="515" y="507.886"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="515" y="566.0041"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="96" x="530" y="526.783">health API client</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="87" x="530" y="544.489">getApiHealth()</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="124" x="530" y="562.1951">getDatabaseHealth()</text><!--MD5=[c487ab0298edac1028081c753d93c970]
+entity styles--><rect fill="#EFF6FF" height="55.412" style="stroke: #2563EB; stroke-width: 1.5;" width="191" x="493.5" y="368.466"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="488.5" y="373.466"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="488.5" y="413.878"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="54" x="503.5" y="392.363">index.css</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="171" x="503.5" y="410.069">Tailwind import + base styles</text><!--MD5=[cb3d66c929489a99ecf6c8633ae21583]
+entity react--><rect fill="#EFF6FF" height="37.706" style="stroke: #2563EB; stroke-width: 1.5;" width="133" x="211.5" y="660.996"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="206.5" y="665.996"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="206.5" y="688.702"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="113" x="221.5" y="684.893">React + React DOM</text><!--MD5=[23555a4f9c8a267cdfd801ad53ceaf15]
+entity browser--><rect fill="#EFF6FF" height="37.706" style="stroke: #2563EB; stroke-width: 1.5;" width="209" x="379.5" y="660.996"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="374.5" y="665.996"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="374.5" y="688.702"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="189" x="389.5" y="684.893">Browser fetch + AbortController</text><!--MD5=[16ee6c914a0ef0dd1826f22865f644df]
+entity vite--><rect fill="#EFF6FF" height="55.412" style="stroke: #2563EB; stroke-width: 1.5;" width="216" x="38" y="77.646"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="33" y="82.646"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="33" y="123.058"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="23" x="48" y="101.543">Vite</text><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="196" x="48" y="119.249">dev server + bundler + /api proxy</text><!--MD5=[5a6e415faa3bdcd6bd117954cf8bb593]
+entity postcss--><rect fill="#EFF6FF" height="37.706" style="stroke: #2563EB; stroke-width: 1.5;" width="156" x="68" y="242.906"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="63" y="247.906"/><rect fill="#EFF6FF" height="5" style="stroke: #2563EB; stroke-width: 1.5;" width="10" x="63" y="270.612"/><text fill="#0F172A" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="136" x="78" y="266.803">PostCSS + Tailwind CSS</text><path d="M289.5,82.646 L289.5,101.356 L254.35,105.356 L289.5,109.356 L289.5,128.058 A0,0 0 0 0 289.5,128.058 L554.5,128.058 A0,0 0 0 0 554.5,128.058 L554.5,92.646 L544.5,82.646 L289.5,82.646 A0,0 0 0 0 289.5,82.646 " fill="#FBFB77" style="stroke: #A80036; stroke-width: 1.0;"/><path d="M544.5,82.646 L544.5,92.646 L554.5,92.646 L544.5,82.646 " fill="#FBFB77" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="235" x="295.5" y="101.543">No import.meta.env, import.meta.glob,</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="244" x="295.5" y="119.249">or import.meta.hot in application source.</text><!--MD5=[d2cccea60f26b86381598bbefe88b528]
+link main to app--><path d="M376.84,289.876 C378.26,310.676 380.22,339.486 381.73,361.716 " fill="none" id="main-&gt;app" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="382.06,366.586,385.4331,357.3328,381.717,361.5978,377.452,357.8816,382.06,366.586" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="46" x="381.04" y="334.363">renders</text><!--MD5=[5916675adb33044f57a3a2030f8ca7fc]
+link main to styles--><path d="M418.82,289.876 C454.02,311.656 503.43,342.226 539.95,364.826 " fill="none" id="main-&gt;styles" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="543.95,367.296,538.4059,359.1558,539.6996,364.6628,534.1927,365.9565,543.95,367.296" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="47" x="495.81" y="334.363">imports</text><!--MD5=[b3679ea9248d226eb70e3825cc604724]
+link app to card--><path d="M388.57,424.076 C392.49,447.156 398.16,480.496 402.36,505.226 " fill="none" id="app-&gt;card" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="403.19,510.146,405.6425,500.6074,402.3611,505.2152,397.7533,501.9337,403.19,510.146" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="80" x="397.72" y="468.783">renders twice</text><!--MD5=[9cecf95ca18500caa5a398892473e215]
+link app to client--><path d="M437.45,424.296 C453.71,433.156 471.4,443.426 487,453.886 C507.08,467.346 528.05,483.706 545.92,498.446 " fill="none" id="app-&gt;client" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="549.71,501.586,545.3341,492.7627,545.8607,498.395,540.2284,498.9216,549.71,501.586" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="25" x="512.06" y="468.783">calls</text><!--MD5=[565eaec0df8463da7ae15a3b26ee7a49]
+link main to react--><path d="M346.39,289.956 C327.49,309.786 304.06,338.366 292,368.466 C252,468.316 265.82,600.916 273.88,654.686 " fill="none" id="main-&gt;react" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="274.6,659.346,277.1912,649.8441,273.8429,654.4037,269.2834,651.0554,274.6,659.346" style="stroke: #334155; stroke-width: 1.0;"/><!--MD5=[778083ebf4a6dde98861b23bb10d1e0a]
+link app to react--><path d="M361.47,424.146 C345.58,444.536 325.05,473.896 313,502.886 C291.62,554.326 283.03,619.786 279.79,654.566 " fill="none" id="app-&gt;react" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="279.38,659.186,284.1606,650.5752,279.8224,654.2056,276.192,649.8674,279.38,659.186" style="stroke: #334155; stroke-width: 1.0;"/><!--MD5=[b5f4df7809d597a9ca049216731da71f]
+link client to browser--><path d="M563.91,576.446 C544.35,601.506 518.85,634.186 501.98,655.816 " fill="none" id="client-&gt;browser" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="499.03,659.596,507.7268,654.9737,502.1115,655.6585,501.4268,650.0432,499.03,659.596" style="stroke: #334155; stroke-width: 1.0;"/><!--MD5=[1bc453c1847cd6e70d0704fb5367cec5]
+link vite to postcss--><path d="M146,133.246 C146,162.366 146,208.396 146,236.456 " fill="none" id="vite-&gt;postcss" style="stroke: #334155; stroke-width: 1.0;"/><polygon fill="#334155" points="146,241.326,150,232.326,146,236.326,142,232.326,146,241.326" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="84" x="147" y="177.953">processes CSS</text><!--MD5=[45c1dd76c299fb47c9d40af1caa3460b]
+link vite to main--><path d="M192.38,133.286 C207.71,142.466 224.74,152.956 240,163.056 C272.23,184.386 307.59,210.066 334.03,229.746 " fill="none" id="vite-&gt;main" style="stroke: #334155; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#334155" points="337.98,232.686,333.1457,224.1053,333.968,229.702,328.3713,230.5244,337.98,232.686" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="67" x="267.38" y="177.953">loads entry</text><!--MD5=[ee17f86c96b05c6de4f49e4bafe3300c]
+link vite to styles--><path d="M254.1,132.736 C334.18,152.866 432.21,178.966 449,190.056 C513.5,232.696 556.34,316.246 576.21,362.476 " fill="none" id="vite-&gt;styles" style="stroke: #334155; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#334155" points="578.04,366.796,578.2231,356.9489,576.0946,362.19,570.8535,360.0615,578.04,366.796" style="stroke: #334155; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="48" x="547.99" y="267.163">bundles</text><!--MD5=[b8ad80c3d078ec75f801059f5e5aa44b]
+@startuml
+title Milestone 1 — Frontend Component Relationships
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam rectangle {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+  FontColor #0F172A
+}
+
+package "Application source — apps/web/src" {
+  component "main.tsx\nBrowser mount" as main
+  component "App\nHealth state + refresh" as app
+  component "StatusCard\nReusable presentation" as card
+  component "health API client\ngetApiHealth()\ngetDatabaseHealth()" as client
+  component "index.css\nTailwind import + base styles" as styles
+
+  main - -> app : renders
+  main - -> styles : imports
+  app - -> card : renders twice
+  app - -> client : calls
+}
+
+package "Standard platform dependencies" {
+  component "React + React DOM" as react
+  component "Browser fetch + AbortController" as browser
+
+  main - -> react
+  app - -> react
+  client - -> browser
+}
+
+rectangle "Replaceable tool adapter" {
+  component "Vite\ndev server + bundler + /api proxy" as vite
+  component "PostCSS + Tailwind CSS" as postcss
+
+  vite - -> postcss : processes CSS
+}
+
+vite ..> main : loads entry
+vite ..> styles : bundles
+
+note right of vite
+  No import.meta.env, import.meta.glob,
+  or import.meta.hot in application source.
+end note
+
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 11:22:07 CET 2020)
+(GPL source distribution)
+Java Runtime: OpenJDK Runtime Environment
+JVM: OpenJDK 64-Bit Server VM
+Java Version: 25.0.4+7-1-26.04-Ubuntu
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: null
+--></g></svg>
