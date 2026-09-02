@@ -10,7 +10,12 @@ export interface Environment {
 
   /** Current application runtime environment. */
   NODE_ENV: 'development' | 'test' | 'production';
+
+  /** Base64-encoded 256-bit key used to encrypt sensitive application tokens. */
+  TOKEN_ENCRYPTION_KEY: string;
 }
+
+const base64EncodedKeyPattern = /^[A-Za-z0-9+/]{43}=$/;
 
 const environmentSchema: z.ZodType<Environment> = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -19,6 +24,14 @@ const environmentSchema: z.ZodType<Environment> = z.object({
     .trim()
     .min(1, 'DATABASE_URL is required'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  TOKEN_ENCRYPTION_KEY: z
+    .string({ error: 'TOKEN_ENCRYPTION_KEY is required' })
+    .trim()
+    .refine(
+      (value) =>
+        base64EncodedKeyPattern.test(value) && Buffer.from(value, 'base64').byteLength === 32,
+      'TOKEN_ENCRYPTION_KEY must be a Base64-encoded 32-byte key',
+    ),
 });
 
 /**

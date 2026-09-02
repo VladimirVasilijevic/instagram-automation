@@ -265,10 +265,10 @@ Create the persistence and security needed by the vertical slice.
 
 ## Security
 
-- [ ] Add `TokenProtector` interface
-- [ ] Implement AES-256-GCM using Node `crypto`
-- [ ] Add `TOKEN_ENCRYPTION_KEY`
-- [ ] Create secure random session token
+- [x] Add `TokenProtector` interface
+- [x] Implement AES-256-GCM using Node `crypto`
+- [x] Add `TOKEN_ENCRYPTION_KEY`
+- [x] Create secure random session token
 - [ ] Store only session token hash in DB
 - [ ] Use HTTP-only cookie
 - [ ] Add session middleware

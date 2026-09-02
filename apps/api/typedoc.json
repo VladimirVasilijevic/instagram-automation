@@ -5,7 +5,10 @@
     "src/config/environment.ts",
     "src/database/database.ts",
     "src/logging/logger.ts",
-    "src/routes/health.ts"
+    "src/routes/health.ts",
+    "src/security/aes-gcm-token-protector.ts",
+    "src/security/session-token.ts",
+    "src/security/token-protector.ts"
   ],
   "excludePrivate": true,
   "out": "../../dist/docs/api-code",
