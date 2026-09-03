@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "db:migrate": "tsx --env-file=../../.env.local scripts/migrations.ts migrate",
+    "db:migrate:status": "tsx --env-file=../../.env.local scripts/migrations.ts status",
     "dev": "tsx watch --env-file=../../.env.local src/server.ts",
     "docs:code": "typedoc --options typedoc.json",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",

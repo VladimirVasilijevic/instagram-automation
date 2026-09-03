@@ -223,20 +223,20 @@ Create the persistence and security needed by the vertical slice.
 
 ## Migrations
 
-- [ ] `instagram_accounts`
+- [x] `instagram_accounts`
   - `id`
   - `instagram_user_id UNIQUE`
   - `username`
   - `access_token_ciphertext`
   - `token_expires_at`
   - timestamps
-- [ ] `sessions`
+- [x] `sessions`
   - `id`
   - `account_id`
   - `token_hash UNIQUE`
   - `expires_at`
   - `created_at`
-- [ ] `automations`
+- [x] `automations`
   - `id`
   - `account_id UNIQUE`
   - `media_id`
@@ -244,7 +244,7 @@ Create the persistence and security needed by the vertical slice.
   - `reply_text`
   - `enabled`
   - timestamps
-- [ ] `executions`
+- [x] `executions`
   - `id`
   - `automation_id`
   - `instagram_comment_id UNIQUE`

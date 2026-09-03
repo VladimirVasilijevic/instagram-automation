@@ -5,6 +5,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "db:migrate": "pnpm --filter @instagram-automation/api db:migrate",
+    "db:migrate:status": "pnpm --filter @instagram-automation/api db:migrate:status",
     "dev": "pnpm --recursive --parallel --if-present run dev",
     "docs:code": "pnpm --recursive --if-present run docs:code",
     "build": "pnpm --recursive --if-present run build",

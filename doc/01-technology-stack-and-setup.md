@@ -23,6 +23,8 @@ Already configured:
 - PostgreSQL command-line tools;
 - a Supabase PostgreSQL project;
 - working runtime and migration database connections;
+- versioned, checksummed SQL migrations with transactional execution;
+- a private PostgreSQL application schema with row-level security and restricted API roles;
 - Vercel CLI and account access;
 - local environment-file protection;
 - local webhook and encryption secrets;
@@ -39,7 +41,7 @@ Already configured:
 
 Not configured yet:
 
-- database migrations and schema;
+- database repositories and session persistence;
 - Vercel project linking and deployment;
 - Meta App credentials, OAuth callback, and webhook callback.
 
@@ -157,6 +159,31 @@ requirements:
 The direct database hostname uses IPv6 and was unreachable from the current local network. The
 configured Supabase pooler supports IPv4, and both pooler connections passed `select 1` tests.
 
+### Database migrations
+
+Versioned SQL files live under `db/migrations/`. Check migration state and apply pending migrations
+from the repository root:
+
+```bash
+pnpm db:migrate:status
+pnpm db:migrate
+```
+
+The migration runner uses `DATABASE_MIGRATION_URL`, calculates a SHA-256 checksum for each SQL file,
+and records applied files in `app_private.schema_migrations`. It rejects changed, missing, or
+out-of-order migration history. Pending files run in a single transaction under a PostgreSQL
+advisory lock, so a failed migration rolls back its schema changes and ledger entry together.
+
+Applied migrations are immutable. Correct an applied schema with a new migration instead of editing
+an existing SQL file. The runner supports transactional migrations only; do not add operations such
+as `CREATE INDEX CONCURRENTLY` without first extending the runner deliberately.
+
+Application data is stored in the private `app_private` schema, which must not be added to the
+Supabase Data API's exposed schemas. Supabase API roles have no schema or table privileges, and
+row-level security is enabled without browser policies. Backend and migration SQL must always use
+fully qualified names such as `app_private.sessions`; this also avoids confusion with Supabase's
+separate `auth.sessions` table.
+
 ## Vercel
 
 Vercel will provide the public HTTPS URL required by Meta. After deployment, the expected
@@ -196,10 +223,10 @@ Current high-level structure:
 ```text
 instagram-automation/
 ├── apps/
-│   ├── api/                 # Hono backend, tests, OpenAPI and TypeDoc configuration
+│   ├── api/                 # Hono backend, migration CLI, tests, OpenAPI and TypeDoc configuration
 │   └── web/                 # React UI, API client, tests, Vite and TypeDoc configuration
 ├── packages/                # Domain/application/ports/infrastructure/contracts workspaces
-├── db/migrations/
+├── db/migrations/           # Immutable, ordered SQL migrations
 ├── tests/
 ├── doc/
 │   └── diagrams/            # PlantUML sources and rendered SVG diagrams

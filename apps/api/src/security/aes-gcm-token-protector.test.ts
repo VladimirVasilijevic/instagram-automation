@@ -23,9 +23,9 @@ describe('AesGcmTokenProtector', () => {
   it('rejects a modified ciphertext', () => {
     const protector = new AesGcmTokenProtector(encryptionKey);
     const parts = protector.encrypt('instagram-access-token').split('.');
-    const ciphertext = parts[3] ?? '';
-    const replacement = ciphertext.endsWith('A') ? 'B' : 'A';
-    parts[3] = `${ciphertext.slice(0, -1)}${replacement}`;
+    const ciphertext = Buffer.from(parts[3] ?? '', 'base64url');
+    ciphertext[0] = (ciphertext[0] ?? 0) ^ 1;
+    parts[3] = ciphertext.toString('base64url');
 
     expect(() => protector.decrypt(parts.join('.'))).toThrowError(
       'Protected token authentication failed',
