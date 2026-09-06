@@ -4,6 +4,8 @@
     "src/app.ts",
     "src/config/environment.ts",
     "src/database/database.ts",
+    "src/database/postgres-repositories.ts",
+    "src/database/repositories.ts",
     "src/logging/logger.ts",
     "src/routes/health.ts",
     "src/security/aes-gcm-token-protector.ts",

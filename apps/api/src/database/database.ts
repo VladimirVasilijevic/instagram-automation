@@ -1,5 +1,11 @@
 import postgres from 'postgres';
 
+import {
+  createPostgresAccountRepository,
+  createPostgresSessionRepository,
+} from './postgres-repositories.js';
+import type { AccountRepository, SessionRepository } from './repositories.js';
+
 /** Minimal database capability required by an API health check. */
 export interface DatabaseHealthChecker {
   /**
@@ -12,8 +18,14 @@ export interface DatabaseHealthChecker {
 
 /** Runtime PostgreSQL connection with health-check and shutdown capabilities. */
 export interface Database extends DatabaseHealthChecker {
+  /** PostgreSQL-backed connected-account persistence. */
+  accountRepository: AccountRepository;
+
   /** Closes the underlying Postgres.js connections. */
   close(): Promise<void>;
+
+  /** PostgreSQL-backed application-session persistence. */
+  sessionRepository: SessionRepository;
 }
 
 /**
@@ -31,11 +43,13 @@ export const createDatabase = (connectionString: string): Database => {
   });
 
   return {
+    accountRepository: createPostgresAccountRepository(sql),
     async checkHealth(): Promise<void> {
       await sql`select 1`;
     },
     async close(): Promise<void> {
       await sql.end({ timeout: 5 });
     },
+    sessionRepository: createPostgresSessionRepository(sql),
   };
 };

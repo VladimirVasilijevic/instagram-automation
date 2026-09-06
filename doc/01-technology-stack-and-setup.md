@@ -25,6 +25,7 @@ Already configured:
 - working runtime and migration database connections;
 - versioned, checksummed SQL migrations with transactional execution;
 - a private PostgreSQL application schema with row-level security and restricted API roles;
+- PostgreSQL account and session repositories sharing the API database connection;
 - Vercel CLI and account access;
 - local environment-file protection;
 - local webhook and encryption secrets;
@@ -41,7 +42,8 @@ Already configured:
 
 Not configured yet:
 
-- database repositories and session persistence;
+- automation and execution repositories;
+- HTTP session cookies, authentication middleware, and logout routing;
 - Vercel project linking and deployment;
 - Meta App credentials, OAuth callback, and webhook callback.
 
@@ -183,6 +185,29 @@ Supabase Data API's exposed schemas. Supabase API roles have no schema or table 
 row-level security is enabled without browser policies. Backend and migration SQL must always use
 fully qualified names such as `app_private.sessions`; this also avoids confusion with Supabase's
 separate `auth.sessions` table.
+
+### Account and session persistence
+
+The API database wrapper constructs account and session repositories from the same Postgres.js
+client used for health checks. Repository contracts are separate from their PostgreSQL adapters,
+while remaining inside `apps/api` until another runtime consumer justifies activating shared
+workspace packages.
+
+Account persistence accepts only the opaque protected-token type returned by AES-GCM encryption.
+Session persistence accepts only the opaque SHA-256 hash returned by session-token generation. An
+active-session lookup also requires `expires_at > now()` in PostgreSQL, so an expired credential
+cannot authenticate even if its row has not been cleaned up.
+
+Normal unit tests skip external database access. Run the explicitly enabled rollback-only repository
+integration test with:
+
+```bash
+pnpm --filter @instagram-automation/api test:integration
+```
+
+The integration test loads the ignored local environment, performs its assertions through the
+configured runtime database connection, deliberately aborts the transaction, and confirms that no
+test account or session remains.
 
 ## Vercel
 

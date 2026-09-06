@@ -1,3 +1,11 @@
+declare const protectedTokenBrand: unique symbol;
+
+/** Opaque encrypted-token value accepted by persistence boundaries. */
+export type ProtectedToken = string & {
+  /** Compile-time marker preventing plaintext strings from crossing persistence boundaries. */
+  readonly [protectedTokenBrand]: true;
+};
+
 /** Encrypts and authenticates sensitive tokens stored by the application. */
 export interface TokenProtector {
   /**
@@ -7,7 +15,7 @@ export interface TokenProtector {
    * @returns An encoded value containing everything except the encryption key needed for decryption.
    * @throws When the plaintext token is empty.
    */
-  encrypt(plaintextToken: string): string;
+  encrypt(plaintextToken: string): ProtectedToken;
 
   /**
    * Authenticates and decrypts a value previously returned by {@link encrypt}.

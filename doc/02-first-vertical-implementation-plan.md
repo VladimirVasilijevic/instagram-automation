@@ -257,8 +257,8 @@ Create the persistence and security needed by the vertical slice.
 
 ## Ports/repositories
 
-- [ ] `AccountRepository`
-- [ ] `SessionRepository`
+- [x] `AccountRepository`
+- [x] `SessionRepository`
 - [ ] `AutomationRepository`
 - [ ] `ExecutionRepository`
 - [ ] PostgreSQL implementations for each
@@ -269,7 +269,7 @@ Create the persistence and security needed by the vertical slice.
 - [x] Implement AES-256-GCM using Node `crypto`
 - [x] Add `TOKEN_ENCRYPTION_KEY`
 - [x] Create secure random session token
-- [ ] Store only session token hash in DB
+- [x] Store only session token hash in DB
 - [ ] Use HTTP-only cookie
 - [ ] Add session middleware
 - [ ] Add logout

@@ -2,10 +2,18 @@ import { createHash, randomBytes } from 'node:crypto';
 
 const sessionTokenLengthBytes = 32;
 
+declare const sessionTokenHashBrand: unique symbol;
+
+/** Opaque SHA-256 session-token digest accepted by persistence boundaries. */
+export type SessionTokenHash = string & {
+  /** Compile-time marker preventing raw session credentials from being persisted. */
+  readonly [sessionTokenHashBrand]: true;
+};
+
 /** Newly generated session credential and the non-reversible value suitable for persistence. */
 export interface SessionToken {
   /** SHA-256 hash that may be stored in the database. */
-  tokenHash: string;
+  tokenHash: SessionTokenHash;
 
   /** High-entropy credential that must only be returned to the authenticated client. */
   token: string;
@@ -18,12 +26,12 @@ export interface SessionToken {
  * @returns Lowercase hexadecimal SHA-256 digest.
  * @throws When the token is empty.
  */
-export const hashSessionToken = (token: string): string => {
+export const hashSessionToken = (token: string): SessionTokenHash => {
   if (token.length === 0) {
     throw new Error('Session token must not be empty');
   }
 
-  return createHash('sha256').update(token, 'utf8').digest('hex');
+  return createHash('sha256').update(token, 'utf8').digest('hex') as SessionTokenHash;
 };
 
 /**

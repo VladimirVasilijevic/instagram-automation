@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
-import type { TokenProtector } from './token-protector.js';
+import type { ProtectedToken, TokenProtector } from './token-protector.js';
 
 const algorithm = 'aes-256-gcm';
 const envelopeVersion = 'v1';
@@ -49,7 +49,7 @@ export class AesGcmTokenProtector implements TokenProtector {
   }
 
   /** Encrypts a non-empty token with a newly generated 96-bit nonce. */
-  encrypt(plaintextToken: string): string {
+  encrypt(plaintextToken: string): ProtectedToken {
     if (plaintextToken.length === 0) {
       throw new Error('Plaintext token must not be empty');
     }
@@ -66,7 +66,7 @@ export class AesGcmTokenProtector implements TokenProtector {
       nonce.toString('base64url'),
       authenticationTag.toString('base64url'),
       ciphertext.toString('base64url'),
-    ].join('.');
+    ].join('.') as ProtectedToken;
   }
 
   /** Authenticates and decrypts a supported token envelope. */
