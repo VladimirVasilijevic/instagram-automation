@@ -3,9 +3,17 @@ import postgres from 'postgres';
 import type { ProtectedToken } from '../security/token-protector.js';
 import type {
   AccountRepository,
+  Automation,
+  AutomationRepository,
   AuthenticatedSession,
+  ClaimExecutionInput,
   CreateSessionInput,
+  Execution,
+  ExecutionFailure,
+  ExecutionRepository,
+  ExecutionStatus,
   InstagramAccount,
+  SaveAutomationInput,
   Session,
   SessionRepository,
   UpsertConnectedAccountInput,
@@ -31,6 +39,30 @@ interface SessionRow {
   id: string;
 }
 
+interface AutomationRow {
+  account_id: string;
+  created_at: Date;
+  enabled: boolean;
+  id: string;
+  media_id: string;
+  reply_text: string;
+  trigger_text: '#Hello';
+  updated_at: Date;
+}
+
+interface ExecutionRow {
+  automation_id: string;
+  comment_text: string;
+  commenter_username: string | null;
+  created_at: Date;
+  error_code: string | null;
+  error_message: string | null;
+  id: string;
+  instagram_comment_id: string;
+  status: ExecutionStatus;
+  updated_at: Date;
+}
+
 interface AuthenticatedSessionRow extends AccountRow {
   session_account_id: string;
   session_created_at: Date;
@@ -53,6 +85,30 @@ const toSession = (row: SessionRow): Session => ({
   createdAt: row.created_at,
   expiresAt: row.expires_at,
   id: row.id,
+});
+
+const toAutomation = (row: AutomationRow): Automation => ({
+  accountId: row.account_id,
+  createdAt: row.created_at,
+  enabled: row.enabled,
+  id: row.id,
+  mediaId: row.media_id,
+  replyText: row.reply_text,
+  triggerText: row.trigger_text,
+  updatedAt: row.updated_at,
+});
+
+const toExecution = (row: ExecutionRow): Execution => ({
+  automationId: row.automation_id,
+  commentText: row.comment_text,
+  commenterUsername: row.commenter_username,
+  createdAt: row.created_at,
+  errorCode: row.error_code,
+  errorMessage: row.error_message,
+  id: row.id,
+  instagramCommentId: row.instagram_comment_id,
+  status: row.status,
+  updatedAt: row.updated_at,
 });
 
 /** Creates PostgreSQL-backed Instagram account persistence operations. */
@@ -174,5 +230,173 @@ export const createPostgresSessionRepository = (sql: PostgresQueryClient): Sessi
         id: row.session_id,
       }),
     };
+  },
+});
+
+/** Creates PostgreSQL-backed automation configuration persistence operations. */
+export const createPostgresAutomationRepository = (
+  sql: PostgresQueryClient,
+): AutomationRepository => ({
+  async findByAccountId(accountId): Promise<Automation | null> {
+    const rows = await sql<AutomationRow[]>`
+      select id, account_id, media_id, trigger_text, reply_text, enabled, created_at, updated_at
+      from app_private.automations
+      where account_id = ${accountId}
+      limit 1
+    `;
+
+    return rows[0] ? toAutomation(rows[0]) : null;
+  },
+
+  async findEnabledByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
+    const rows = await sql<AutomationRow[]>`
+      select id, account_id, media_id, trigger_text, reply_text, enabled, created_at, updated_at
+      from app_private.automations
+      where account_id = ${accountId}
+        and media_id = ${mediaId}
+        and enabled = true
+      limit 1
+    `;
+
+    return rows[0] ? toAutomation(rows[0]) : null;
+  },
+
+  async saveAutomation(input: SaveAutomationInput): Promise<Automation> {
+    const rows = await sql<AutomationRow[]>`
+      insert into app_private.automations (account_id, media_id, trigger_text, reply_text, enabled)
+      values (${input.accountId}, ${input.mediaId}, '#Hello', ${input.replyText}, ${input.enabled})
+      on conflict (account_id) do update
+      set
+        media_id = excluded.media_id,
+        trigger_text = '#Hello',
+        reply_text = excluded.reply_text,
+        enabled = excluded.enabled
+      returning id, account_id, media_id, trigger_text, reply_text, enabled, created_at, updated_at
+    `;
+    const automation = rows[0];
+
+    if (!automation) {
+      throw new Error('Automation save returned no row');
+    }
+
+    return toAutomation(automation);
+  },
+});
+
+/** Creates PostgreSQL-backed execution and recent-activity persistence operations. */
+export const createPostgresExecutionRepository = (
+  sql: PostgresQueryClient,
+): ExecutionRepository => ({
+  async claimExecution(input: ClaimExecutionInput): Promise<Execution | null> {
+    const rows = await sql<ExecutionRow[]>`
+      insert into app_private.executions (
+        automation_id,
+        instagram_comment_id,
+        commenter_username,
+        comment_text,
+        status
+      ) values (
+        ${input.automationId},
+        ${input.instagramCommentId},
+        ${input.commenterUsername},
+        ${input.commentText},
+        'processing'
+      )
+      on conflict (instagram_comment_id) do nothing
+      returning
+        id,
+        automation_id,
+        instagram_comment_id,
+        commenter_username,
+        comment_text,
+        status,
+        error_code,
+        error_message,
+        created_at,
+        updated_at
+    `;
+
+    return rows[0] ? toExecution(rows[0]) : null;
+  },
+
+  async listRecentByAccountId(accountId, limit): Promise<Execution[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new RangeError('Execution activity limit must be an integer from 1 through 50');
+    }
+
+    const rows = await sql<ExecutionRow[]>`
+      select
+        execution.id,
+        execution.automation_id,
+        execution.instagram_comment_id,
+        execution.commenter_username,
+        execution.comment_text,
+        execution.status,
+        execution.error_code,
+        execution.error_message,
+        execution.created_at,
+        execution.updated_at
+      from app_private.executions as execution
+      inner join app_private.automations as automation on automation.id = execution.automation_id
+      where automation.account_id = ${accountId}
+      order by execution.created_at desc, execution.id desc
+      limit ${limit}
+    `;
+
+    return rows.map(toExecution);
+  },
+
+  async markFailed(executionId, failure: ExecutionFailure): Promise<Execution | null> {
+    if (failure.errorCode.trim() === '' || failure.errorMessage.trim() === '') {
+      throw new TypeError('Execution failure code and message must be non-empty');
+    }
+
+    const rows = await sql<ExecutionRow[]>`
+      update app_private.executions
+      set
+        status = 'failed',
+        error_code = ${failure.errorCode},
+        error_message = ${failure.errorMessage}
+      where id = ${executionId}
+        and status = 'processing'
+      returning
+        id,
+        automation_id,
+        instagram_comment_id,
+        commenter_username,
+        comment_text,
+        status,
+        error_code,
+        error_message,
+        created_at,
+        updated_at
+    `;
+
+    return rows[0] ? toExecution(rows[0]) : null;
+  },
+
+  async markSucceeded(executionId): Promise<Execution | null> {
+    const rows = await sql<ExecutionRow[]>`
+      update app_private.executions
+      set
+        status = 'succeeded',
+        error_code = null,
+        error_message = null
+      where id = ${executionId}
+        and status = 'processing'
+      returning
+        id,
+        automation_id,
+        instagram_comment_id,
+        commenter_username,
+        comment_text,
+        status,
+        error_code,
+        error_message,
+        created_at,
+        updated_at
+    `;
+
+    return rows[0] ? toExecution(rows[0]) : null;
   },
 });

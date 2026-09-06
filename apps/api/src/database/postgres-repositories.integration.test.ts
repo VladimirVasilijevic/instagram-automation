@@ -8,6 +8,8 @@ import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
 import { createSessionToken } from '../security/session-token.js';
 import {
   createPostgresAccountRepository,
+  createPostgresAutomationRepository,
+  createPostgresExecutionRepository,
   createPostgresSessionRepository,
 } from './postgres-repositories.js';
 
@@ -19,7 +21,7 @@ if (integrationTestsEnabled) {
 
 const describeDatabase = integrationTestsEnabled ? describe : describe.skip;
 
-describeDatabase('PostgreSQL account and session repositories', () => {
+describeDatabase('PostgreSQL repositories', () => {
   const rollbackSignal = new Error('rollback integration transaction');
   const databaseUrl = process.env.DATABASE_URL;
   let sql: ReturnType<typeof postgres>;
@@ -169,5 +171,246 @@ describeDatabase('PostgreSQL account and session repositories', () => {
     `;
 
     expect(remainingRows[0]).toEqual({ account_count: 0, session_count: 0 });
+  });
+
+  it('persists automations, atomically claims executions, and isolates recent activity', async () => {
+    const instagramUserId = `automation-integration-${randomUUID()}`;
+    const otherInstagramUserId = `other-automation-integration-${randomUUID()}`;
+    const firstCommentId = `comment-${randomUUID()}`;
+    const secondCommentId = `comment-${randomUUID()}`;
+    const otherCommentId = `comment-${randomUUID()}`;
+    const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 4).toString('base64'));
+    const protectedAccessToken = tokenProtector.encrypt('automation-test-token');
+
+    try {
+      await sql.begin(async (transactionSql) => {
+        const accountRepository = createPostgresAccountRepository(transactionSql);
+        const automationRepository = createPostgresAutomationRepository(transactionSql);
+        const executionRepository = createPostgresExecutionRepository(transactionSql);
+        const account = await accountRepository.upsertConnectedAccount({
+          accessTokenCiphertext: protectedAccessToken,
+          instagramUserId,
+          tokenExpiresAt: new Date(Date.now() + 86_400_000),
+          username: 'automation_owner',
+        });
+        const otherAccount = await accountRepository.upsertConnectedAccount({
+          accessTokenCiphertext: protectedAccessToken,
+          instagramUserId: otherInstagramUserId,
+          tokenExpiresAt: new Date(Date.now() + 86_400_000),
+          username: 'other_automation_owner',
+        });
+        const firstAutomation = await automationRepository.saveAutomation({
+          accountId: account.id,
+          enabled: false,
+          mediaId: 'first-media',
+          replyText: 'First reply',
+        });
+        const updatedAutomation = await automationRepository.saveAutomation({
+          accountId: account.id,
+          enabled: true,
+          mediaId: 'selected-media',
+          replyText: 'Updated reply',
+        });
+
+        expect(updatedAutomation).toMatchObject({
+          accountId: account.id,
+          enabled: true,
+          id: firstAutomation.id,
+          mediaId: 'selected-media',
+          replyText: 'Updated reply',
+          triggerText: '#Hello',
+        });
+        expect(updatedAutomation.createdAt).toEqual(firstAutomation.createdAt);
+        await expect(automationRepository.findByAccountId(account.id)).resolves.toEqual(
+          updatedAutomation,
+        );
+        await expect(
+          automationRepository.findEnabledByAccountAndMedia(account.id, 'selected-media'),
+        ).resolves.toEqual(updatedAutomation);
+        await expect(
+          automationRepository.findEnabledByAccountAndMedia(account.id, 'wrong-media'),
+        ).resolves.toBeNull();
+        await expect(
+          automationRepository.findEnabledByAccountAndMedia(otherAccount.id, 'selected-media'),
+        ).resolves.toBeNull();
+
+        const disabledAutomation = await automationRepository.saveAutomation({
+          accountId: account.id,
+          enabled: false,
+          mediaId: 'selected-media',
+          replyText: 'Updated reply',
+        });
+
+        await expect(
+          automationRepository.findEnabledByAccountAndMedia(account.id, 'selected-media'),
+        ).resolves.toBeNull();
+
+        const enabledAutomation = await automationRepository.saveAutomation({
+          accountId: account.id,
+          enabled: true,
+          mediaId: disabledAutomation.mediaId,
+          replyText: disabledAutomation.replyText,
+        });
+        const otherAutomation = await automationRepository.saveAutomation({
+          accountId: otherAccount.id,
+          enabled: true,
+          mediaId: 'other-media',
+          replyText: 'Other reply',
+        });
+        const firstExecution = await executionRepository.claimExecution({
+          automationId: enabledAutomation.id,
+          commenterUsername: 'first_commenter',
+          commentText: '#Hello',
+          instagramCommentId: firstCommentId,
+        });
+
+        expect(firstExecution).toMatchObject({
+          automationId: enabledAutomation.id,
+          commenterUsername: 'first_commenter',
+          commentText: '#Hello',
+          errorCode: null,
+          errorMessage: null,
+          instagramCommentId: firstCommentId,
+          status: 'processing',
+        });
+        await expect(
+          executionRepository.claimExecution({
+            automationId: otherAutomation.id,
+            commenterUsername: 'duplicate_commenter',
+            commentText: '#Hello',
+            instagramCommentId: firstCommentId,
+          }),
+        ).resolves.toBeNull();
+
+        if (!firstExecution) {
+          throw new Error('First execution claim unexpectedly returned null');
+        }
+
+        const succeededExecution = await executionRepository.markSucceeded(firstExecution.id);
+
+        expect(succeededExecution).toMatchObject({
+          errorCode: null,
+          errorMessage: null,
+          id: firstExecution.id,
+          status: 'succeeded',
+        });
+        await expect(executionRepository.markSucceeded(firstExecution.id)).resolves.toBeNull();
+        await expect(
+          executionRepository.markFailed(firstExecution.id, {
+            errorCode: 'provider_rejected',
+            errorMessage: 'The provider rejected the reply.',
+          }),
+        ).resolves.toBeNull();
+
+        const secondExecution = await executionRepository.claimExecution({
+          automationId: enabledAutomation.id,
+          commenterUsername: null,
+          commentText: '#Hello',
+          instagramCommentId: secondCommentId,
+        });
+
+        if (!secondExecution) {
+          throw new Error('Second execution claim unexpectedly returned null');
+        }
+
+        await expect(
+          executionRepository.markFailed(secondExecution.id, {
+            errorCode: ' ',
+            errorMessage: 'Safe message',
+          }),
+        ).rejects.toThrow(TypeError);
+
+        const failedExecution = await executionRepository.markFailed(secondExecution.id, {
+          errorCode: 'provider_unavailable',
+          errorMessage: 'The reply provider is temporarily unavailable.',
+        });
+
+        expect(failedExecution).toMatchObject({
+          errorCode: 'provider_unavailable',
+          errorMessage: 'The reply provider is temporarily unavailable.',
+          id: secondExecution.id,
+          status: 'failed',
+        });
+        await expect(executionRepository.markSucceeded(secondExecution.id)).resolves.toBeNull();
+
+        const otherExecution = await executionRepository.claimExecution({
+          automationId: otherAutomation.id,
+          commenterUsername: 'other_commenter',
+          commentText: '#Hello',
+          instagramCommentId: otherCommentId,
+        });
+
+        if (!otherExecution) {
+          throw new Error('Other execution claim unexpectedly returned null');
+        }
+
+        await transactionSql`
+          update app_private.executions
+          set created_at = case
+            when id = ${firstExecution.id} then '2026-01-01T10:00:00Z'::timestamptz
+            when id = ${secondExecution.id} then '2026-01-01T11:00:00Z'::timestamptz
+            else created_at
+          end
+          where id in (${firstExecution.id}, ${secondExecution.id})
+        `;
+
+        await expect(executionRepository.listRecentByAccountId(account.id, 1)).resolves.toEqual([
+          expect.objectContaining({ id: secondExecution.id, status: 'failed' }),
+        ]);
+
+        const accountActivity = await executionRepository.listRecentByAccountId(account.id, 50);
+
+        expect(accountActivity.map(({ id }) => id)).toEqual([
+          secondExecution.id,
+          firstExecution.id,
+        ]);
+        expect(accountActivity).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: otherExecution.id })]),
+        );
+        await expect(executionRepository.listRecentByAccountId(account.id, 0)).rejects.toThrow(
+          RangeError,
+        );
+        await expect(executionRepository.listRecentByAccountId(account.id, 51)).rejects.toThrow(
+          RangeError,
+        );
+        await expect(executionRepository.listRecentByAccountId(account.id, 1.5)).rejects.toThrow(
+          RangeError,
+        );
+
+        throw rollbackSignal;
+      });
+    } catch (error) {
+      if (error !== rollbackSignal) {
+        throw error;
+      }
+    }
+
+    const remainingRows = await sql<
+      { account_count: number; automation_count: number; execution_count: number }[]
+    >`
+      select
+        (
+          select count(*)::integer
+          from app_private.instagram_accounts
+          where instagram_user_id in (${instagramUserId}, ${otherInstagramUserId})
+        ) as account_count,
+        (
+          select count(*)::integer
+          from app_private.automations as automation
+          inner join app_private.instagram_accounts as account on account.id = automation.account_id
+          where account.instagram_user_id in (${instagramUserId}, ${otherInstagramUserId})
+        ) as automation_count,
+        (
+          select count(*)::integer
+          from app_private.executions
+          where instagram_comment_id in (${firstCommentId}, ${secondCommentId}, ${otherCommentId})
+        ) as execution_count
+    `;
+
+    expect(remainingRows[0]).toEqual({
+      account_count: 0,
+      automation_count: 0,
+      execution_count: 0,
+    });
   });
 });

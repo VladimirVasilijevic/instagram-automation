@@ -186,17 +186,24 @@ row-level security is enabled without browser policies. Backend and migration SQ
 fully qualified names such as `app_private.sessions`; this also avoids confusion with Supabase's
 separate `auth.sessions` table.
 
-### Account and session persistence
+### Application persistence
 
-The API database wrapper constructs account and session repositories from the same Postgres.js
-client used for health checks. Repository contracts are separate from their PostgreSQL adapters,
-while remaining inside `apps/api` until another runtime consumer justifies activating shared
-workspace packages.
+The API database wrapper constructs account, session, automation, and execution repositories from
+the same Postgres.js client used for health checks. Repository contracts are separate from their
+PostgreSQL adapters, while remaining inside `apps/api` until another runtime consumer justifies
+activating shared workspace packages.
 
 Account persistence accepts only the opaque protected-token type returned by AES-GCM encryption.
 Session persistence accepts only the opaque SHA-256 hash returned by session-token generation. An
 active-session lookup also requires `expires_at > now()` in PostgreSQL, so an expired credential
 cannot authenticate even if its row has not been cleaned up.
+
+Automation persistence allows one configuration per account and always writes the first vertical
+slice's fixed `#Hello` trigger itself. Enabled lookups require both the owning account and selected
+media identifier. Execution persistence atomically claims an Instagram comment with
+`ON CONFLICT DO NOTHING`, permits only `processing` to terminal state transitions, and exposes
+recent activity through an account ownership join. Activity limits must be integers from 1 through
+50, and failure values must already be non-empty and sanitized before they reach the repository.
 
 Normal unit tests skip external database access. Run the explicitly enabled rollback-only repository
 integration test with:
@@ -206,8 +213,8 @@ pnpm --filter @instagram-automation/api test:integration
 ```
 
 The integration test loads the ignored local environment, performs its assertions through the
-configured runtime database connection, deliberately aborts the transaction, and confirms that no
-test account or session remains.
+configured runtime database connection, deliberately aborts each transaction, and confirms that no
+test account, session, automation, or execution remains.
 
 ## Vercel
 

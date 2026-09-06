@@ -259,9 +259,9 @@ Create the persistence and security needed by the vertical slice.
 
 - [x] `AccountRepository`
 - [x] `SessionRepository`
-- [ ] `AutomationRepository`
-- [ ] `ExecutionRepository`
-- [ ] PostgreSQL implementations for each
+- [x] `AutomationRepository`
+- [x] `ExecutionRepository`
+- [x] PostgreSQL implementations for each
 
 ## Security
 
