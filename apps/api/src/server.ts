@@ -11,6 +11,12 @@ const app = createApp({
   database,
   docsEnabled: environment.NODE_ENV !== 'production',
   logger,
+  sessionCookie: {
+    name: environment.SESSION_COOKIE_NAME,
+    secure: environment.NODE_ENV === 'production',
+    ttlSeconds: environment.SESSION_TTL_SECONDS,
+  },
+  sessionRepository: database.sessionRepository,
 });
 
 const server = serve(

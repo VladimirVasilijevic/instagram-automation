@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 const sessionTokenLengthBytes = 32;
+const sessionTokenPattern = /^[A-Za-z0-9_-]{43}$/;
 
 declare const sessionTokenHashBrand: unique symbol;
 
@@ -33,6 +34,16 @@ export const hashSessionToken = (token: string): SessionTokenHash => {
 
   return createHash('sha256').update(token, 'utf8').digest('hex') as SessionTokenHash;
 };
+
+/**
+ * Checks whether an untrusted value has the exact encoding produced for browser session tokens.
+ *
+ * @param token - Untrusted cookie value.
+ * @returns `true` only for a 32-byte Base64URL credential without padding.
+ */
+export const isSessionToken = (token: string): boolean =>
+  sessionTokenPattern.test(token) &&
+  Buffer.from(token, 'base64url').toString('base64url') === token;
 
 /**
  * Creates a 256-bit random session credential and its storage-safe SHA-256 hash.

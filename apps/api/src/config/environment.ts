@@ -11,11 +11,18 @@ export interface Environment {
   /** Current application runtime environment. */
   NODE_ENV: 'development' | 'test' | 'production';
 
+  /** Name of the HTTP-only browser cookie carrying the session credential. */
+  SESSION_COOKIE_NAME: string;
+
+  /** Number of seconds before an application session and its browser cookie expire. */
+  SESSION_TTL_SECONDS: number;
+
   /** Base64-encoded 256-bit key used to encrypt sensitive application tokens. */
   TOKEN_ENCRYPTION_KEY: string;
 }
 
 const base64EncodedKeyPattern = /^[A-Za-z0-9+/]{43}=$/;
+const cookieNamePattern = /^[A-Za-z0-9_-]+$/;
 
 const environmentSchema: z.ZodType<Environment> = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -24,6 +31,16 @@ const environmentSchema: z.ZodType<Environment> = z.object({
     .trim()
     .min(1, 'DATABASE_URL is required'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  SESSION_COOKIE_NAME: z
+    .string({ error: 'SESSION_COOKIE_NAME is required' })
+    .trim()
+    .min(1, 'SESSION_COOKIE_NAME is required')
+    .regex(cookieNamePattern, 'SESSION_COOKIE_NAME contains unsupported characters'),
+  SESSION_TTL_SECONDS: z.coerce
+    .number({ error: 'SESSION_TTL_SECONDS is required' })
+    .int('SESSION_TTL_SECONDS must be an integer')
+    .positive('SESSION_TTL_SECONDS must be positive')
+    .max(31_536_000, 'SESSION_TTL_SECONDS must not exceed one year'),
   TOKEN_ENCRYPTION_KEY: z
     .string({ error: 'TOKEN_ENCRYPTION_KEY is required' })
     .trim()

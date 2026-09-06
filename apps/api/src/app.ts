@@ -2,9 +2,12 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono } from '@hono/zod-openapi';
 
 import type { DatabaseHealthChecker } from './database/database.js';
+import type { SessionRepository } from './database/repositories.js';
 import type { Logger } from './logging/logger.js';
 import { toSafeErrorContext } from './logging/logger.js';
+import { registerAuthRoutes } from './routes/auth.js';
 import { registerHealthRoutes } from './routes/health.js';
+import type { SessionCookieConfig } from './security/session-cookie.js';
 
 /** Runtime dependencies and options used to construct the HTTP application. */
 export interface AppDependencies {
@@ -16,6 +19,12 @@ export interface AppDependencies {
 
   /** Server-side logger used by route and application error handlers. */
   logger: Logger;
+
+  /** Browser session-cookie settings shared by authentication handlers. */
+  sessionCookie: SessionCookieConfig;
+
+  /** Application-session persistence used by authentication handlers and middleware. */
+  sessionRepository: SessionRepository;
 }
 
 /**
@@ -54,6 +63,7 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   );
 
   registerHealthRoutes(app, dependencies);
+  registerAuthRoutes(app, dependencies);
 
   if (dependencies.docsEnabled ?? true) {
     app.doc('/api/openapi.json', {

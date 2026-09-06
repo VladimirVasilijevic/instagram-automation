@@ -205,6 +205,21 @@ media identifier. Execution persistence atomically claims an Instagram comment w
 recent activity through an account ownership join. Activity limits must be integers from 1 through
 50, and failure values must already be non-empty and sanitized before they reach the repository.
 
+### Application sessions
+
+The API accepts only the generated 32-byte Base64URL session-token format from the configured
+cookie. Required-session middleware hashes a valid credential before querying PostgreSQL, attaches
+the active session and account to Hono's typed request context, and returns a generic `401` for a
+missing, malformed, unknown, or expired credential. Invalid stored credentials are cleared from the
+browser. Public health routes do not run this middleware or query session storage.
+
+Session cookies are HTTP-only, use `SameSite=Lax` and `Path=/`, and share the configured server-side
+session lifetime. The `Secure` attribute is enabled in production and disabled for local HTTP
+development. The logout endpoint is `POST /api/auth/logout`; it hashes and revokes a valid token,
+then expires the cookie. Missing, malformed, and already-revoked credentials are successful
+idempotent logouts. A storage failure returns a sanitized `503` without clearing the cookie so the
+server-side revocation can be retried.
+
 Normal unit tests skip external database access. Run the explicitly enabled rollback-only repository
 integration test with:
 
@@ -372,7 +387,7 @@ Current variable responsibilities:
 | `META_REDIRECT_URI`         | Exact deployed OAuth callback URL       | Before Meta OAuth |
 | `META_WEBHOOK_VERIFY_TOKEN` | Shared webhook verification value       | Generated locally |
 | `SESSION_COOKIE_NAME`       | Application session-cookie name         |               Yes |
-| `SESSION_TTL_SECONDS`       | Session lifetime                        |               Yes |
+| `SESSION_TTL_SECONDS`       | Session lifetime, at most one year      |               Yes |
 | `TOKEN_ENCRYPTION_KEY`      | Encrypts stored Instagram access tokens | Generated locally |
 
 Never paste secret values into documentation, issues, commits, screenshots, or chat logs.

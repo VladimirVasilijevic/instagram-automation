@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createSessionToken, hashSessionToken } from './session-token.js';
+import { createSessionToken, hashSessionToken, isSessionToken } from './session-token.js';
 
 describe('session tokens', () => {
   it('creates a 256-bit random token and a separate SHA-256 hash', () => {
@@ -10,6 +10,7 @@ describe('session tokens', () => {
     expect(sessionToken.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(sessionToken.tokenHash).not.toBe(sessionToken.token);
     expect(sessionToken.tokenHash).toBe(hashSessionToken(sessionToken.token));
+    expect(isSessionToken(sessionToken.token)).toBe(true);
   });
 
   it('creates unique credentials', () => {
@@ -24,5 +25,17 @@ describe('session tokens', () => {
 
   it('rejects an empty token', () => {
     expect(() => hashSessionToken('')).toThrowError('Session token must not be empty');
+  });
+
+  it.each([
+    '',
+    'short-token',
+    'a'.repeat(42),
+    'a'.repeat(43),
+    'a'.repeat(44),
+    `${'a'.repeat(42)}=`,
+    `${'a'.repeat(42)}!`,
+  ])('identifies malformed browser credentials', (token) => {
+    expect(isSessionToken(token)).toBe(false);
   });
 });

@@ -270,9 +270,9 @@ Create the persistence and security needed by the vertical slice.
 - [x] Add `TOKEN_ENCRYPTION_KEY`
 - [x] Create secure random session token
 - [x] Store only session token hash in DB
-- [ ] Use HTTP-only cookie
-- [ ] Add session middleware
-- [ ] Add logout
+- [x] Use HTTP-only cookie
+- [x] Add session middleware
+- [x] Add logout
 
 ## Done when
 
