@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:vercel": "pnpm typecheck",
     "db:migrate": "tsx --env-file=../../.env.local scripts/migrations.ts migrate",
     "db:migrate:status": "tsx --env-file=../../.env.local scripts/migrations.ts status",
     "dev": "tsx watch --env-file=../../.env.local src/server.ts",

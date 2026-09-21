@@ -1,5 +1,6 @@
 packages:
   - apps/*
   - packages/*
+virtualStoreType: project
 allowBuilds:
   esbuild: true

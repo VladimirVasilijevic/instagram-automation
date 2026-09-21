@@ -199,12 +199,19 @@ dist/docs/web-code/index.html
 
 - [x] Add a Hono serverless entry point
 - [x] Add same-origin Vercel routing for the web and API services
-- [ ] Create Vercel project
-- [ ] Connect GitHub repository
-- [ ] Configure production env variables
-- [ ] Deploy
-- [ ] Test `/api/health`
-- [ ] Test `/api/health/database`
+- [x] Create Vercel project
+- [x] Connect GitHub repository
+- [x] Configure production env variables
+- [x] Deploy
+- [x] Test `/api/health`
+- [x] Test `/api/health/database`
+
+Verified on 2026-09-21 at
+[the production application](https://instagram-automation-henna-phi.vercel.app): `/`, `/api/health`,
+`/api/health/database`, and `/api/openapi.json` returned HTTP 200. The frontend returned its HTML
+application shell; database health reported `connected`. Vercel is connected to
+`VladimirVasilijevic/instagram-automation` with `main` as the production branch. These HTTP checks
+do not constitute a browser OAuth test or a database repository integration test.
 
 ## Done when
 
@@ -212,7 +219,7 @@ dist/docs/web-code/index.html
 ✓ frontend works locally
 ✓ API works locally
 ✓ database works locally
-□ frontend, API, and database proof deployed and verified in production
+✓ frontend served and API/database connectivity verified in production
 ```
 
 ---
@@ -328,7 +335,7 @@ Continue with Instagram → OAuth → @username
 ## API
 
 - [ ] `GET /api/me`
-- [ ] `POST /api/auth/logout`
+- [x] `POST /api/auth/logout` (implemented in Milestone 2; frontend integration remains below)
 
 ## Frontend
 

@@ -13,9 +13,14 @@ cloud setup fits together, and how to verify the environment before development.
 
 # 1. Current project status
 
-Infrastructure and development tools are ready. The Milestone 1 frontend, backend, and database
-proof are implemented locally. The production entry point and Vercel service routing are prepared;
-project creation, environment configuration, deployment, and production verification are pending.
+The Milestone 1 frontend, backend, and database connectivity proof work locally and are deployed to
+[the production application](https://instagram-automation-henna-phi.vercel.app). On 2026-09-21, the
+frontend, API health, database health, and OpenAPI endpoints all returned HTTP 200. The database
+health response reported `connected`. Vercel is linked to this GitHub repository's `main` branch.
+
+Milestone 2 persistence and security are implemented, including the logout endpoint. Milestone 3
+Instagram login is next. Production health checks prove connectivity; they do not replace the opt-in
+database repository integration tests or a real browser OAuth acceptance test.
 
 Already configured:
 
@@ -42,10 +47,12 @@ Already configured:
 - OpenAPI generation and same-origin Swagger UI;
 - PlantUML architecture, class, object, and sequence diagrams.
 
-Not configured yet:
+Remaining before real Instagram login:
 
-- successful production API/database verification after the module-format correction;
-- Meta App credentials, OAuth callback, and webhook callback.
+- Meta App credentials, redirect configuration, and an eligible test account;
+- OAuth start/callback routes, authenticated account API, and login/account frontend.
+
+Webhook integration follows in Milestone 5.
 
 ---
 
@@ -60,11 +67,11 @@ Not configured yet:
 | GitHub                | Private remote source repository                                 | Configured and synchronized       |
 | PostgreSQL 18 client  | Database connectivity and troubleshooting with `psql`            | Installed                         |
 | Supabase              | Managed PostgreSQL provider                                      | Project created and connected     |
-| Vercel                | Public HTTPS hosting for frontend/API, OAuth, and webhooks       | Project connected                 |
-| React                 | Component-based frontend user interface                          | Implemented locally               |
+| Vercel                | Public HTTPS hosting for frontend/API, OAuth, and webhooks       | Production health verified        |
+| React                 | Component-based frontend user interface                          | Status page deployed              |
 | Vite                  | Replaceable frontend development/build adapter                   | Configured for `apps/web`         |
 | Tailwind CSS          | Utility-first frontend styling through PostCSS                   | Configured for `apps/web`         |
-| Hono                  | TypeScript HTTP routing and middleware                           | Backend implemented locally       |
+| Hono                  | TypeScript HTTP routing and middleware                           | Backend deployed                  |
 | Zod                   | Runtime environment and HTTP schema validation                   | Configured in API                 |
 | Postgres.js           | Runtime PostgreSQL client                                        | Connected and health-tested       |
 | Vitest                | Automated frontend and API tests                                 | Configured; tests passing         |
@@ -233,24 +240,60 @@ test account, session, automation, or execution remains.
 
 ## Vercel
 
-Vercel will provide the public HTTPS URL required by Meta. The root `vercel.json` defines a web
-service for `apps/web`, an API service for `apps/api`, and routes same-origin `/api` requests to the
-Hono service. All other requests reach the Vite application. After deployment, the expected
-application endpoints are:
+Vercel provides the public HTTPS URL required by Meta. The root `vercel.json` defines a web service
+for `apps/web`, an API service for `apps/api`, and routes same-origin `/api` requests to the Hono
+service. All other requests reach the Vite application. The production base URL is
+`https://instagram-automation-henna-phi.vercel.app`.
+
+HTTP checks on 2026-09-21 returned:
+
+| Path                   | Result                                                |
+| ---------------------- | ----------------------------------------------------- |
+| `/`                    | HTTP 200, Instagram Automation HTML application shell |
+| `/api/health`          | HTTP 200, `{"status":"ok"}`                           |
+| `/api/health/database` | HTTP 200, `{"database":"connected","status":"ok"}`    |
+| `/api/openapi.json`    | HTTP 200, health and logout routes documented         |
+
+The following routes are planned and are not implemented yet:
 
 ```text
-https://<project>.vercel.app/api/health
-https://<project>.vercel.app/api/health/database
-https://<project>.vercel.app/api/auth/instagram/callback
-https://<project>.vercel.app/api/webhooks/instagram
+/api/auth/instagram/callback
+/api/webhooks/instagram
 ```
 
 The Hono serverless entry point is `apps/api/src/index.ts`. It creates one application and database
 client per function instance without opening a local listener or installing process signal handlers.
 The existing `apps/api/src/server.ts` uses the same runtime factory for normal local development.
-The API service runs `pnpm typecheck` during the Vercel build and leaves source transpilation to the
-Hono adapter. Emitting `apps/api/dist` inside that service build causes the adapter to select the
-wrong generated file instead of the configured `src/index.ts` entry point.
+
+The API service uses `"buildCommand": "pnpm build:vercel"`. These API package commands have
+different purposes:
+
+| Command             | Purpose                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| `pnpm typecheck`    | Validate TypeScript without generating JavaScript files                 |
+| `pnpm build`        | Generate JavaScript in `apps/api/dist` for standalone Node.js execution |
+| `pnpm build:vercel` | Run `pnpm typecheck` as our build step before Vercel compiles the API   |
+
+`build:vercel` names the deployment-specific step; Vercel's Hono adapter performs the compilation
+and packaging after that command succeeds:
+
+```text
+pnpm build:vercel → pnpm typecheck → Vercel compiles src/index.ts → deployed Hono application
+```
+
+Generating `apps/api/dist` during the API service build previously caused the adapter to select the
+wrong generated file instead of the configured `src/index.ts` entry point. The `build:vercel`
+command avoids that conflict while still rejecting TypeScript errors. It does not skip compilation;
+it leaves compilation to Vercel.
+
+To run this step from the repository root:
+
+```bash
+pnpm --filter @instagram-automation/api build:vercel
+```
+
+The web service continues to use `pnpm build` because Vite generates the frontend HTML, JavaScript,
+and CSS assets that Vercel serves.
 
 ## Meta Instagram API
 
@@ -330,6 +373,15 @@ The project pins pnpm in `package.json`:
 ```
 
 This helps all developers use the same package-manager version.
+
+`pnpm-workspace.yaml` explicitly sets `virtualStoreType: project`, keeping the virtual store at
+`node_modules/.pnpm` as described in the
+[pnpm settings reference](https://pnpm.io/settings/node-modules#virtualstoretype). With pnpm
+11.25.0, leaving this setting unset caused the dependency preflight to report
+`The value of the enableGlobalVirtualStore setting has changed` against the existing installation.
+That triggered an unnecessary install before scripts, which failed under restricted cache access or
+without a terminal to confirm replacing `node_modules`. Selecting the existing layout resolves the
+mismatch while retaining dependency verification and the pinned dependency versions.
 
 ---
 
@@ -567,15 +619,15 @@ migration database query succeeds
 
 # 12. Next implementation steps
 
-The Milestone 1 local proof is complete. Continue in this order:
+The Milestone 1 production connectivity checks pass, and Milestone 2 persistence and security are
+implemented. Continue with the [milestone plan](02-first-vertical-implementation-plan.md):
 
-1. review and commit the prepared Vercel entry point and service routing;
-2. import the repository root into Vercel and configure the five runtime variables;
-3. deploy and test the page and both health endpoints in production;
-4. use the deployed HTTPS URL for Meta business login and webhook configuration;
-5. implement the first Instagram comment-to-reply vertical flow.
-
-Do not start Meta OAuth work until the local and deployed health checks pass.
+1. configure Meta Instagram Login credentials, the exact redirect URI, and the test account;
+2. implement Milestone 3 OAuth, `/api/me`, and the connect/account frontend using the existing
+   logout endpoint;
+3. verify real login, the correct username, session persistence after refresh, and logout;
+4. implement media selection and automation configuration in Milestone 4;
+5. implement webhooks, public replies, and activity in Milestones 5–7.
 
 ---
 
