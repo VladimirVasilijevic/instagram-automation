@@ -248,6 +248,9 @@ https://<project>.vercel.app/api/webhooks/instagram
 The Hono serverless entry point is `apps/api/src/index.ts`. It creates one application and database
 client per function instance without opening a local listener or installing process signal handlers.
 The existing `apps/api/src/server.ts` uses the same runtime factory for normal local development.
+The API service runs `pnpm typecheck` during the Vercel build and leaves source transpilation to the
+Hono adapter. Emitting `apps/api/dist` inside that service build causes the adapter to select the
+wrong generated file instead of the configured `src/index.ts` entry point.
 
 ## Meta Instagram API
 

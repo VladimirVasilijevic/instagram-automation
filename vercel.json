@@ -15,7 +15,7 @@
       "entrypoint": "src/index.ts",
       "devCommand": "API_PORT=$PORT pnpm exec tsx watch --env-file=../../.env.local src/server.ts",
       "installCommand": "pnpm install --frozen-lockfile",
-      "buildCommand": "pnpm build"
+      "buildCommand": "pnpm typecheck"
     }
   },
   "rewrites": [
