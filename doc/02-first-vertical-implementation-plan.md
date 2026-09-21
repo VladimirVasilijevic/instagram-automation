@@ -197,6 +197,8 @@ dist/docs/web-code/index.html
 
 ## Deployment
 
+- [x] Add a Hono serverless entry point
+- [x] Add same-origin Vercel routing for the web and API services
 - [ ] Create Vercel project
 - [ ] Connect GitHub repository
 - [ ] Configure production env variables

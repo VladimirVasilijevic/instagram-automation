@@ -1,23 +1,9 @@
 import { serve } from '@hono/node-server';
 
-import { createApp } from './app.js';
-import { parseEnvironment } from './config/environment.js';
-import { createDatabase } from './database/database.js';
 import { logger } from './logging/logger.js';
+import { createRuntime } from './runtime.js';
 
-const environment = parseEnvironment(process.env);
-const database = createDatabase(environment.DATABASE_URL);
-const app = createApp({
-  database,
-  docsEnabled: environment.NODE_ENV !== 'production',
-  logger,
-  sessionCookie: {
-    name: environment.SESSION_COOKIE_NAME,
-    secure: environment.NODE_ENV === 'production',
-    ttlSeconds: environment.SESSION_TTL_SECONDS,
-  },
-  sessionRepository: database.sessionRepository,
-});
+const { app, database, environment } = createRuntime();
 
 const server = serve(
   {

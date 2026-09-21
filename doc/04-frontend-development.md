@@ -13,8 +13,9 @@ The browser calls only same-origin paths:
 /api/docs
 ```
 
-During local development, Vite proxies `/api` to `http://127.0.0.1:3000`. Production hosting must
-route the same paths to the API. No backend URL or secret is compiled into browser code.
+During local development, Vite proxies `/api` to `http://127.0.0.1:3000`. In production, the root
+`vercel.json` routes the same paths to the Hono service and all other requests to the Vite service.
+No backend URL or secret is compiled into browser code.
 
 ## Run locally
 
