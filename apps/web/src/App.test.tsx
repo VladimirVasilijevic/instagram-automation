@@ -24,6 +24,9 @@ describe('App', () => {
 
     render(<App />);
 
+    expect(
+      screen.getByText('Infrastructure status for the frontend, API, and PostgreSQL connection.'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Checking status…')).toBeDisabled();
     await waitFor(() => expect(screen.getAllByText('Connected')).toHaveLength(2));
     expect(screen.getByRole('button', { name: 'Refresh status' })).toBeEnabled();

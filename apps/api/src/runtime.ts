@@ -28,7 +28,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
   const database = createDatabase(environment.DATABASE_URL);
   const app = createApp({
     database,
-    docsEnabled: environment.NODE_ENV !== 'production',
+    docsEnabled: true,
     logger,
     sessionCookie: {
       name: environment.SESSION_COOKIE_NAME,

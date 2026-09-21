@@ -3,7 +3,8 @@
 ## Current result
 
 `apps/web` is a React and TypeScript application for the Milestone 1 infrastructure proof. It shows
-independent API and database states, supports manual refresh, and links to the local Swagger UI.
+independent API and database states, supports manual refresh, and links to the same-origin Swagger
+UI in local and deployed environments.
 
 The browser calls only same-origin paths:
 
@@ -46,6 +47,8 @@ Expected page state:
 
 Select **Refresh status** to run both checks again. Select **Open API documentation** to open
 Swagger UI at `http://localhost:5173/api/docs` through the same proxy.
+
+In production, the same button opens `/api/docs` on the deployed Vercel domain.
 
 ## Manual HTTP checks
 

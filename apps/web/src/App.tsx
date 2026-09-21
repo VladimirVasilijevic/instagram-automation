@@ -70,7 +70,7 @@ export const App = () => {
             Instagram Automation
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-            Local infrastructure status for the frontend, API, and PostgreSQL connection.
+            Infrastructure status for the frontend, API, and PostgreSQL connection.
           </p>
         </header>
 

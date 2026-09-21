@@ -48,13 +48,13 @@ describe('application runtime', () => {
   });
 
   it.each([
-    ['development', 200, false],
-    ['production', 404, true],
-  ] as const)('applies documentation and cookie policy in %s', async (mode, docsStatus, secure) => {
+    ['development', false],
+    ['production', true],
+  ] as const)('applies documentation and cookie policy in %s', async (mode, secure) => {
     const { app } = createRuntime({ ...environment, NODE_ENV: mode });
 
-    expect((await app.request('/api/docs')).status).toBe(docsStatus);
-    expect((await app.request('/api/openapi.json')).status).toBe(docsStatus);
+    expect((await app.request('/api/docs')).status).toBe(200);
+    expect((await app.request('/api/openapi.json')).status).toBe(200);
 
     const logout = await app.request('/api/auth/logout', { method: 'POST' });
     expect(logout.status).toBe(204);

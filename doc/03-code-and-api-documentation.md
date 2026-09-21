@@ -63,6 +63,8 @@ Open Swagger UI:
 http://localhost:3000/api/docs
 ```
 
+The deployed application exposes the same route at `https://<project>.vercel.app/api/docs`.
+
 Swagger UI shows each documented method, path, response status, JSON schema, and example. Expand an
 endpoint, select **Try it out**, and then select **Execute** to send a real request to the local
 API.

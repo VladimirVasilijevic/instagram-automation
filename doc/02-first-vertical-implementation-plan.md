@@ -178,7 +178,7 @@ Expected:
 - [x] Add strict TypeDoc generation
 - [x] Document exported frontend declarations
 - [x] Generate an OpenAPI specification from Hono and Zod route definitions
-- [x] Add local Swagger UI with manual request execution
+- [x] Add same-origin Swagger UI with manual request execution
 - [x] Add architecture, class, object, and call-sequence diagrams
 
 Local documentation endpoints:
