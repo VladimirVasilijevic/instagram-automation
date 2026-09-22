@@ -77,16 +77,25 @@ http://localhost:3000/api/openapi.json
 
 Current documented operations:
 
-| Method | Path                   | Input | Responses                     |
-| ------ | ---------------------- | ----- | ----------------------------- |
-| GET    | `/api/health`          | None  | `200`, `500`                  |
-| GET    | `/api/health/database` | None  | `200`, `500`, sanitized `503` |
+| Method | Path                           | Input                                       | Responses                               |
+| ------ | ------------------------------ | ------------------------------------------- | --------------------------------------- |
+| GET    | `/api/health`                  | None                                        | `200`, `500`                            |
+| GET    | `/api/health/database`         | None                                        | `200`, `500`, sanitized `503`           |
+| GET    | `/api/auth/instagram/start`    | Browser navigation                          | `302` to Instagram or a safe error page |
+| GET    | `/api/auth/instagram/callback` | State, browser cookie, code or cancellation | `302` to `/app` or a safe error page    |
+| GET    | `/api/me`                      | Session cookie                              | `200`, `401`, sanitized `500`           |
+| POST   | `/api/auth/logout`             | Session cookie                              | `204`, `500`, sanitized `503`           |
+
+Start OAuth through **Continue with Instagram** in the browser. Swagger request execution is not a
+replacement for the provider's browser consent flow. Authentication responses and `/api/me` use
+`Cache-Control: no-store`; callback responses also suppress referrers. See the
+[login guide](05-instagram-login.md).
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.
 
-Documentation routes are enabled in development and test environments. The Node server disables them
-automatically when `NODE_ENV=production` until a production access policy is approved.
+The shared runtime currently enables documentation in local and production environments. `createApp`
+also supports disabling it through the `docsEnabled` option.
 
 ## Adding or changing an endpoint
 

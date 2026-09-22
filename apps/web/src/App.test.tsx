@@ -1,92 +1,30 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getApiHealth, getDatabaseHealth } from './api/health.js';
 import { App } from './App.js';
 
-vi.mock('./api/health.js', () => ({
-  getApiHealth: vi.fn(),
-  getDatabaseHealth: vi.fn(),
-}));
+vi.mock('./pages/AccountPage.js', () => ({ AccountPage: () => <p>Account page</p> }));
+vi.mock('./pages/StatusPage.js', () => ({ StatusPage: () => <p>Status page</p> }));
 
-const apiHealthMock = vi.mocked(getApiHealth);
-const databaseHealthMock = vi.mocked(getDatabaseHealth);
+afterEach(() => window.history.replaceState(null, '', '/'));
 
-beforeEach(() => {
-  apiHealthMock.mockReset();
-  databaseHealthMock.mockReset();
-});
-
-describe('App', () => {
-  it('shows independent connected states', async () => {
-    apiHealthMock.mockResolvedValue({ status: 'ok' });
-    databaseHealthMock.mockResolvedValue({ database: 'connected', status: 'ok' });
-
+describe('App routing', () => {
+  it.each(['/', '/app'])('renders account screens at %s', (path) => {
+    window.history.replaceState(null, '', path);
     render(<App />);
-
-    expect(
-      screen.getByText('Infrastructure status for the frontend, API, and PostgreSQL connection.'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Checking status…')).toBeDisabled();
-    await waitFor(() => expect(screen.getAllByText('Connected')).toHaveLength(2));
-    expect(screen.getByRole('button', { name: 'Refresh status' })).toBeEnabled();
+    expect(screen.getByText('Account page')).toBeInTheDocument();
   });
-
-  it('keeps the database result visible when the API check fails', async () => {
-    apiHealthMock.mockRejectedValue(new Error('API unavailable'));
-    databaseHealthMock.mockResolvedValue({ database: 'connected', status: 'ok' });
-
+  it('preserves infrastructure status at /status', () => {
+    window.history.replaceState(null, '', '/status');
     render(<App />);
-
-    await waitFor(() => expect(screen.getByText('Unavailable')).toBeInTheDocument());
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Status page')).toBeInTheDocument();
   });
-
-  it('shows a database unavailable response independently', async () => {
-    apiHealthMock.mockResolvedValue({ status: 'ok' });
-    databaseHealthMock.mockResolvedValue({ database: 'unavailable', status: 'error' });
-
+  it('offers a way back from an unknown route', () => {
+    window.history.replaceState(null, '', '/unknown');
     render(<App />);
-
-    await waitFor(() => expect(screen.getByText('Unavailable')).toBeInTheDocument());
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-  });
-
-  it('shows both services as unavailable when both checks fail', async () => {
-    apiHealthMock.mockRejectedValue(new Error('API unavailable'));
-    databaseHealthMock.mockRejectedValue(new Error('Database unavailable'));
-
-    render(<App />);
-
-    await waitFor(() => expect(screen.getAllByText('Unavailable')).toHaveLength(2));
-  });
-
-  it('refreshes both service states', async () => {
-    apiHealthMock
-      .mockRejectedValueOnce(new Error('API unavailable'))
-      .mockResolvedValue({ status: 'ok' });
-    databaseHealthMock
-      .mockResolvedValueOnce({ database: 'unavailable', status: 'error' })
-      .mockResolvedValue({ database: 'connected', status: 'ok' });
-
-    render(<App />);
-
-    await waitFor(() => expect(screen.getAllByText('Unavailable')).toHaveLength(2));
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
-    await waitFor(() => expect(screen.getAllByText('Connected')).toHaveLength(2));
-    expect(apiHealthMock).toHaveBeenCalledTimes(2);
-    expect(databaseHealthMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('links to the same-origin Swagger documentation', async () => {
-    apiHealthMock.mockResolvedValue({ status: 'ok' });
-    databaseHealthMock.mockResolvedValue({ database: 'connected', status: 'ok' });
-
-    render(<App />);
-
-    expect(screen.getByRole('link', { name: 'Open API documentation' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Return to Instagram Automation' })).toHaveAttribute(
       'href',
-      '/api/docs',
+      '/',
     );
   });
 });

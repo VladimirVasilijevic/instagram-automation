@@ -4,6 +4,7 @@ import { createApp, type AppDependencies } from './app.js';
 import type { DatabaseHealthChecker } from './database/database.js';
 import type { SessionRepository } from './database/repositories.js';
 import type { Logger } from './logging/logger.js';
+import { AesGcmTokenProtector } from './security/aes-gcm-token-protector.js';
 
 const createLogger = (): Logger => ({
   error: vi.fn(),
@@ -17,6 +18,14 @@ const createSessionRepository = (): SessionRepository => ({
 });
 
 const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDependencies => ({
+  instagramAuth: {
+    appBaseUrl: 'https://app.example',
+    redirectUri: 'https://app.example/api/auth/instagram/callback',
+    instagramClient: { authorizationUrl: vi.fn(), completeLogin: vi.fn() },
+    accountRepository: { upsertConnectedAccount: vi.fn(), findByInstagramUserId: vi.fn() },
+    oauthStateRepository: { createState: vi.fn(), consumeState: vi.fn() },
+    tokenProtector: new AesGcmTokenProtector(Buffer.alloc(32, 1).toString('base64')),
+  },
   database: { checkHealth: vi.fn() },
   logger: createLogger(),
   sessionCookie: { name: 'igauto_session', secure: false, ttlSeconds: 604800 },
@@ -123,6 +132,10 @@ describe('API application', () => {
     expect(document.paths['/api/health/database']?.get?.responses).toHaveProperty('503');
     expect(document.paths['/api/auth/logout']?.post?.responses).toHaveProperty('204');
     expect(document.paths['/api/auth/logout']?.post?.responses).toHaveProperty('503');
+    expect(document.paths['/api/auth/instagram/start']?.get?.responses).toHaveProperty('302');
+    expect(document.paths['/api/auth/instagram/callback']?.get?.responses).toHaveProperty('302');
+    expect(document.paths['/api/me']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/api/me']?.get?.responses).toHaveProperty('401');
   });
 
   it('serves Swagger UI configured with the OpenAPI document', async () => {

@@ -2,7 +2,8 @@
 
 ## Instagram Comment Automation MVP
 
-**Last verified:** 2026-09-21
+**Last verified:** 2026-09-22 (local login implementation; production connectivity checked
+2026-09-21)
 
 **Repository:** <https://github.com/VladimirVasilijevic/instagram-automation>
 
@@ -18,9 +19,10 @@ The Milestone 1 frontend, backend, and database connectivity proof work locally 
 frontend, API health, database health, and OpenAPI endpoints all returned HTTP 200. The database
 health response reported `connected`. Vercel is linked to this GitHub repository's `main` branch.
 
-Milestone 2 persistence and security are implemented, including the logout endpoint. Milestone 3
-Instagram login is next. Production health checks prove connectivity; they do not replace the opt-in
-database repository integration tests or a real browser OAuth acceptance test.
+Milestone 2 persistence and security are implemented. Milestone 3 OAuth, the account API, and the
+connect/account UI are implemented locally. The OAuth state migration, production Meta settings,
+deployment, and real login acceptance test remain pending. See the
+[Instagram login guide](05-instagram-login.md) for the implementation and release checklist.
 
 Already configured:
 
@@ -49,8 +51,10 @@ Already configured:
 
 Remaining before real Instagram login:
 
-- Meta App credentials, redirect configuration, and an eligible test account;
-- OAuth start/callback routes, authenticated account API, and login/account frontend.
+- apply the reviewed OAuth state migration to the intended database;
+- configure the production Meta credentials, frontend origin, and exact callback URI;
+- deploy the reviewed login implementation;
+- verify the test account's eligibility and permission grants through real browser login.
 
 Webhook integration follows in Milestone 5.
 
@@ -254,10 +258,15 @@ HTTP checks on 2026-09-21 returned:
 | `/api/health/database` | HTTP 200, `{"database":"connected","status":"ok"}`    |
 | `/api/openapi.json`    | HTTP 200, health and logout routes documented         |
 
-The following routes are planned and are not implemented yet:
+The OAuth callback is implemented locally and awaits deployment:
 
 ```text
 /api/auth/instagram/callback
+```
+
+The webhook route remains planned for Milestone 5:
+
+```text
 /api/webhooks/instagram
 ```
 
@@ -434,15 +443,15 @@ Current variable responsibilities:
 | Variable                    | Purpose                                 |      Required now? |
 | --------------------------- | --------------------------------------- | -----------------: |
 | `NODE_ENV`                  | Runtime environment name                |                Yes |
-| `APP_BASE_URL`              | Reserved frontend base URL              |                 No |
+| `APP_BASE_URL`              | Public frontend origin for redirects    |                Yes |
 | `API_BASE_URL`              | Reserved backend base URL               |                 No |
 | `API_PORT`                  | Local backend listening port            |         Local only |
 | `DATABASE_URL`              | Runtime transaction-pooler connection   |                Yes |
 | `DATABASE_MIGRATION_URL`    | Migration/session-pooler connection     | Local/CI migration |
-| `META_APP_ID`               | Meta application identifier             |  Before Meta OAuth |
-| `META_APP_SECRET`           | Server-only Meta application secret     |  Before Meta OAuth |
+| `META_APP_ID`               | Instagram Login application identifier  |                Yes |
+| `META_APP_SECRET`           | Server-only Instagram Login secret      |                Yes |
 | `META_API_VERSION`          | Meta Graph API version                  |                Yes |
-| `META_REDIRECT_URI`         | Exact deployed OAuth callback URL       |  Before Meta OAuth |
+| `META_REDIRECT_URI`         | Exact registered OAuth callback URL     |                Yes |
 | `META_WEBHOOK_VERIFY_TOKEN` | Shared webhook verification value       |  Generated locally |
 | `SESSION_COOKIE_NAME`       | Application session-cookie name         |                Yes |
 | `SESSION_TTL_SECONDS`       | Session lifetime, at most one year      |                Yes |
@@ -521,13 +530,22 @@ and builds both services.
 
 Configure these environment variables for **Production** and **Preview**:
 
-| Variable               | Value source                                      | Vercel type |
-| ---------------------- | ------------------------------------------------- | ----------- |
-| `NODE_ENV`             | `production`                                      | Config      |
-| `DATABASE_URL`         | Supabase transaction pooler URL on port `6543`    | Sensitive   |
-| `SESSION_COOKIE_NAME`  | The value already used in `.env.local`            | Config      |
-| `SESSION_TTL_SECONDS`  | The value already used in `.env.local`            | Config      |
-| `TOKEN_ENCRYPTION_KEY` | The existing server-only Base64 encryption secret | Sensitive   |
+Each environment needs its own matching frontend origin and registered callback. A preview cannot
+finish login using a production callback because the browser binding cookie belongs to the origin
+where login started. Use the stable production domain for the first real login test.
+
+| Variable               | Value source                                                    | Vercel type |
+| ---------------------- | --------------------------------------------------------------- | ----------- |
+| `NODE_ENV`             | `production`                                                    | Config      |
+| `DATABASE_URL`         | Supabase transaction pooler URL on port `6543`                  | Sensitive   |
+| `SESSION_COOKIE_NAME`  | The value already used in `.env.local`                          | Config      |
+| `SESSION_TTL_SECONDS`  | The value already used in `.env.local`                          | Config      |
+| `TOKEN_ENCRYPTION_KEY` | The existing server-only Base64 encryption secret               | Sensitive   |
+| `APP_BASE_URL`         | Public HTTPS frontend origin                                    | Config      |
+| `META_APP_ID`          | Instagram App ID from Instagram Login settings                  | Config      |
+| `META_APP_SECRET`      | Instagram App Secret from Instagram Login settings              | Sensitive   |
+| `META_API_VERSION`     | `v24.0`, retained from the existing configuration               | Config      |
+| `META_REDIRECT_URI`    | Exact registered same-origin `/api/auth/instagram/callback` URL | Config      |
 
 Do not add `DATABASE_MIGRATION_URL` to the deployed runtime and do not expose any of these values to
 the Vite frontend. Do not commit downloaded Vercel environment files. The `.vercel/` directory is
@@ -619,12 +637,12 @@ migration database query succeeds
 
 # 12. Next implementation steps
 
-The Milestone 1 production connectivity checks pass, and Milestone 2 persistence and security are
-implemented. Continue with the [milestone plan](02-first-vertical-implementation-plan.md):
+The Milestone 1 production connectivity checks pass. Milestone 3 login is implemented locally.
+Continue with the [login release checklist](05-instagram-login.md) and
+[milestone plan](02-first-vertical-implementation-plan.md):
 
-1. configure Meta Instagram Login credentials, the exact redirect URI, and the test account;
-2. implement Milestone 3 OAuth, `/api/me`, and the connect/account frontend using the existing
-   logout endpoint;
+1. review the local login implementation, migration, and test results;
+2. configure production Meta settings, apply the approved migration, and deploy the reviewed code;
 3. verify real login, the correct username, session persistence after refresh, and logout;
 4. implement media selection and automation configuration in Milestone 4;
 5. implement webhooks, public replies, and activity in Milestones 5–7.

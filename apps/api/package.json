@@ -17,6 +17,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:integration": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run src/database/postgres-repositories.integration.test.ts",
+    "test:integration:oauth": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run src/database/postgres-oauth-states.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json"
   },
   "dependencies": {

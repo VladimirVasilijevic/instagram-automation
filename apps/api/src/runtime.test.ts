@@ -12,6 +12,11 @@ vi.mock('./database/database.js', () => ({
 }));
 
 const environment = {
+  APP_BASE_URL: 'https://app.example',
+  META_APP_ID: '12345',
+  META_APP_SECRET: 'test-secret',
+  META_API_VERSION: 'v24.0',
+  META_REDIRECT_URI: 'https://app.example/api/auth/instagram/callback',
   DATABASE_URL: 'postgres://test:test@localhost/test',
   SESSION_COOKIE_NAME: 'deployment_session',
   SESSION_TTL_SECONDS: '3600',

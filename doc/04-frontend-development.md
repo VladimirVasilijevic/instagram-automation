@@ -2,9 +2,13 @@
 
 ## Current result
 
-`apps/web` is a React and TypeScript application for the Milestone 1 infrastructure proof. It shows
-independent API and database states, supports manual refresh, and links to the same-origin Swagger
-UI in local and deployed environments.
+`apps/web` is a React and TypeScript application with a connect screen at `/`, an authenticated
+account screen at `/app`, and the original infrastructure status page at `/status`. The account
+screens restore identity through `/api/me` and support logout, retry, and safe OAuth error messages.
+The status page still shows independent API/database states and links to Swagger UI.
+
+The login UI is implemented locally and awaits deployment. See the
+[Instagram login guide](05-instagram-login.md) for configuration and acceptance checks.
 
 The browser calls only same-origin paths:
 
@@ -12,6 +16,9 @@ The browser calls only same-origin paths:
 /api/health
 /api/health/database
 /api/docs
+/api/me
+/api/auth/instagram/start
+/api/auth/logout
 ```
 
 During local development, Vite proxies `/api` to `http://127.0.0.1:3000`. In production, the root
@@ -26,7 +33,8 @@ Install the locked dependencies from the repository root:
 pnpm install
 ```
 
-Make sure `.env.local` contains a valid `DATABASE_URL`, then start the frontend and backend:
+Make sure `.env.local` contains the required database, session, encryption, and Meta settings from
+`.env.example`, then start the frontend and backend:
 
 ```bash
 pnpm dev
@@ -38,7 +46,11 @@ Open:
 http://localhost:5173
 ```
 
-Expected page state:
+The root page offers **Continue with Instagram** when there is no session. A production callback
+cannot finish a login started on localhost. Local inspection of the connect page and `/status` works
+without completing OAuth. For real login, follow the environment guidance in the login guide.
+
+Open `http://localhost:5173/status` to view the original infrastructure checks:
 
 | Card     | Expected state | What it proves                                     |
 | -------- | -------------- | -------------------------------------------------- |
@@ -109,8 +121,11 @@ apps/web/
 ├── vitest.config.ts           # Browser-like test environment
 ├── typedoc.json               # Exported-code documentation rules
 └── src/
-    ├── App.tsx                # Status-page composition and refresh behavior
+    ├── App.tsx                # Path selection for account, status, and unknown pages
+    ├── api/auth.ts            # Validated account lookup and session logout
     ├── api/health.ts          # Standard fetch client and response validation
+    ├── pages/AccountPage.tsx   # Connect/account screens, loading, retry, and logout
+    ├── pages/StatusPage.tsx    # Original status checks and refresh behavior
     ├── components/StatusCard.tsx
     ├── index.css              # Tailwind import and global defaults
     ├── main.tsx               # Browser mount point

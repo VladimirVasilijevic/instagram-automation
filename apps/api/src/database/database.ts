@@ -1,5 +1,8 @@
 import postgres from 'postgres';
 
+import type { OAuthStateRepository } from '../security/oauth-state.js';
+import { createPostgresOAuthStateRepository } from './postgres-oauth-states.js';
+
 import {
   createPostgresAccountRepository,
   createPostgresAutomationRepository,
@@ -25,6 +28,8 @@ export interface DatabaseHealthChecker {
 
 /** Runtime PostgreSQL connection with health-check and shutdown capabilities. */
 export interface Database extends DatabaseHealthChecker {
+  /** Single-use, expiring OAuth attempts shared across application instances. */
+  oauthStateRepository: OAuthStateRepository;
   /** PostgreSQL-backed connected-account persistence. */
   accountRepository: AccountRepository;
 
@@ -56,6 +61,7 @@ export const createDatabase = (connectionString: string): Database => {
   });
 
   return {
+    oauthStateRepository: createPostgresOAuthStateRepository(sql),
     accountRepository: createPostgresAccountRepository(sql),
     automationRepository: createPostgresAutomationRepository(sql),
     async checkHealth(): Promise<void> {

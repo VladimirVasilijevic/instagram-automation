@@ -4,6 +4,8 @@ import { createApp } from './app.js';
 import { parseEnvironment, type Environment } from './config/environment.js';
 import { createDatabase, type Database } from './database/database.js';
 import { logger } from './logging/logger.js';
+import { createInstagramLoginClient } from './instagram/login-client.js';
+import { AesGcmTokenProtector } from './security/aes-gcm-token-protector.js';
 
 /** Application resources shared by the local server and the Vercel entry point. */
 export interface AppRuntime {
@@ -27,6 +29,19 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
   const environment = parseEnvironment(input);
   const database = createDatabase(environment.DATABASE_URL);
   const app = createApp({
+    instagramAuth: {
+      appBaseUrl: environment.APP_BASE_URL,
+      redirectUri: environment.META_REDIRECT_URI,
+      instagramClient: createInstagramLoginClient({
+        appId: environment.META_APP_ID,
+        appSecret: environment.META_APP_SECRET,
+        apiVersion: environment.META_API_VERSION,
+        redirectUri: environment.META_REDIRECT_URI,
+      }),
+      accountRepository: database.accountRepository,
+      oauthStateRepository: database.oauthStateRepository,
+      tokenProtector: new AesGcmTokenProtector(environment.TOKEN_ENCRYPTION_KEY),
+    },
     database,
     docsEnabled: true,
     logger,

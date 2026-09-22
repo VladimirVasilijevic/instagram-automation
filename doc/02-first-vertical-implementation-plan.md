@@ -305,62 +305,66 @@ First real external checkpoint:
 Continue with Instagram → OAuth → @username
 ```
 
+Local OAuth and UI implementation is complete; database integration verification, production
+configuration/migration, deployment, and real Instagram acceptance remain pending. See the
+[login guide](05-instagram-login.md).
+
 ## Meta setup
 
-- [ ] Configure Meta App for Instagram Login
-- [ ] Use permissions:
+- [x] Configure Meta App for Instagram Login (dashboard setup confirmed by user)
+- [x] Request permissions in code (real grants remain pending):
   - `instagram_business_basic`
   - `instagram_business_manage_comments`
-- [ ] Configure `META_APP_ID`
-- [ ] Configure `META_APP_SECRET`
-- [ ] Configure `META_API_VERSION`
-- [ ] Configure `META_REDIRECT_URI`
+- [x] Configure `META_APP_ID` locally (production configuration pending)
+- [x] Configure `META_APP_SECRET` locally (production configuration pending)
+- [x] Configure `META_API_VERSION` locally (production configuration pending)
+- [x] Configure `META_REDIRECT_URI` locally (production configuration pending)
 - [ ] Verify test account is Business or Creator
 
 ## Backend OAuth
 
-- [ ] `GET /api/auth/instagram/start`
-- [ ] Generate/validate OAuth state
-- [ ] Redirect to Instagram authorization
-- [ ] `GET /api/auth/instagram/callback`
-- [ ] Exchange authorization code server-side
-- [ ] Fetch Instagram Professional account ID
-- [ ] Fetch username
-- [ ] Encrypt/store access token
-- [ ] Save account
-- [ ] Create app session
-- [ ] Set HTTP-only cookie
-- [ ] Redirect to `/app`
+- [x] `GET /api/auth/instagram/start`
+- [x] Generate/validate OAuth state
+- [x] Redirect to Instagram authorization
+- [x] `GET /api/auth/instagram/callback`
+- [x] Exchange authorization code server-side
+- [x] Fetch Instagram Professional account ID
+- [x] Fetch username
+- [x] Encrypt/store access token
+- [x] Save account
+- [x] Create app session
+- [x] Set HTTP-only cookie
+- [x] Redirect to `/app`
 
 ## API
 
-- [ ] `GET /api/me`
-- [x] `POST /api/auth/logout` (implemented in Milestone 2; frontend integration remains below)
+- [x] `GET /api/me`
+- [x] `POST /api/auth/logout` (backend reused from Milestone 2; frontend wired locally)
 
 ## Frontend
 
-- [ ] Connect screen
-- [ ] `Continue with Instagram`
-- [ ] Show `Connected as @username`
-- [ ] Logout button
-- [ ] Loading/error states
+- [x] Connect screen
+- [x] `Continue with Instagram`
+- [x] Show `Connected as @username`
+- [x] Logout button
+- [x] Loading/error states
 
 ## Tests
 
-- [ ] OAuth state validation
-- [ ] unauthenticated `/api/me`
-- [ ] authenticated `/api/me`
-- [ ] session expiration
-- [ ] token encryption
+- [x] OAuth state validation
+- [x] unauthenticated `/api/me`
+- [x] authenticated `/api/me`
+- [x] session expiration
+- [x] token encryption
 
 ## Done when
 
 ```text
-✓ real Instagram login works
-✓ correct @username appears
-✓ session survives refresh
-✓ logout works
-✓ access token never reaches browser
+□ real Instagram login works in production
+□ correct @username appears after real login
+□ real browser session survives refresh
+□ real browser logout works
+✓ automated tests verify tokens stay out of browser responses
 ```
 
 ---

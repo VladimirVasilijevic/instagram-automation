@@ -4,6 +4,11 @@ import { parseEnvironment } from './environment.js';
 
 const tokenEncryptionKey = Buffer.alloc(32, 1).toString('base64');
 const requiredEnvironment = {
+  APP_BASE_URL: 'https://app.example',
+  META_APP_ID: '12345',
+  META_APP_SECRET: 'test-secret',
+  META_API_VERSION: 'v24.0',
+  META_REDIRECT_URI: 'https://app.example/api/auth/instagram/callback',
   DATABASE_URL: 'postgresql://example',
   SESSION_COOKIE_NAME: 'igauto_session',
   SESSION_TTL_SECONDS: '604800',
@@ -11,12 +16,69 @@ const requiredEnvironment = {
 };
 
 describe('parseEnvironment', () => {
+  it.each([
+    'APP_BASE_URL',
+    'META_APP_ID',
+    'META_APP_SECRET',
+    'META_API_VERSION',
+    'META_REDIRECT_URI',
+  ])('requires %s', (name) => {
+    expect(() => parseEnvironment({ ...requiredEnvironment, [name]: undefined })).toThrow(name);
+  });
+
+  it.each([
+    ['APP_BASE_URL', 'https://app.example/path'],
+    ['APP_BASE_URL', 'javascript:alert(1)'],
+    ['APP_BASE_URL', 'https://user:password@app.example'],
+    ['META_REDIRECT_URI', 'https://app.example/callback'],
+    ['META_REDIRECT_URI', 'https://app.example/api/auth/instagram/callback?extra=value'],
+    ['META_REDIRECT_URI', 'https://app.example/api/auth/instagram/callback#fragment'],
+    ['META_REDIRECT_URI', 'not-a-url'],
+    ['META_APP_ID', 'not-numeric'],
+    ['META_APP_SECRET', '   '],
+    ['META_API_VERSION', 'latest'],
+  ])('rejects invalid %s', (name, value) => {
+    expect(() => parseEnvironment({ ...requiredEnvironment, [name]: value })).toThrow(name);
+  });
+
+  it('requires HTTPS and matching public origins in production', () => {
+    expect(() =>
+      parseEnvironment({
+        ...requiredEnvironment,
+        NODE_ENV: 'production',
+        APP_BASE_URL: 'http://app.example',
+      }),
+    ).toThrow('HTTPS');
+    expect(() =>
+      parseEnvironment({
+        ...requiredEnvironment,
+        NODE_ENV: 'production',
+        META_REDIRECT_URI: 'https://other.example/api/auth/instagram/callback',
+      }),
+    ).toThrow('share an origin');
+    expect(() =>
+      parseEnvironment({
+        ...requiredEnvironment,
+        NODE_ENV: 'production',
+        META_REDIRECT_URI: 'private-invalid-url',
+      }),
+    ).toThrow('Invalid environment configuration');
+  });
+
+  it('allows local HTTP for isolated development without enabling mixed-origin login', () => {
+    expect(
+      parseEnvironment({ ...requiredEnvironment, APP_BASE_URL: 'http://localhost:5173' })
+        .APP_BASE_URL,
+    ).toBe('http://localhost:5173');
+  });
+
   it('uses safe defaults when all required values are present', () => {
     expect(
       parseEnvironment({
         ...requiredEnvironment,
       }),
     ).toEqual({
+      ...requiredEnvironment,
       API_PORT: 3000,
       DATABASE_URL: 'postgresql://example',
       NODE_ENV: 'development',
