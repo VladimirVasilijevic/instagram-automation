@@ -18,12 +18,21 @@ const createSessionRepository = (): SessionRepository => ({
 });
 
 const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDependencies => ({
+  automationRepository: {
+    findByAccountId: vi.fn(),
+    findEnabledByAccountAndMedia: vi.fn(),
+    saveAutomation: vi.fn(),
+  },
   instagramAuth: {
     appBaseUrl: 'https://app.example',
     redirectUri: 'https://app.example/api/auth/instagram/callback',
     instagramClient: { authorizationUrl: vi.fn(), completeLogin: vi.fn() },
     accountRepository: { upsertConnectedAccount: vi.fn(), findByInstagramUserId: vi.fn() },
     oauthStateRepository: { createState: vi.fn(), consumeState: vi.fn() },
+    tokenProtector: new AesGcmTokenProtector(Buffer.alloc(32, 1).toString('base64')),
+  },
+  instagramMedia: {
+    instagramMediaClient: { listRecentMedia: vi.fn() },
     tokenProtector: new AesGcmTokenProtector(Buffer.alloc(32, 1).toString('base64')),
   },
   database: { checkHealth: vi.fn() },
@@ -121,6 +130,7 @@ describe('API application', () => {
         {
           get?: { responses: Record<string, unknown> };
           post?: { responses: Record<string, unknown> };
+          put?: { responses: Record<string, unknown> };
         }
       >;
     };
@@ -136,6 +146,16 @@ describe('API application', () => {
     expect(document.paths['/api/auth/instagram/callback']?.get?.responses).toHaveProperty('302');
     expect(document.paths['/api/me']?.get?.responses).toHaveProperty('200');
     expect(document.paths['/api/me']?.get?.responses).toHaveProperty('401');
+    expect(document.paths['/api/media']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/api/media']?.get?.responses).toHaveProperty('400');
+    expect(document.paths['/api/media']?.get?.responses).toHaveProperty('401');
+    expect(document.paths['/api/media']?.get?.responses).toHaveProperty('502');
+    expect(document.paths['/api/automation']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/api/automation']?.get?.responses).toHaveProperty('401');
+    expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('200');
+    expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('400');
+    expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('502');
+    expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('503');
   });
 
   it('serves Swagger UI configured with the OpenAPI document', async () => {

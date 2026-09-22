@@ -68,6 +68,11 @@ const createFixture = () => {
   };
   const logger = { error: vi.fn(), info: vi.fn() };
   const dependencies = {
+    automationRepository: {
+      findByAccountId: vi.fn(),
+      findEnabledByAccountAndMedia: vi.fn(),
+      saveAutomation: vi.fn(),
+    },
     database: { checkHealth: vi.fn() },
     logger,
     sessionCookie: { name: 'igauto_session', secure: true, ttlSeconds: 3600 },
@@ -79,6 +84,10 @@ const createFixture = () => {
       accountRepository,
       oauthStateRepository,
       instagramClient,
+    },
+    instagramMedia: {
+      instagramMediaClient: { listRecentMedia: vi.fn() },
+      tokenProtector,
     },
   };
   const app = createApp(dependencies);

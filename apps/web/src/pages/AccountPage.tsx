@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { getCurrentAccount, logout, type CurrentAccount } from '../api/auth.js';
+import { AutomationEditor } from '../components/AutomationEditor.js';
 
 type AccountState =
   | { status: 'loading' }
@@ -60,7 +61,7 @@ export const AccountPage = () => {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#ffffff_0%,_#f6f7fb_45%,_#eef1f7_100%)] px-4 py-12 sm:px-6 sm:py-20">
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto max-w-5xl">
         <header>
           <p className="text-sm font-semibold tracking-wide text-indigo-700 uppercase">
             Instagram Automation
@@ -127,9 +128,10 @@ export const AccountPage = () => {
                 Connected as @{state.account.username}
               </h2>
               <p className="mt-3 leading-7 text-slate-600">
-                Your Instagram account is connected. Post selection and automation settings are
-                coming next.
+                Your Instagram account is connected. Choose a post and configure its automatic
+                reply.
               </p>
+              <AutomationEditor />
               {logoutError && (
                 <p role="alert" className="mt-4 text-sm text-red-800">
                   Logout could not be completed. Please try again.

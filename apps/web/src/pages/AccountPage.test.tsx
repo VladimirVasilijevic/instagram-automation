@@ -2,12 +2,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getCurrentAccount, logout } from '../api/auth.js';
+import { getAutomation } from '../api/automation.js';
+import { getRecentMedia } from '../api/media.js';
 import { AccountPage } from './AccountPage.js';
 
 vi.mock('../api/auth.js', () => ({ getCurrentAccount: vi.fn(), logout: vi.fn() }));
+vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
+vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
 const account = { id: 'account-id', instagramUserId: '17841400000000001', username: 'example' };
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getRecentMedia).mockResolvedValue([]);
+  vi.mocked(getAutomation).mockResolvedValue(null);
   window.history.replaceState(null, '', '/');
 });
 afterEach(() => window.history.replaceState(null, '', '/'));

@@ -40,9 +40,10 @@ present a revised plan for approval before continuing.
 Before exploring the repository, running commands, or changing files for each new top-level task,
 first output exactly one short line containing the model and reasoning recommendation:
 `ROUTING: <model + reasoning> | CONTEXT: <CONTINUE | COMPACT | NEW CHAT> | <reason>`. Do not repeat
-it for a clear follow-up. Do not add a plan or explanation to that routing message. If the current
-configuration is materially unsuitable, output the recommendation and stop so the user can switch
-models before any task work begins.
+it for a clear follow-up. Do not add a plan or explanation to that routing message. After the line,
+wait for the user to reply `CONTINUE` before exploring, running commands, or changing files. If the
+current configuration is materially unsuitable, output the recommendation and stop so the user can
+switch models; after switching, show a new routing line and wait for `CONTINUE` again.
 
 Choose the least costly configuration likely to finish reliably: Luna (Low/Medium) for searches,
 documentation, configuration, and focused mechanical changes; Terra (Medium) for normal multi-file
@@ -54,8 +55,8 @@ High only for a concrete need or failed lower reasoning. Do not recommend Fast u
 more than allowance, or a more expensive model for marginal quality.
 
 When the current configuration is known and materially unsuitable, recommend a cheaper or stronger
-one and stop for `/model`. If it is suitable, continue. If it is unknown, do not invent it; state a
-recommendation and continue unless switching clearly requires user action.
+one and stop for `/model`. If it is suitable, still wait for `CONTINUE`. If it is unknown, do not
+invent it; state a recommendation and wait for `CONTINUE`.
 
 Use CONTINUE for a focused continuation. Use COMPACT when the same objective needs useful context
 but accumulated logs, diffs, or completed work make raw history wasteful; stop and say only:
