@@ -61,6 +61,8 @@ export interface InstagramLoginDiagnostics {
   metaErrorSubcode?: number;
   /** Known schema fields that failed validation, without their values. */
   invalidFields?: string;
+  /** Known field names paired with fixed type labels, never response values. */
+  invalidFieldTypes?: string;
 }
 
 /** Sanitized provider failure; raw responses are never suitable for browser output. */
@@ -90,21 +92,31 @@ export class InstagramLoginError extends Error {
   toLogContext(): Readonly<Record<string, string>> {
     const context: Record<string, string> = { errorName: 'InstagramLoginError' };
     if (!this.diagnostics) return context;
-    const { stage, reason, httpStatus, metaErrorCode, metaErrorSubcode, invalidFields } =
-      this.diagnostics;
+    const {
+      stage,
+      reason,
+      httpStatus,
+      metaErrorCode,
+      metaErrorSubcode,
+      invalidFields,
+      invalidFieldTypes,
+    } = this.diagnostics;
     context.stage = stage;
     context.reason = reason;
     if (httpStatus !== undefined) context.httpStatus = String(httpStatus);
     if (metaErrorCode !== undefined) context.metaErrorCode = String(metaErrorCode);
     if (metaErrorSubcode !== undefined) context.metaErrorSubcode = String(metaErrorSubcode);
     if (invalidFields) context.invalidFields = invalidFields;
+    if (invalidFieldTypes) context.invalidFieldTypes = invalidFieldTypes;
     return context;
   }
 }
 
 const shortTokenSchema = z.object({
   access_token: z.string().min(1),
-  permissions: z.string(),
+  permissions: z
+    .union([z.string().transform((value) => value.split(',')), z.array(z.string())])
+    .transform((values) => values.map((value) => value.trim()).filter(Boolean)),
 });
 const longTokenSchema = z.object({
   access_token: z.string().min(1),
@@ -149,6 +161,21 @@ const diagnosticFields = new Set([
   'username',
 ]);
 
+const fieldType = (value: unknown): string => {
+  if (value === undefined) return 'missing';
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  switch (typeof value) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+    case 'object':
+      return typeof value;
+    default:
+      return 'unknown';
+  }
+};
+
 const parseResponse = <T>(
   schema: z.ZodType<T>,
   payload: unknown,
@@ -164,9 +191,20 @@ const parseResponse = <T>(
         return typeof field === 'string' && diagnosticFields.has(field) ? field : 'response';
       }),
     ),
-  ].join(',');
+  ];
+  const invalidFieldTypes = invalidFields
+    .map(
+      (field) => `${field}:${fieldType(field === 'response' ? payload : record(payload)?.[field])}`,
+    )
+    .join(',');
   throw new InstagramLoginError(false, {
-    diagnostics: { stage, reason: 'invalid_response', httpStatus, invalidFields },
+    diagnostics: {
+      stage,
+      reason: 'invalid_response',
+      httpStatus,
+      invalidFields: invalidFields.join(','),
+      invalidFieldTypes,
+    },
   });
 };
 
@@ -267,7 +305,7 @@ export const createInstagramLoginClient = (
         'short_token',
         shortResponse.httpStatus,
       );
-      const permissions = new Set(shortToken.permissions.split(',').map((scope) => scope.trim()));
+      const permissions = new Set(shortToken.permissions);
       if (instagramLoginScopes.some((scope) => !permissions.has(scope)))
         throw new InstagramLoginError(true, {
           diagnostics: {

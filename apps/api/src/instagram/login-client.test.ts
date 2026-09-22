@@ -106,6 +106,86 @@ describe('Instagram Login HTTP adapter', () => {
     ).toBe('17841400000000001');
   });
 
+  it.each([
+    { wrapped: false, permissions: [...instagramLoginScopes] },
+    { wrapped: true, permissions: [...instagramLoginScopes] },
+    {
+      wrapped: true,
+      permissions: [
+        ' instagram_business_basic ',
+        'instagram_business_manage_comments',
+        'instagram_business_basic',
+        '',
+      ],
+    },
+    {
+      wrapped: false,
+      permissions: ' instagram_business_basic , instagram_business_manage_comments, ',
+    },
+  ])('normalizes string and array permissions: %j', async ({ wrapped, permissions }) => {
+    const token = { ...shortToken, permissions };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json(wrapped ? { data: [token] } : token))
+      .mockResolvedValueOnce(json(longToken))
+      .mockResolvedValueOnce(json(profile));
+    await expect(
+      createInstagramLoginClient(config, fetcher).completeLogin('code'),
+    ).resolves.toMatchObject({
+      accessToken: longToken.access_token,
+      instagramUserId: profile.user_id,
+      username: profile.username,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    '',
+    [],
+    ['instagram_business_basic'],
+    ['instagram_business_manage_comments'],
+    [' ', 'unknown_scope'],
+  ])('rejects ungranted required permissions after normalization: %j', async (permissions) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json({ ...shortToken, permissions }));
+    const operation = createInstagramLoginClient(config, fetcher).completeLogin('code');
+    await expect(operation).rejects.toMatchObject({ permissionsMissing: true });
+    expect(await failureContext(operation)).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'permissions',
+      httpStatus: '200',
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { permissions: undefined, type: 'missing' },
+    { permissions: null, type: 'null' },
+    { permissions: 42, type: 'number' },
+    { permissions: true, type: 'boolean' },
+    { permissions: { 'private-field': 'private-value' }, type: 'object' },
+    {
+      permissions: ['instagram_business_basic', { 'private-field': 'private-value' }],
+      type: 'array',
+    },
+    { permissions: [...instagramLoginScopes, null], type: 'array' },
+  ])('reports only a safe type for malformed permissions: %j', async ({ permissions, type }) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json({ ...shortToken, permissions }));
+    expect(
+      await failureContext(
+        createInstagramLoginClient(config, fetcher).completeLogin('private-code'),
+      ),
+    ).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'invalid_response',
+      httpStatus: '200',
+      invalidFields: 'permissions',
+      invalidFieldTypes: `permissions:${type}`,
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it('rejects missing comment permission before exchanging the token further', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -140,15 +220,22 @@ describe('Instagram Login HTTP adapter', () => {
   );
 
   it.each([
-    [{ data: [] }, longToken, profile, 'short_token', 'response'],
-    [{ data: [shortToken, shortToken] }, longToken, profile, 'short_token', 'response'],
-    [{ access_token: 'short' }, longToken, profile, 'short_token', 'permissions'],
-    [shortToken, { ...longToken, expires_in: -1 }, profile, 'long_token', 'expires_in'],
-    [shortToken, longToken, { id: 'wrong-id', username: 'example' }, 'profile', 'user_id'],
-    [shortToken, longToken, { ...profile, username: '' }, 'profile', 'username'],
+    [{ data: [] }, longToken, profile, 'short_token', 'response', 'missing'],
+    [{ data: [shortToken, shortToken] }, longToken, profile, 'short_token', 'response', 'missing'],
+    [{ access_token: 'short' }, longToken, profile, 'short_token', 'permissions', 'missing'],
+    [shortToken, { ...longToken, expires_in: -1 }, profile, 'long_token', 'expires_in', 'number'],
+    [
+      shortToken,
+      longToken,
+      { id: 'wrong-id', username: 'example' },
+      'profile',
+      'user_id',
+      'missing',
+    ],
+    [shortToken, longToken, { ...profile, username: '' }, 'profile', 'username', 'string'],
   ])(
     'rejects malformed provider responses',
-    async (short, long, identity, stage, invalidFields) => {
+    async (short, long, identity, stage, invalidFields, type) => {
       const responses = [json(short), json(long), json(identity)];
       const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => responses.shift()!);
       expect(
@@ -159,6 +246,7 @@ describe('Instagram Login HTTP adapter', () => {
         reason: 'invalid_response',
         httpStatus: '200',
         invalidFields,
+        invalidFieldTypes: `${invalidFields}:${type}`,
       });
     },
   );

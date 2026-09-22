@@ -256,6 +256,93 @@ describe('Instagram browser login', () => {
     );
   });
 
+  it('creates a session when Instagram returns granted permissions as an array', async () => {
+    const f = createFixture();
+    const { state, cookie } = await f.begin();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                access_token: 'short-token',
+                permissions: ['instagram_business_basic', 'instagram_business_manage_comments'],
+              },
+            ],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'private-instagram-token', expires_in: 3600 })),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ user_id: f.account.instagramUserId, username: f.account.username }),
+        ),
+      );
+    const client = createInstagramLoginClient(
+      {
+        appId: '12345',
+        appSecret: 'private-app-secret',
+        apiVersion: 'v24.0',
+        redirectUri: `https://app.example${callbackPath}`,
+      },
+      fetcher,
+    );
+    f.instagramClient.completeLogin.mockImplementation(client.completeLogin);
+    const response = await f.callback(state, cookie);
+    expect(response.headers.get('location')).toBe('https://app.example/app');
+    expect(response.headers.get('set-cookie')).toMatch(/igauto_session=[A-Za-z0-9_-]+/);
+    expect(f.accountRepository.upsertConnectedAccount).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        instagramUserId: f.account.instagramUserId,
+        username: f.account.username,
+      }),
+    );
+    expect(f.sessionRepository.createSession).toHaveBeenCalledOnce();
+    expect(f.logger.error).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it('logs a missing permissions field without creating a session or exposing response values', async () => {
+    const f = createFixture();
+    const { state, cookie } = await f.begin();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: 'private-instagram-token',
+          user_id: 'private-id',
+          'private-field': 'private-value',
+        }),
+      ),
+    );
+    const client = createInstagramLoginClient(
+      {
+        appId: '12345',
+        appSecret: 'private-app-secret',
+        apiVersion: 'v24.0',
+        redirectUri: `https://app.example${callbackPath}`,
+      },
+      fetcher,
+    );
+    f.instagramClient.completeLogin.mockImplementation(client.completeLogin);
+    const response = await f.callback(state, cookie);
+    expect(response.headers.get('location')).toBe('https://app.example/?login_error=unavailable');
+    expect(f.logger.error).toHaveBeenCalledExactlyOnceWith('Instagram login callback failed', {
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'invalid_response',
+      httpStatus: '200',
+      invalidFields: 'permissions',
+      invalidFieldTypes: 'permissions:missing',
+    });
+    expect(f.accountRepository.upsertConnectedAccount).not.toHaveBeenCalled();
+    expect(f.sessionRepository.createSession).not.toHaveBeenCalled();
+    expect(response.headers.get('set-cookie')).not.toMatch(/igauto_session=[A-Za-z0-9_-]+/);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it.each([0, 1, 2])(
     'logs safe adapter diagnostics at stage %s without leaking into the browser',
     async (stage) => {
