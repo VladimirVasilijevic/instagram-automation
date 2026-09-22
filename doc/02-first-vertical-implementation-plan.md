@@ -449,21 +449,21 @@ Make Meta send real comment events to the app.
 
 ## Environment
 
-- [ ] Add `META_WEBHOOK_VERIFY_TOKEN`
+- [x] Add `META_WEBHOOK_VERIFY_TOKEN`
 
 ## API
 
-- [ ] `GET /api/webhooks/instagram` for verification
-- [ ] `POST /api/webhooks/instagram` for deliveries
-- [ ] Validate webhook payload
-- [ ] Log sanitized event
-- [ ] Return successful acknowledgement
+- [x] `GET /api/webhooks/instagram` for verification
+- [x] `POST /api/webhooks/instagram` for deliveries
+- [x] Validate webhook payload and Meta SHA-256 signature
+- [x] Log sanitized event metadata
+- [x] Return successful acknowledgement
 
 ## Instagram integration
 
-- [ ] Add `InstagramClient.subscribeToComments(...)`
-- [ ] Implement subscription to `comments`
-- [ ] Make repeated subscription safe
+- [x] Add `InstagramClient.subscribeToComments(...)`
+- [x] Implement subscription to `comments`
+- [x] Make repeated subscription safe
 
 ## Normalize webhook
 
@@ -480,9 +480,9 @@ type CommentEvent = {
 };
 ```
 
-- [ ] Validate required fields
-- [ ] Add webhook test fixtures
-- [ ] Keep raw Meta structure out of application/domain layers
+- [x] Validate required fields
+- [x] Add webhook test fixtures
+- [x] Keep raw Meta structure out of application/domain layers
 
 ## Production
 

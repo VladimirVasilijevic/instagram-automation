@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { getCurrentAccount, logout, type CurrentAccount } from '../api/auth.js';
 import { AutomationEditor } from '../components/AutomationEditor.js';
+import { WebhookSubscription } from '../components/WebhookSubscription.js';
 
 type AccountState =
   | { status: 'loading' }
@@ -128,10 +129,11 @@ export const AccountPage = () => {
                 Connected as @{state.account.username}
               </h2>
               <p className="mt-3 leading-7 text-slate-600">
-                Your Instagram account is connected. Choose a post and configure its automatic
-                reply.
+                Your Instagram account is connected. Choose a post and configure its reply, then
+                enable comment delivery.
               </p>
               <AutomationEditor />
+              <WebhookSubscription />
               {logoutError && (
                 <p role="alert" className="mt-4 text-sm text-red-800">
                   Logout could not be completed. Please try again.

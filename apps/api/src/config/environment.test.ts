@@ -9,6 +9,7 @@ const requiredEnvironment = {
   META_APP_SECRET: 'test-secret',
   META_API_VERSION: 'v24.0',
   META_REDIRECT_URI: 'https://app.example/api/auth/instagram/callback',
+  META_WEBHOOK_VERIFY_TOKEN: 'test-webhook-token',
   DATABASE_URL: 'postgresql://example',
   SESSION_COOKIE_NAME: 'igauto_session',
   SESSION_TTL_SECONDS: '604800',
@@ -22,6 +23,7 @@ describe('parseEnvironment', () => {
     'META_APP_SECRET',
     'META_API_VERSION',
     'META_REDIRECT_URI',
+    'META_WEBHOOK_VERIFY_TOKEN',
   ])('requires %s', (name) => {
     expect(() => parseEnvironment({ ...requiredEnvironment, [name]: undefined })).toThrow(name);
   });
@@ -37,6 +39,7 @@ describe('parseEnvironment', () => {
     ['META_APP_ID', 'not-numeric'],
     ['META_APP_SECRET', '   '],
     ['META_API_VERSION', 'latest'],
+    ['META_WEBHOOK_VERIFY_TOKEN', '   '],
   ])('rejects invalid %s', (name, value) => {
     expect(() => parseEnvironment({ ...requiredEnvironment, [name]: value })).toThrow(name);
   });

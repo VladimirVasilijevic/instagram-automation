@@ -446,7 +446,7 @@ Current variable responsibilities:
 | `META_APP_SECRET`           | Server-only Instagram Login secret      |                Yes |
 | `META_API_VERSION`          | Meta Graph API version                  |                Yes |
 | `META_REDIRECT_URI`         | Exact registered OAuth callback URL     |                Yes |
-| `META_WEBHOOK_VERIFY_TOKEN` | Shared webhook verification value       |  Generated locally |
+| `META_WEBHOOK_VERIFY_TOKEN` | Shared webhook verification value       |                Yes |
 | `SESSION_COOKIE_NAME`       | Application session-cookie name         |                Yes |
 | `SESSION_TTL_SECONDS`       | Session lifetime, at most one year      |                Yes |
 | `TOKEN_ENCRYPTION_KEY`      | Encrypts stored Instagram access tokens |  Generated locally |

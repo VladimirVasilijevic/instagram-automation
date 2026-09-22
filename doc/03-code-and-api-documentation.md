@@ -77,19 +77,26 @@ http://localhost:3000/api/openapi.json
 
 Current documented operations:
 
-| Method | Path                           | Input                                       | Responses                               |
-| ------ | ------------------------------ | ------------------------------------------- | --------------------------------------- |
-| GET    | `/api/health`                  | None                                        | `200`, `500`                            |
-| GET    | `/api/health/database`         | None                                        | `200`, `500`, sanitized `503`           |
-| GET    | `/api/auth/instagram/start`    | Browser navigation                          | `302` to Instagram or a safe error page |
-| GET    | `/api/auth/instagram/callback` | State, browser cookie, code or cancellation | `302` to `/app` or a safe error page    |
-| GET    | `/api/me`                      | Session cookie                              | `200`, `401`, sanitized `500`           |
-| POST   | `/api/auth/logout`             | Session cookie                              | `204`, `500`, sanitized `503`           |
+| Method | Path                                   | Input                                       | Responses                               |
+| ------ | -------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| GET    | `/api/health`                          | None                                        | `200`, `500`                            |
+| GET    | `/api/health/database`                 | None                                        | `200`, `500`, sanitized `503`           |
+| GET    | `/api/auth/instagram/start`            | Browser navigation                          | `302` to Instagram or a safe error page |
+| GET    | `/api/auth/instagram/callback`         | State, browser cookie, code or cancellation | `302` to `/app` or a safe error page    |
+| GET    | `/api/me`                              | Session cookie                              | `200`, `401`, sanitized `500`           |
+| POST   | `/api/auth/logout`                     | Session cookie                              | `204`, `500`, sanitized `503`           |
+| GET    | `/api/webhooks/instagram`              | Meta verification query                     | Plaintext `200` challenge or `403`      |
+| POST   | `/api/webhooks/instagram`              | Signed Meta delivery                        | `200`, sanitized `400` or `401`         |
+| POST   | `/api/webhooks/instagram/subscription` | Session cookie                              | `204`, `401`, sanitized `502`           |
 
 Start OAuth through **Continue with Instagram** in the browser. Swagger request execution is not a
 replacement for the provider's browser consent flow. Authentication responses and `/api/me` use
 `Cache-Control: no-store`; callback responses also suppress referrers. See the
 [login guide](05-instagram-login.md).
+
+The webhook delivery endpoint is public only to Meta. It verifies the one-time challenge with
+`META_WEBHOOK_VERIFY_TOKEN` and validates every delivery with the `X-Hub-Signature-256` HMAC made
+from `META_APP_SECRET`. Do not use Swagger to submit webhook deliveries.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.

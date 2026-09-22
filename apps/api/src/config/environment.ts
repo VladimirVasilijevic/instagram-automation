@@ -17,6 +17,9 @@ export interface Environment {
   /** Exact OAuth callback URL registered in the Meta dashboard. */
   META_REDIRECT_URI: string;
 
+  /** Secret shared with Meta only for the one-time webhook verification handshake. */
+  META_WEBHOOK_VERIFY_TOKEN: string;
+
   /** TCP port used by the local Node.js API server. */
   API_PORT: number;
 
@@ -71,6 +74,7 @@ const environmentSchema: z.ZodType<Environment> = z
       (value) => URL.canParse(value) && new URL(value).pathname === '/api/auth/instagram/callback',
       'Must use the /api/auth/instagram/callback path',
     ),
+    META_WEBHOOK_VERIFY_TOKEN: z.string().trim().min(1, 'META_WEBHOOK_VERIFY_TOKEN is required'),
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     DATABASE_URL: z
       .string({ error: 'DATABASE_URL is required' })

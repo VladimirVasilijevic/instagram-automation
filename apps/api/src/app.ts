@@ -15,6 +15,10 @@ import {
 } from './routes/instagram-auth.js';
 import { registerMeRoute } from './routes/me.js';
 import { registerMediaRoute } from './routes/media.js';
+import {
+  registerInstagramWebhookRoutes,
+  type InstagramWebhookRouteDependencies,
+} from './routes/instagram-webhook.js';
 import type { SessionCookieConfig } from './security/session-cookie.js';
 import type { TokenProtector } from './security/token-protector.js';
 
@@ -36,6 +40,11 @@ export interface AppDependencies {
   instagramAuth: Omit<InstagramAuthDependencies, 'logger' | 'sessionCookie' | 'sessionRepository'>;
   /** Server-side media adapter and token protection used by authenticated media requests. */
   instagramMedia: InstagramMediaDependencies;
+  /** Public signed delivery and owner-authenticated comment-subscription capabilities. */
+  instagramWebhook?: Omit<
+    InstagramWebhookRouteDependencies,
+    'logger' | 'sessionCookie' | 'sessionRepository'
+  >;
   /** Database capability injected into routes that verify connectivity. */
   database: DatabaseHealthChecker;
 
@@ -127,6 +136,14 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     sessionCookie: dependencies.sessionCookie,
     sessionRepository: dependencies.sessionRepository,
   });
+  if (dependencies.instagramWebhook) {
+    registerInstagramWebhookRoutes(app, {
+      ...dependencies.instagramWebhook,
+      logger: dependencies.logger,
+      sessionCookie: dependencies.sessionCookie,
+      sessionRepository: dependencies.sessionRepository,
+    });
+  }
 
   if (dependencies.docsEnabled ?? true) {
     app.doc('/api/openapi.json', {

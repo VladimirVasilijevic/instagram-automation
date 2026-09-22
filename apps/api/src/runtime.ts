@@ -6,6 +6,7 @@ import { createDatabase, type Database } from './database/database.js';
 import { logger } from './logging/logger.js';
 import { createInstagramLoginClient } from './instagram/login-client.js';
 import { createInstagramMediaClient } from './instagram/media-client.js';
+import { createInstagramWebhookClient } from './instagram/webhook-client.js';
 import { AesGcmTokenProtector } from './security/aes-gcm-token-protector.js';
 
 /** Application resources shared by the local server and the Vercel entry point. */
@@ -50,6 +51,15 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
         apiVersion: environment.META_API_VERSION,
       }),
       tokenProtector,
+    },
+    instagramWebhook: {
+      accountRepository: database.accountRepository,
+      appSecret: environment.META_APP_SECRET,
+      instagramWebhookClient: createInstagramWebhookClient({
+        apiVersion: environment.META_API_VERSION,
+      }),
+      tokenProtector,
+      verifyToken: environment.META_WEBHOOK_VERIFY_TOKEN,
     },
     database,
     docsEnabled: true,

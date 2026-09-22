@@ -17,6 +17,7 @@ const environment = {
   META_APP_SECRET: 'test-secret',
   META_API_VERSION: 'v24.0',
   META_REDIRECT_URI: 'https://app.example/api/auth/instagram/callback',
+  META_WEBHOOK_VERIFY_TOKEN: 'test-webhook-token',
   DATABASE_URL: 'postgres://test:test@localhost/test',
   SESSION_COOKIE_NAME: 'deployment_session',
   SESSION_TTL_SECONDS: '3600',
