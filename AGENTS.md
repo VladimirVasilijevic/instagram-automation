@@ -37,9 +37,12 @@ present a revised plan for approval before continuing.
 
 ## Codex task routing and usage efficiency
 
-Before repository work on each new top-level task, output exactly one short line:
+Before exploring the repository, running commands, or changing files for each new top-level task,
+first output exactly one short line containing the model and reasoning recommendation:
 `ROUTING: <model + reasoning> | CONTEXT: <CONTINUE | COMPACT | NEW CHAT> | <reason>`. Do not repeat
-it for a clear follow-up. Do not add a plan or explanation to that routing message.
+it for a clear follow-up. Do not add a plan or explanation to that routing message. If the current
+configuration is materially unsuitable, output the recommendation and stop so the user can switch
+models before any task work begins.
 
 Choose the least costly configuration likely to finish reliably: Luna (Low/Medium) for searches,
 documentation, configuration, and focused mechanical changes; Terra (Medium) for normal multi-file
