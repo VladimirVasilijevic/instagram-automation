@@ -305,21 +305,20 @@ First real external checkpoint:
 Continue with Instagram → OAuth → @username
 ```
 
-Local OAuth and UI implementation is complete; database integration verification, production
-configuration/migration, deployment, and real Instagram acceptance remain pending. See the
-[login guide](05-instagram-login.md).
+Local OAuth and UI implementation, production configuration and migration, deployment, and real
+Instagram acceptance are complete. See the [login guide](05-instagram-login.md).
 
 ## Meta setup
 
 - [x] Configure Meta App for Instagram Login (dashboard setup confirmed by user)
-- [x] Request permissions in code (real grants remain pending):
+- [x] Request and grant permissions:
   - `instagram_business_basic`
   - `instagram_business_manage_comments`
-- [x] Configure `META_APP_ID` locally (production configuration pending)
-- [x] Configure `META_APP_SECRET` locally (production configuration pending)
-- [x] Configure `META_API_VERSION` locally (production configuration pending)
-- [x] Configure `META_REDIRECT_URI` locally (production configuration pending)
-- [ ] Verify test account is Business or Creator
+- [x] Configure `META_APP_ID` locally and in production
+- [x] Configure `META_APP_SECRET` locally and in production
+- [x] Configure `META_API_VERSION` locally and in production
+- [x] Configure `META_REDIRECT_URI` locally and in production
+- [x] Verify test account is Business or Creator
 
 ## Backend OAuth
 
@@ -360,10 +359,10 @@ configuration/migration, deployment, and real Instagram acceptance remain pendin
 ## Done when
 
 ```text
-□ real Instagram login works in production
-□ correct @username appears after real login
-□ real browser session survives refresh
-□ real browser logout works
+✓ real Instagram login works in production
+✓ correct @username appears after real login
+✓ real browser session survives refresh
+✓ real browser logout works
 ✓ automated tests verify tokens stay out of browser responses
 ```
 

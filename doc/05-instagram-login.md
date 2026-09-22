@@ -117,7 +117,7 @@ rows, so the database must be dedicated to testing.
 The existing `test:integration` command still loads `.env.local`; do not run that suite against the
 shared production database during this work. Both integration files remain skipped by `pnpm test`.
 
-## Release and real-login acceptance — pending review
+## Release and real-login acceptance — complete
 
 1. Review the implementation and approve the production configuration/migration work.
 2. Set the five Meta/frontend variables in Vercel alongside the existing runtime variables. Use the
@@ -143,5 +143,5 @@ shared production database during this work. Both integration files remain skipp
 9. Cancel a new Instagram authorization and verify the safe cancellation message. Reopening a used
    callback must not create another session; begin a fresh login instead.
 
-Milestone 3 is complete only after the real provider and browser checks pass. Media selection,
-comment webhooks, automated replies, periodic token refresh, and public app review are later work.
+Milestone 3 is complete. Media selection, comment webhooks, automated replies, periodic token
+refresh, and public app review are later work.

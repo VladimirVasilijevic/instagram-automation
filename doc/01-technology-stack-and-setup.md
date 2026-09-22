@@ -19,10 +19,9 @@ The Milestone 1 frontend, backend, and database connectivity proof work locally 
 frontend, API health, database health, and OpenAPI endpoints all returned HTTP 200. The database
 health response reported `connected`. Vercel is linked to this GitHub repository's `main` branch.
 
-Milestone 2 persistence and security are implemented. Milestone 3 OAuth, the account API, and the
-connect/account UI are implemented locally. The OAuth state migration, production Meta settings,
-deployment, and real login acceptance test remain pending. See the
-[Instagram login guide](05-instagram-login.md) for the implementation and release checklist.
+Milestone 2 persistence and security are implemented. Milestone 3 OAuth, the account API,
+connect/account UI, production configuration, migration, deployment, and real login acceptance are
+complete. See the [Instagram login guide](05-instagram-login.md) for the implementation record.
 
 Already configured:
 
@@ -49,12 +48,7 @@ Already configured:
 - OpenAPI generation and same-origin Swagger UI;
 - PlantUML architecture, class, object, and sequence diagrams.
 
-Remaining before real Instagram login:
-
-- apply the reviewed OAuth state migration to the intended database;
-- configure the production Meta credentials, frontend origin, and exact callback URI;
-- deploy the reviewed login implementation;
-- verify the test account's eligibility and permission grants through real browser login.
+Milestone 3 is complete. Milestone 4 media selection and automation configuration is next.
 
 Webhook integration follows in Milestone 5.
 
@@ -637,15 +631,11 @@ migration database query succeeds
 
 # 12. Next implementation steps
 
-The Milestone 1 production connectivity checks pass. Milestone 3 login is implemented locally.
-Continue with the [login release checklist](05-instagram-login.md) and
-[milestone plan](02-first-vertical-implementation-plan.md):
+The Milestone 1 production connectivity checks pass, and Milestone 3 real Instagram login is
+complete. Continue with the [milestone plan](02-first-vertical-implementation-plan.md):
 
-1. review the local login implementation, migration, and test results;
-2. configure production Meta settings, apply the approved migration, and deploy the reviewed code;
-3. verify real login, the correct username, session persistence after refresh, and logout;
-4. implement media selection and automation configuration in Milestone 4;
-5. implement webhooks, public replies, and activity in Milestones 5–7.
+1. implement media selection and automation configuration in Milestone 4;
+2. implement webhooks, public replies, and activity in Milestones 5–7.
 
 ---
 
