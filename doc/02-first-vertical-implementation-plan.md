@@ -376,19 +376,19 @@ Let the owner select one real media item and save one automation.
 
 ## Instagram integration
 
-- [ ] Add `InstagramClient.listRecentMedia(...)`
-- [ ] Implement real Meta adapter
-- [ ] Limit to 12 media items
-- [ ] Normalize Meta response into internal media model
+- [x] Add `InstagramClient.listRecentMedia(...)`
+- [x] Implement real Meta adapter
+- [x] Limit to 12 media items
+- [x] Normalize Meta response into internal media model
 
 ## API
 
-- [ ] `GET /api/media?limit=12`
-- [ ] Require authentication
-- [ ] Decrypt server-side Instagram token
-- [ ] Return app-owned Media DTOs
-- [ ] `GET /api/automation`
-- [ ] `PUT /api/automation`
+- [x] `GET /api/media?limit=12`
+- [x] Require authentication
+- [x] Decrypt server-side Instagram token
+- [x] Return app-owned Media DTOs
+- [x] `GET /api/automation`
+- [x] `PUT /api/automation`
 
 Save input:
 
@@ -408,36 +408,36 @@ trigger_text = "#Hello"
 
 ## Frontend
 
-- [ ] Display latest 12 media items
-- [ ] Responsive mobile-first grid
-- [ ] Show thumbnail/media type/caption preview
-- [ ] Allow exactly one selection
-- [ ] Show read-only trigger `#Hello`
-- [ ] Editable reply textarea
-- [ ] Enabled toggle
-- [ ] Save button
-- [ ] Save success/error state
-- [ ] Reload persisted automation after refresh
+- [x] Display latest 12 media items
+- [x] Responsive mobile-first grid
+- [x] Show thumbnail/media type/caption preview
+- [x] Allow exactly one selection
+- [x] Show read-only trigger `#Hello`
+- [x] Editable reply textarea
+- [x] Enabled toggle
+- [x] Save button
+- [x] Save success/error state
+- [x] Reload persisted automation after refresh
 
 ## Validation
 
-- [ ] `mediaId` required
-- [ ] `replyText` required
-- [ ] trim reply text
-- [ ] reject empty reply
-- [ ] trigger cannot be changed via API
+- [x] `mediaId` required
+- [x] `replyText` required
+- [x] trim reply text
+- [x] reject empty reply
+- [x] trigger cannot be changed via API
 
 ## Done when
 
 ```text
-✓ latest 12 real media appear
+✓ latest 12 real media appear in production
 ✓ one media can be selected
 ✓ reply can be edited
 ✓ automation persists
 ✓ refresh restores configuration
 ```
 
-This is the first strong visible product checkpoint.
+Milestone 4 is complete. Comment webhook delivery is the next product checkpoint in Milestone 5.
 
 ---
 

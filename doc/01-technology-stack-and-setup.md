@@ -48,7 +48,7 @@ Already configured:
 - OpenAPI generation and same-origin Swagger UI;
 - PlantUML architecture, class, object, and sequence diagrams.
 
-Milestone 3 is complete. Milestone 4 media selection and automation configuration is next.
+Milestones 3 and 4 are complete. Milestone 5 webhook integration is next.
 
 Webhook integration follows in Milestone 5.
 
@@ -631,11 +631,12 @@ migration database query succeeds
 
 # 12. Next implementation steps
 
-The Milestone 1 production connectivity checks pass, and Milestone 3 real Instagram login is
-complete. Continue with the [milestone plan](02-first-vertical-implementation-plan.md):
+The Milestone 1 production connectivity checks pass, and Milestones 3–4 real Instagram login, media
+selection, and automation configuration are complete. Continue with the
+[milestone plan](02-first-vertical-implementation-plan.md):
 
-1. implement media selection and automation configuration in Milestone 4;
-2. implement webhooks, public replies, and activity in Milestones 5–7.
+1. implement comment webhook verification and subscription in Milestone 5;
+2. implement public replies and activity in Milestones 6–7.
 
 ---
 

@@ -143,5 +143,5 @@ shared production database during this work. Both integration files remain skipp
 9. Cancel a new Instagram authorization and verify the safe cancellation message. Reopening a used
    callback must not create another session; begin a fresh login instead.
 
-Milestone 3 is complete. Media selection, comment webhooks, automated replies, periodic token
-refresh, and public app review are later work.
+Milestones 3 and 4 are complete. Comment webhooks, automated replies, periodic token refresh, and
+public app review are later work.
