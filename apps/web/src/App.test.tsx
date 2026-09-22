@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App.js';
 
 vi.mock('./pages/AccountPage.js', () => ({ AccountPage: () => <p>Account page</p> }));
+vi.mock('./pages/PrivacyPage.js', () => ({ PrivacyPage: () => <p>Privacy page</p> }));
 vi.mock('./pages/StatusPage.js', () => ({ StatusPage: () => <p>Status page</p> }));
 
 afterEach(() => window.history.replaceState(null, '', '/'));
@@ -18,6 +19,11 @@ describe('App routing', () => {
     window.history.replaceState(null, '', '/status');
     render(<App />);
     expect(screen.getByText('Status page')).toBeInTheDocument();
+  });
+  it('renders the public privacy policy at /privacy', () => {
+    window.history.replaceState(null, '', '/privacy');
+    render(<App />);
+    expect(screen.getByText('Privacy page')).toBeInTheDocument();
   });
   it('offers a way back from an unknown route', () => {
     window.history.replaceState(null, '', '/unknown');

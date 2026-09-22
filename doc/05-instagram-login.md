@@ -29,6 +29,11 @@ META_REDIRECT_URI=https://instagram-automation-henna-phi.vercel.app/api/auth/ins
 META_API_VERSION=v24.0
 ```
 
+The public privacy policy is available at
+`https://instagram-automation-henna-phi.vercel.app/privacy`. Enter that URL in Meta App settings
+when completing the Publish requirements. It is a public page and does not require an Instagram
+session.
+
 Keep secrets in `.env.local` and the Vercel server environment. No `VITE_` variable is needed. Do
 not copy production URLs over the local frontend origin merely to make validation pass. Production
 requires HTTPS, matching origins, and the exact callback path without a query or fragment. Meta's
