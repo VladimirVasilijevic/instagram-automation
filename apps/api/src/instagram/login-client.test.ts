@@ -252,7 +252,7 @@ describe('Instagram Login HTTP adapter', () => {
   );
 
   it.each([0, 1, 2])(
-    'reports numeric Meta errors without response details at stage %s',
+    'reports safe Meta error classifications without response details at stage %s',
     async (stage) => {
       const responses = [json(shortToken), json(longToken), json(profile)];
       responses[stage] = new Response(
@@ -261,6 +261,7 @@ describe('Instagram Login HTTP adapter', () => {
             code: 190,
             error_subcode: 463,
             type: 'private-error-type',
+            is_transient: true,
             message: 'private-provider-message',
             error_user_msg: 'private-user-message',
             fbtrace_id: 'private-trace',
@@ -281,10 +282,42 @@ describe('Instagram Login HTTP adapter', () => {
         httpStatus: '400',
         metaErrorCode: '190',
         metaErrorSubcode: '463',
+        metaErrorCategory: 'other',
+        metaErrorIsTransient: 'true',
       });
       expect(fetcher).toHaveBeenCalledTimes(stage + 1);
     },
   );
+
+  it('allowlists OAuthException without retaining the provider error type', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 200,
+            type: 'OAuthException',
+            is_transient: false,
+            message: 'private-provider-message',
+          },
+        }),
+        { status: 400 },
+      ),
+    );
+    const context = await failureContext(
+      createInstagramLoginClient(config, fetcher).completeLogin('private-code'),
+    );
+    expect(context).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'http_error',
+      httpStatus: '400',
+      metaErrorCode: '200',
+      metaErrorCategory: 'oauth_exception',
+      metaErrorIsTransient: 'false',
+    });
+    expect(JSON.stringify(context)).not.toContain('OAuthException');
+    expect(JSON.stringify(context)).not.toContain('private-provider-message');
+  });
 
   it('reads top-level Instagram error codes without copying messages or types', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(

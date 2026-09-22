@@ -408,6 +408,7 @@ describe('Instagram browser login', () => {
         httpStatus: '400',
         metaErrorCode: '190',
         metaErrorSubcode: '463',
+        metaErrorCategory: 'other',
       });
       expect(response.headers.get('location')).toBe('https://app.example/?login_error=unavailable');
       expect(response.headers.get('set-cookie')).not.toMatch(/igauto_session=[A-Za-z0-9_-]+/);

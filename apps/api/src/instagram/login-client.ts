@@ -59,6 +59,12 @@ export interface InstagramLoginDiagnostics {
   metaErrorCode?: number;
   /** Numeric Meta error subcode, when supplied. */
   metaErrorSubcode?: number;
+
+  /** Safe category derived from Meta's error type without retaining the raw provider value. */
+  metaErrorCategory?: 'oauth_exception' | 'other';
+
+  /** Whether Meta explicitly identifies the failure as transient. */
+  metaErrorIsTransient?: boolean;
   /** Known schema fields that failed validation, without their values. */
   invalidFields?: string;
   /** Known field names paired with fixed type labels, never response values. */
@@ -98,6 +104,8 @@ export class InstagramLoginError extends Error {
       httpStatus,
       metaErrorCode,
       metaErrorSubcode,
+      metaErrorCategory,
+      metaErrorIsTransient,
       invalidFields,
       invalidFieldTypes,
     } = this.diagnostics;
@@ -106,6 +114,9 @@ export class InstagramLoginError extends Error {
     if (httpStatus !== undefined) context.httpStatus = String(httpStatus);
     if (metaErrorCode !== undefined) context.metaErrorCode = String(metaErrorCode);
     if (metaErrorSubcode !== undefined) context.metaErrorSubcode = String(metaErrorSubcode);
+    if (metaErrorCategory) context.metaErrorCategory = metaErrorCategory;
+    if (metaErrorIsTransient !== undefined)
+      context.metaErrorIsTransient = String(metaErrorIsTransient);
     if (invalidFields) context.invalidFields = invalidFields;
     if (invalidFieldTypes) context.invalidFieldTypes = invalidFieldTypes;
     return context;
@@ -144,12 +155,19 @@ const numericErrorCode = (value: unknown): number | undefined =>
     ? value
     : undefined;
 
+const metaErrorCategory = (value: unknown): 'oauth_exception' | 'other' | undefined => {
+  if (typeof value !== 'string') return undefined;
+  return value === 'OAuthException' ? 'oauth_exception' : 'other';
+};
+
 const metaErrorCodes = (payload: unknown) => {
   const root = record(payload);
   const error = record(root?.error) ?? root;
   return {
     metaErrorCode: numericErrorCode(error?.code),
     metaErrorSubcode: numericErrorCode(error?.error_subcode),
+    metaErrorCategory: metaErrorCategory(error?.type),
+    metaErrorIsTransient: typeof error?.is_transient === 'boolean' ? error.is_transient : undefined,
   };
 };
 
