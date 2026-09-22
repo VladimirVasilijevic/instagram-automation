@@ -38,13 +38,43 @@ export interface InstagramLoginConfig {
   redirectUri: string;
 }
 
+/** Application-owned labels identifying the failed Instagram request. */
+export type InstagramLoginStage = 'short_token' | 'long_token' | 'profile';
+
+/** Safe diagnostic metadata; provider messages and response values are deliberately excluded. */
+export interface InstagramLoginDiagnostics {
+  /** Request that failed. */
+  stage: InstagramLoginStage;
+  /** Application-owned failure classification. */
+  reason:
+    | 'http_error'
+    | 'network_error'
+    | 'timeout'
+    | 'invalid_json'
+    | 'invalid_response'
+    | 'permissions';
+  /** HTTP status, when a response was received. */
+  httpStatus?: number;
+  /** Numeric Meta error code, when supplied. */
+  metaErrorCode?: number;
+  /** Numeric Meta error subcode, when supplied. */
+  metaErrorSubcode?: number;
+  /** Known schema fields that failed validation, without their values. */
+  invalidFields?: string;
+}
+
 /** Sanitized provider failure; raw responses are never suitable for browser output. */
 export class InstagramLoginError extends Error {
   /** Whether required permissions were declined. */
   readonly permissionsMissing: boolean;
 
+  private readonly diagnostics: InstagramLoginDiagnostics | undefined;
+
   /** Creates a safe error while retaining an optional internal cause. */
-  constructor(permissionsMissing = false, options?: ErrorOptions) {
+  constructor(
+    permissionsMissing = false,
+    options?: ErrorOptions & { diagnostics?: InstagramLoginDiagnostics },
+  ) {
     super(
       permissionsMissing
         ? 'Required Instagram permissions were not granted'
@@ -53,6 +83,22 @@ export class InstagramLoginError extends Error {
     );
     this.name = 'InstagramLoginError';
     this.permissionsMissing = permissionsMissing;
+    this.diagnostics = options?.diagnostics;
+  }
+
+  /** Returns only explicitly selected diagnostic fields, never the error or its cause. */
+  toLogContext(): Readonly<Record<string, string>> {
+    const context: Record<string, string> = { errorName: 'InstagramLoginError' };
+    if (!this.diagnostics) return context;
+    const { stage, reason, httpStatus, metaErrorCode, metaErrorSubcode, invalidFields } =
+      this.diagnostics;
+    context.stage = stage;
+    context.reason = reason;
+    if (httpStatus !== undefined) context.httpStatus = String(httpStatus);
+    if (metaErrorCode !== undefined) context.metaErrorCode = String(metaErrorCode);
+    if (metaErrorSubcode !== undefined) context.metaErrorSubcode = String(metaErrorSubcode);
+    if (invalidFields) context.invalidFields = invalidFields;
+    return context;
   }
 }
 
@@ -76,6 +122,54 @@ const singleResult = (payload: unknown): unknown => {
   return payload;
 };
 
+const record = (value: unknown): Record<string, unknown> | undefined =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+const numericErrorCode = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647
+    ? value
+    : undefined;
+
+const metaErrorCodes = (payload: unknown) => {
+  const root = record(payload);
+  const error = record(root?.error) ?? root;
+  return {
+    metaErrorCode: numericErrorCode(error?.code),
+    metaErrorSubcode: numericErrorCode(error?.error_subcode),
+  };
+};
+
+const diagnosticFields = new Set([
+  'access_token',
+  'permissions',
+  'expires_in',
+  'user_id',
+  'username',
+]);
+
+const parseResponse = <T>(
+  schema: z.ZodType<T>,
+  payload: unknown,
+  stage: InstagramLoginStage,
+  httpStatus: number,
+): T => {
+  const result = schema.safeParse(payload);
+  if (result.success) return result.data;
+  const invalidFields = [
+    ...new Set(
+      result.error.issues.map((issue) => {
+        const field = issue.path[0];
+        return typeof field === 'string' && diagnosticFields.has(field) ? field : 'response';
+      }),
+    ),
+  ].join(',');
+  throw new InstagramLoginError(false, {
+    diagnostics: { stage, reason: 'invalid_response', httpStatus, invalidFields },
+  });
+};
+
 /**
  * Creates the real Meta adapter with injectable HTTP transport for isolated tests.
  * Requests have a ten-second deadline and never follow redirects carrying credentials.
@@ -85,24 +179,57 @@ export const createInstagramLoginClient = (
   fetcher: typeof fetch = fetch,
   now: () => number = Date.now,
 ): InstagramLoginClient => {
-  const request = async (url: string | URL, init?: RequestInit): Promise<unknown> => {
+  const request = async (
+    stage: InstagramLoginStage,
+    url: string | URL,
+    init?: RequestInit,
+  ): Promise<{ payload: unknown; httpStatus: number }> => {
+    let httpStatus: number | undefined;
     try {
       const response = await fetcher(url, {
         ...init,
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),
       });
-      if (!response.ok) throw new InstagramLoginError();
+      httpStatus = response.status;
+      const text = await response.text();
+      if (!response.ok) {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(text) as unknown;
+        } catch {
+          // Non-JSON error bodies are not useful diagnostic metadata.
+        }
+        throw new InstagramLoginError(false, {
+          diagnostics: { stage, reason: 'http_error', httpStatus, ...metaErrorCodes(payload) },
+        });
+      }
       // Meta IDs may exceed Number.MAX_SAFE_INTEGER. Node 24 exposes the original JSON literal.
-      return JSON.parse(
-        await response.text(),
-        (key, value: unknown, context?: { source?: string }) =>
+      let payload: unknown;
+      try {
+        payload = JSON.parse(text, (key, value: unknown, context?: { source?: string }) =>
           key === 'user_id' && typeof value === 'number' && context?.source
             ? context.source
             : value,
-      ) as unknown;
+        ) as unknown;
+      } catch (error) {
+        throw new InstagramLoginError(false, {
+          cause: error,
+          diagnostics: { stage, reason: 'invalid_json', httpStatus },
+        });
+      }
+      return { payload, httpStatus };
     } catch (error) {
-      throw new InstagramLoginError(false, { cause: error });
+      if (error instanceof InstagramLoginError) throw error;
+      throw new InstagramLoginError(false, {
+        cause: error,
+        diagnostics: {
+          stage,
+          reason:
+            error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network_error',
+          httpStatus,
+        },
+      });
     }
   };
 
@@ -126,43 +253,61 @@ export const createInstagramLoginClient = (
       body.set('grant_type', 'authorization_code');
       body.set('redirect_uri', config.redirectUri);
       body.set('code', code);
-      const shortToken = shortTokenSchema.safeParse(
-        singleResult(
-          await request('https://api.instagram.com/oauth/access_token', { method: 'POST', body }),
-        ),
+      const shortResponse = await request(
+        'short_token',
+        'https://api.instagram.com/oauth/access_token',
+        {
+          method: 'POST',
+          body,
+        },
       );
-      if (!shortToken.success) throw new InstagramLoginError();
-      const permissions = new Set(
-        shortToken.data.permissions.split(',').map((scope) => scope.trim()),
+      const shortToken = parseResponse(
+        shortTokenSchema,
+        singleResult(shortResponse.payload),
+        'short_token',
+        shortResponse.httpStatus,
       );
+      const permissions = new Set(shortToken.permissions.split(',').map((scope) => scope.trim()));
       if (instagramLoginScopes.some((scope) => !permissions.has(scope)))
-        throw new InstagramLoginError(true);
+        throw new InstagramLoginError(true, {
+          diagnostics: {
+            stage: 'short_token',
+            reason: 'permissions',
+            httpStatus: shortResponse.httpStatus,
+          },
+        });
 
       const exchangeUrl = new URL('https://graph.instagram.com/access_token');
       exchangeUrl.search = new URLSearchParams({
         grant_type: 'ig_exchange_token',
         client_secret: config.appSecret,
-        access_token: shortToken.data.access_token,
+        access_token: shortToken.access_token,
       }).toString();
       const issuedAt = now();
-      const longToken = longTokenSchema.safeParse(await request(exchangeUrl));
-      if (!longToken.success) throw new InstagramLoginError();
+      const longResponse = await request('long_token', exchangeUrl);
+      const longToken = parseResponse(
+        longTokenSchema,
+        longResponse.payload,
+        'long_token',
+        longResponse.httpStatus,
+      );
 
       const profileUrl = new URL(`https://graph.instagram.com/${config.apiVersion}/me`);
       profileUrl.searchParams.set('fields', 'user_id,username');
-      const profile = profileSchema.safeParse(
-        singleResult(
-          await request(profileUrl, {
-            headers: { Authorization: `Bearer ${longToken.data.access_token}` },
-          }),
-        ),
+      const profileResponse = await request('profile', profileUrl, {
+        headers: { Authorization: `Bearer ${longToken.access_token}` },
+      });
+      const profile = parseResponse(
+        profileSchema,
+        singleResult(profileResponse.payload),
+        'profile',
+        profileResponse.httpStatus,
       );
-      if (!profile.success) throw new InstagramLoginError();
       return {
-        accessToken: longToken.data.access_token,
-        instagramUserId: profile.data.user_id,
-        username: profile.data.username,
-        tokenExpiresAt: new Date(issuedAt + longToken.data.expires_in * 1000),
+        accessToken: longToken.access_token,
+        instagramUserId: profile.user_id,
+        username: profile.username,
+        tokenExpiresAt: new Date(issuedAt + longToken.expires_in * 1000),
       };
     },
   };

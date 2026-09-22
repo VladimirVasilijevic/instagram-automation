@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../app.js';
 import type { InstagramAccount, Session } from '../database/repositories.js';
-import { InstagramLoginError } from '../instagram/login-client.js';
+import { createInstagramLoginClient, InstagramLoginError } from '../instagram/login-client.js';
 import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
 import type { OAuthStateInput } from '../security/oauth-state.js';
 import { createSessionToken, hashSessionToken } from '../security/session-token.js';
@@ -255,6 +255,85 @@ describe('Instagram browser login', () => {
       'login_error=permissions',
     );
   });
+
+  it.each([0, 1, 2])(
+    'logs safe adapter diagnostics at stage %s without leaking into the browser',
+    async (stage) => {
+      const f = createFixture();
+      const { state, cookie, binding } = await f.begin();
+      const secret = 'private-instagram-token';
+      const responses = [
+        new Response(
+          JSON.stringify({
+            access_token: secret,
+            permissions: 'instagram_business_basic,instagram_business_manage_comments',
+          }),
+        ),
+        new Response(JSON.stringify({ access_token: secret, expires_in: 3600 })),
+        new Response(
+          JSON.stringify({ user_id: '17841400000000001', username: 'private-username' }),
+        ),
+      ];
+      responses[stage] = new Response(
+        JSON.stringify({
+          error: {
+            code: 190,
+            error_subcode: 463,
+            message: secret,
+            type: secret,
+            fbtrace_id: secret,
+          },
+        }),
+        { status: 400 },
+      );
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => responses.shift()!);
+      const app = createApp({
+        ...f.dependencies,
+        instagramAuth: {
+          ...f.dependencies.instagramAuth,
+          instagramClient: createInstagramLoginClient(
+            {
+              appId: '12345',
+              appSecret: 'private-app-secret',
+              apiVersion: 'v24.0',
+              redirectUri: `https://app.example${callbackPath}`,
+            },
+            fetcher,
+          ),
+        },
+      });
+      const response = await app.request(`${callbackPath}?state=${state}&code=private-auth-code`, {
+        headers: { Cookie: cookie },
+      });
+      expect(f.logger.error).toHaveBeenCalledExactlyOnceWith('Instagram login callback failed', {
+        errorName: 'InstagramLoginError',
+        stage: ['short_token', 'long_token', 'profile'][stage],
+        reason: 'http_error',
+        httpStatus: '400',
+        metaErrorCode: '190',
+        metaErrorSubcode: '463',
+      });
+      expect(response.headers.get('location')).toBe('https://app.example/?login_error=unavailable');
+      expect(response.headers.get('set-cookie')).not.toMatch(/igauto_session=[A-Za-z0-9_-]+/);
+      expect(f.accountRepository.upsertConnectedAccount).not.toHaveBeenCalled();
+      expect(f.sessionRepository.createSession).not.toHaveBeenCalled();
+      expect(fetcher).toHaveBeenCalledTimes(stage + 1);
+      const visible =
+        JSON.stringify(f.logger.error.mock.calls) +
+        JSON.stringify([...response.headers]) +
+        (await response.text());
+      for (const value of [
+        secret,
+        'private-app-secret',
+        'private-auth-code',
+        'private-username',
+        state,
+        binding,
+      ]) {
+        expect(visible).not.toContain(value);
+      }
+    },
+  );
 
   it('rotates an existing session and rejects expired sessions', async () => {
     const f = createFixture();

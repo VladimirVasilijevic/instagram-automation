@@ -144,7 +144,10 @@ export const registerInstagramAuthRoutes = (
       setSessionCookie(context, dependencies.sessionCookie, sessionToken.token);
       return context.redirect(new URL('/app', dependencies.appBaseUrl).toString(), 302);
     } catch (error) {
-      dependencies.logger.error('Instagram login callback failed', toSafeErrorContext(error));
+      dependencies.logger.error(
+        'Instagram login callback failed',
+        error instanceof InstagramLoginError ? error.toLogContext() : toSafeErrorContext(error),
+      );
       return fail(
         context,
         error instanceof InstagramLoginError && error.permissionsMissing

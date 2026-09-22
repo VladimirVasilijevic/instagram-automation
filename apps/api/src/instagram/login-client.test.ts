@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createInstagramLoginClient, instagramLoginScopes } from './login-client.js';
+import {
+  createInstagramLoginClient,
+  InstagramLoginError,
+  instagramLoginScopes,
+} from './login-client.js';
 
 const config = {
   appId: '12345',
@@ -20,6 +24,17 @@ const profile = {
   id: 'different-app-scoped-id',
 };
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
+const stages = ['short_token', 'long_token', 'profile'] as const;
+
+const failureContext = async (operation: Promise<unknown>) => {
+  try {
+    await operation;
+  } catch (error) {
+    expect(error).toBeInstanceOf(InstagramLoginError);
+    return (error as InstagramLoginError).toLogContext();
+  }
+  throw new Error('Expected Instagram login to fail');
+};
 
 describe('Instagram Login HTTP adapter', () => {
   it('builds authorization using the Instagram app ID, exact callback, scopes, and state', () => {
@@ -95,9 +110,14 @@ describe('Instagram Login HTTP adapter', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValue(json({ ...shortToken, permissions: 'instagram_business_basic' }));
-    await expect(
-      createInstagramLoginClient(config, fetcher).completeLogin('code'),
-    ).rejects.toMatchObject({ permissionsMissing: true });
+    const operation = createInstagramLoginClient(config, fetcher).completeLogin('code');
+    await expect(operation).rejects.toMatchObject({ permissionsMissing: true });
+    expect(await failureContext(operation)).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'permissions',
+      httpStatus: '200',
+    });
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
@@ -107,35 +127,176 @@ describe('Instagram Login HTTP adapter', () => {
       const responses = [json(shortToken), json(longToken), json(profile)];
       responses[stage] = new Response('secret-provider-response', { status: 400 });
       const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => responses.shift()!);
-      await expect(
-        createInstagramLoginClient(config, fetcher).completeLogin('secret-code'),
-      ).rejects.toThrow('Instagram login failed');
+      const operation = createInstagramLoginClient(config, fetcher).completeLogin('secret-code');
+      await expect(operation).rejects.toThrow('Instagram login failed');
+      expect(await failureContext(operation)).toEqual({
+        errorName: 'InstagramLoginError',
+        stage: stages[stage],
+        reason: 'http_error',
+        httpStatus: '400',
+      });
       expect(fetcher).toHaveBeenCalledTimes(stage + 1);
     },
   );
 
   it.each([
-    [{ data: [] }, longToken, profile],
-    [{ data: [shortToken, shortToken] }, longToken, profile],
-    [{ access_token: 'short' }, longToken, profile],
-    [shortToken, { ...longToken, expires_in: -1 }, profile],
-    [shortToken, longToken, { id: 'wrong-id', username: 'example' }],
-    [shortToken, longToken, { ...profile, username: '' }],
-  ])('rejects malformed provider responses', async (short, long, identity) => {
-    const responses = [json(short), json(long), json(identity)];
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => responses.shift()!);
-    await expect(createInstagramLoginClient(config, fetcher).completeLogin('code')).rejects.toThrow(
-      'Instagram login failed',
+    [{ data: [] }, longToken, profile, 'short_token', 'response'],
+    [{ data: [shortToken, shortToken] }, longToken, profile, 'short_token', 'response'],
+    [{ access_token: 'short' }, longToken, profile, 'short_token', 'permissions'],
+    [shortToken, { ...longToken, expires_in: -1 }, profile, 'long_token', 'expires_in'],
+    [shortToken, longToken, { id: 'wrong-id', username: 'example' }, 'profile', 'user_id'],
+    [shortToken, longToken, { ...profile, username: '' }, 'profile', 'username'],
+  ])(
+    'rejects malformed provider responses',
+    async (short, long, identity, stage, invalidFields) => {
+      const responses = [json(short), json(long), json(identity)];
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => responses.shift()!);
+      expect(
+        await failureContext(createInstagramLoginClient(config, fetcher).completeLogin('code')),
+      ).toEqual({
+        errorName: 'InstagramLoginError',
+        stage,
+        reason: 'invalid_response',
+        httpStatus: '200',
+        invalidFields,
+      });
+    },
+  );
+
+  it.each([0, 1, 2])(
+    'reports numeric Meta errors without response details at stage %s',
+    async (stage) => {
+      const responses = [json(shortToken), json(longToken), json(profile)];
+      responses[stage] = new Response(
+        JSON.stringify({
+          error: {
+            code: 190,
+            error_subcode: 463,
+            type: 'private-error-type',
+            message: 'private-provider-message',
+            error_user_msg: 'private-user-message',
+            fbtrace_id: 'private-trace',
+          },
+          access_token: 'private-response-token',
+        }),
+        { status: 400 },
+      );
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => responses.shift()!);
+      expect(
+        await failureContext(
+          createInstagramLoginClient(config, fetcher).completeLogin('private-code'),
+        ),
+      ).toEqual({
+        errorName: 'InstagramLoginError',
+        stage: stages[stage],
+        reason: 'http_error',
+        httpStatus: '400',
+        metaErrorCode: '190',
+        metaErrorSubcode: '463',
+      });
+      expect(fetcher).toHaveBeenCalledTimes(stage + 1);
+    },
+  );
+
+  it('reads top-level Instagram error codes without copying messages or types', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 400,
+          error_type: 'private-type',
+          error_message: 'private-message',
+        }),
+        { status: 400 },
+      ),
     );
+    expect(
+      await failureContext(createInstagramLoginClient(config, fetcher).completeLogin('code')),
+    ).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'http_error',
+      httpStatus: '400',
+      metaErrorCode: '400',
+    });
   });
 
-  it('sanitizes invalid JSON and network timeouts', async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response('not json'))
-      .mockRejectedValueOnce(new DOMException('secret-url', 'TimeoutError'));
-    const client = createInstagramLoginClient(config, fetcher);
-    await expect(client.completeLogin('code')).rejects.toThrow('Instagram login failed');
-    await expect(client.completeLogin('code')).rejects.toThrow('Instagram login failed');
+  it.each(['private-token', -1, 1.5, 2_147_483_648, null, { value: 'private-token' }])(
+    'omits invalid Meta error-code values: %j',
+    async (code) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { code, error_subcode: code, message: 'private-provider-message' },
+          }),
+          { status: 400 },
+        ),
+      );
+      expect(
+        await failureContext(createInstagramLoginClient(config, fetcher).completeLogin('code')),
+      ).toEqual({
+        errorName: 'InstagramLoginError',
+        stage: 'short_token',
+        reason: 'http_error',
+        httpStatus: '400',
+      });
+    },
+  );
+
+  it.each([0, 1, 2])(
+    'distinguishes JSON, timeout, and network failures at stage %s',
+    async (stage) => {
+      for (const reason of ['invalid_json', 'timeout', 'network_error'] as const) {
+        const responses = [json(shortToken), json(longToken), json(profile)];
+        const cause =
+          reason === 'timeout'
+            ? new DOMException('private-url-with-token', 'TimeoutError')
+            : new TypeError('private-network-detail');
+        const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => {
+          if (fetcher.mock.calls.length === stage + 1) {
+            if (reason === 'invalid_json') return new Response('private-non-json');
+            throw cause;
+          }
+          return responses.shift()!;
+        });
+        expect(
+          await failureContext(
+            createInstagramLoginClient(config, fetcher).completeLogin('private-code'),
+          ),
+        ).toEqual({
+          errorName: 'InstagramLoginError',
+          stage: stages[stage],
+          reason,
+          ...(reason === 'invalid_json' ? { httpStatus: '200' } : {}),
+        });
+        expect(fetcher).toHaveBeenCalledTimes(stage + 1);
+      }
+    },
+  );
+
+  it('retains the HTTP status when reading a response body times out', async () => {
+    const response = json(shortToken);
+    vi.spyOn(response, 'text').mockRejectedValue(new DOMException('private-url', 'TimeoutError'));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response);
+    expect(
+      await failureContext(createInstagramLoginClient(config, fetcher).completeLogin('code')),
+    ).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'timeout',
+      httpStatus: '200',
+    });
+  });
+
+  it('preserves the internal cause while excluding it from log context', async () => {
+    const cause = new TypeError('private-url');
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValueOnce(cause);
+    const operation = createInstagramLoginClient(config, fetcher).completeLogin('code');
+    await expect(operation).rejects.toMatchObject({ cause });
+    expect(await failureContext(operation)).toEqual({
+      errorName: 'InstagramLoginError',
+      stage: 'short_token',
+      reason: 'network_error',
+    });
+    expect(new InstagramLoginError().toLogContext()).toEqual({ errorName: 'InstagramLoginError' });
   });
 });
