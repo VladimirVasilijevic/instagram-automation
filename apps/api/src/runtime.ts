@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { parseEnvironment, type Environment } from './config/environment.js';
 import { createDatabase, type Database } from './database/database.js';
 import { logger } from './logging/logger.js';
+import { createInstagramCommentReplyClient } from './instagram/comment-reply-client.js';
 import { createInstagramLoginClient } from './instagram/login-client.js';
 import { createInstagramMediaClient } from './instagram/media-client.js';
 import { createInstagramWebhookClient } from './instagram/webhook-client.js';
@@ -33,6 +34,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
   const tokenProtector = new AesGcmTokenProtector(environment.TOKEN_ENCRYPTION_KEY);
   const app = createApp({
     automationRepository: database.automationRepository,
+    executionRepository: database.executionRepository,
     instagramAuth: {
       appBaseUrl: environment.APP_BASE_URL,
       redirectUri: environment.META_REDIRECT_URI,
@@ -55,6 +57,9 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
     instagramWebhook: {
       accountRepository: database.accountRepository,
       appSecret: environment.META_APP_SECRET,
+      instagramCommentReplyClient: createInstagramCommentReplyClient({
+        apiVersion: environment.META_API_VERSION,
+      }),
       instagramWebhookClient: createInstagramWebhookClient({
         apiVersion: environment.META_API_VERSION,
       }),

@@ -58,13 +58,23 @@ const createFixture = () => {
     ),
   };
   const logger = { error: vi.fn(), info: vi.fn() };
+  const accountRepository = { findByInstagramUserId: vi.fn() };
+  const automationRepository = {
+    findByAccountId: vi.fn(),
+    findEnabledByAccountAndMedia: vi.fn(),
+    saveAutomation: vi.fn(),
+  };
   const instagramWebhookClient = { subscribeToComments: vi.fn().mockResolvedValue(undefined) };
+  const instagramCommentReplyClient = { replyToComment: vi.fn().mockResolvedValue(undefined) };
+  const executionRepository = {
+    claimExecution: vi.fn().mockResolvedValue(null),
+    listRecentByAccountId: vi.fn(),
+    markFailed: vi.fn(),
+    markSucceeded: vi.fn(),
+  };
   const app = createApp({
-    automationRepository: {
-      findByAccountId: vi.fn(),
-      findEnabledByAccountAndMedia: vi.fn(),
-      saveAutomation: vi.fn(),
-    },
+    automationRepository,
+    executionRepository,
     database: { checkHealth: vi.fn() },
     instagramAuth: {
       appBaseUrl: 'https://app.example',
@@ -76,8 +86,9 @@ const createFixture = () => {
     },
     instagramMedia: { instagramMediaClient: { listRecentMedia: vi.fn() }, tokenProtector },
     instagramWebhook: {
-      accountRepository: { findByInstagramUserId: vi.fn() },
+      accountRepository,
       appSecret,
+      instagramCommentReplyClient,
       instagramWebhookClient,
       tokenProtector,
       verifyToken,
@@ -88,8 +99,12 @@ const createFixture = () => {
   });
   return {
     app,
+    accountRepository,
+    automationRepository,
     headers: { Cookie: `igauto_session=${sessionToken.token}` },
     instagramWebhookClient,
+    instagramCommentReplyClient,
+    executionRepository,
     logger,
   };
 };
@@ -121,11 +136,52 @@ describe('Instagram webhook routes', () => {
     });
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('EVENT_RECEIVED');
-    expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook accepted', {
+    expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
       commentEventCount: 1,
+      duplicateCount: 0,
+      failedCount: 0,
+      ignoredCount: 1,
+      succeededCount: 0,
     });
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('#Hello');
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('commenter');
+  });
+
+  it('processes one matching comment through the public reply boundary', async () => {
+    const f = createFixture();
+    f.accountRepository.findByInstagramUserId.mockResolvedValue(account);
+    f.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+      id: 'automation-id',
+      accountId: account.id,
+      mediaId: commentPayload.entry[0].changes[0].value.media.id,
+      triggerText: '#Hello',
+      replyText: 'Thanks for commenting!',
+      enabled: true,
+    });
+    f.executionRepository.claimExecution.mockResolvedValue({ id: 'execution-id' });
+    f.executionRepository.markSucceeded.mockResolvedValue({ id: 'execution-id' });
+    const body = JSON.stringify(commentPayload);
+
+    const response = await f.app.request('/api/webhooks/instagram', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': signature(body) },
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    expect(f.instagramCommentReplyClient.replyToComment).toHaveBeenCalledWith({
+      accessToken: 'private-access-token',
+      commentId: commentPayload.entry[0].changes[0].value.id,
+      message: 'Thanks for commenting!',
+    });
+    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith('execution-id');
+    expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
+      commentEventCount: 1,
+      duplicateCount: 0,
+      failedCount: 0,
+      ignoredCount: 0,
+      succeededCount: 1,
+    });
   });
 
   it('rejects unsigned, malformed, and invalid comment deliveries safely', async () => {

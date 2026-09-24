@@ -535,16 +535,16 @@ Tests:
 
 ## `ProcessComment` use case
 
-- [ ] Find account by Instagram ID
-- [ ] Find enabled automation for media ID
-- [ ] Stop if no automation
-- [ ] Exact-match text
-- [ ] Stop if not matched
-- [ ] Atomically claim execution
-- [ ] Stop if duplicate
-- [ ] Send public Instagram reply
-- [ ] Mark execution succeeded
-- [ ] Mark execution failed safely on error
+- [x] Find account by Instagram ID
+- [x] Find enabled automation for media ID
+- [x] Stop if no automation
+- [x] Exact-match text
+- [x] Stop if not matched
+- [x] Atomically claim execution
+- [x] Stop if duplicate
+- [x] Send public Instagram reply
+- [x] Mark execution succeeded
+- [x] Mark execution failed safely on error
 
 ## Idempotency
 
@@ -563,26 +563,26 @@ on conflict (instagram_comment_id) do nothing
 returning id;
 ```
 
-- [ ] Database uniqueness is authoritative
-- [ ] No in-memory-only duplicate protection
+- [x] Database uniqueness is authoritative
+- [x] No in-memory-only duplicate protection
 
 ## Instagram reply adapter
 
-- [ ] Add `InstagramClient.replyToComment(...)`
-- [ ] Implement current Meta public reply call
-- [ ] Keep Meta HTTP details inside infrastructure adapter
-- [ ] Sanitize Meta errors
+- [x] Add `InstagramClient.replyToComment(...)`
+- [x] Implement current Meta public reply call
+- [x] Keep Meta HTTP details inside infrastructure adapter
+- [x] Sanitize Meta errors
 
 ## Tests
 
-- [ ] unknown account → no reply
-- [ ] no automation → no reply
-- [ ] disabled automation → no reply
-- [ ] wrong media → no reply
-- [ ] wrong comment → no reply
-- [ ] correct comment → one reply
-- [ ] duplicate event → still one total reply
-- [ ] Meta failure → failed execution
+- [x] unknown account → no reply
+- [x] no automation → no reply
+- [x] disabled automation → no reply
+- [x] wrong media → no reply
+- [x] wrong comment → no reply
+- [x] correct comment → one reply
+- [x] duplicate event → still one total reply
+- [x] Meta failure → failed execution
 
 ## Done when
 

@@ -96,7 +96,9 @@ replacement for the provider's browser consent flow. Authentication responses an
 
 The webhook delivery endpoint is public only to Meta. It verifies the one-time challenge with
 `META_WEBHOOK_VERIFY_TOKEN` and validates every delivery with the `X-Hub-Signature-256` HMAC made
-from `META_APP_SECRET`. Do not use Swagger to submit webhook deliveries.
+from `META_APP_SECRET`. A valid comment is matched only when its trimmed text is exactly `#Hello`;
+the server atomically claims its comment ID before calling Meta's public-reply API. Do not use
+Swagger to submit webhook deliveries.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.

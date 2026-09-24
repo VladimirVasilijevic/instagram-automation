@@ -11,7 +11,7 @@ export const PrivacyPage = () => (
           Instagram Automation
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Privacy Policy</h1>
-        <p className="mt-4 text-sm text-slate-500">Last updated: September 22, 2026</p>
+        <p className="mt-4 text-sm text-slate-500">Last updated: September 23, 2026</p>
       </header>
 
       <div className="mt-8 space-y-8 leading-7 text-slate-700">
@@ -30,7 +30,10 @@ export const PrivacyPage = () => (
             <li>Instagram professional account ID and username provided through Meta login.</li>
             <li>An encrypted long-lived access token needed to call the Instagram API.</li>
             <li>Selected media IDs, automation settings, and configured reply text.</li>
-            <li>Comment webhook information such as account, media, comment, and receipt IDs.</li>
+            <li>
+              Comment webhook information such as account, media, and comment IDs, commenter
+              username, comment text, and receipt time.
+            </li>
             <li>Short-lived browser cookies used to protect login and application sessions.</li>
           </ul>
         </section>

@@ -2,7 +2,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import type { OpenAPIHono } from '@hono/zod-openapi';
 
-import type { AccountRepository } from '../database/repositories.js';
+import { processComment } from '../automation/process-comment.js';
+import type {
+  AccountRepository,
+  AutomationRepository,
+  ExecutionRepository,
+} from '../database/repositories.js';
+import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
 import type { InstagramWebhookClient } from '../instagram/webhook-client.js';
 import { InstagramWebhookError } from '../instagram/webhook-client.js';
 import { normalizeCommentEvents } from '../instagram/webhook-events.js';
@@ -18,10 +24,16 @@ import type { TokenProtector } from '../security/token-protector.js';
 export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDependencies {
   /** Resolves connected Instagram accounts during later event processing. */
   accountRepository: Pick<AccountRepository, 'findByInstagramUserId'>;
+  /** Resolves enabled automations for an owner and commented media item. */
+  automationRepository: Pick<AutomationRepository, 'findEnabledByAccountAndMedia'>;
   /** App Secret used solely to authenticate signed webhook delivery bodies. */
   appSecret: string;
   /** Provider client that enables comments delivery for the signed-in account. */
+  instagramCommentReplyClient: InstagramCommentReplyClient;
+  /** Provider client that enables comments delivery for the signed-in account. */
   instagramWebhookClient: InstagramWebhookClient;
+  /** Claims and completes idempotent comment processing records. */
+  executionRepository: Pick<ExecutionRepository, 'claimExecution' | 'markFailed' | 'markSucceeded'>;
   /** Receives safe lifecycle and rejection metadata. */
   logger: Logger;
   /** Decrypts the connected account token immediately before subscription. */
@@ -93,8 +105,17 @@ export const registerInstagramWebhookRoutes = (
       });
       return context.text('Bad Request', 400);
     }
-    dependencies.logger.info('Instagram webhook accepted', {
+    const outcomeCounts = { duplicateCount: 0, failedCount: 0, ignoredCount: 0, succeededCount: 0 };
+    for (const event of normalized.events) {
+      const result = await processComment(event, dependencies);
+      if (result.outcome === 'duplicate') outcomeCounts.duplicateCount += 1;
+      if (result.outcome === 'failed') outcomeCounts.failedCount += 1;
+      if (result.outcome === 'ignored') outcomeCounts.ignoredCount += 1;
+      if (result.outcome === 'succeeded') outcomeCounts.succeededCount += 1;
+    }
+    dependencies.logger.info('Instagram webhook processed', {
       commentEventCount: normalized.events.length,
+      ...outcomeCounts,
     });
     return context.text('EVENT_RECEIVED', 200);
   });

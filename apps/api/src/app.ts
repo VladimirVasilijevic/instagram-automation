@@ -3,7 +3,11 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 
 import type { DatabaseHealthChecker } from './database/database.js';
 import type { InstagramMediaClient } from './instagram/media-client.js';
-import type { AutomationRepository, SessionRepository } from './database/repositories.js';
+import type {
+  AutomationRepository,
+  ExecutionRepository,
+  SessionRepository,
+} from './database/repositories.js';
 import type { Logger } from './logging/logger.js';
 import { toSafeErrorContext } from './logging/logger.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -35,6 +39,8 @@ export interface InstagramMediaDependencies {
 export interface AppDependencies {
   /** Account-scoped automation persistence used by configuration routes. */
   automationRepository: AutomationRepository;
+  /** Idempotent comment-processing persistence used by webhook delivery. */
+  executionRepository: ExecutionRepository;
 
   /** Provider and persistence capabilities needed to connect an Instagram account. */
   instagramAuth: Omit<InstagramAuthDependencies, 'logger' | 'sessionCookie' | 'sessionRepository'>;
@@ -43,7 +49,11 @@ export interface AppDependencies {
   /** Public signed delivery and owner-authenticated comment-subscription capabilities. */
   instagramWebhook?: Omit<
     InstagramWebhookRouteDependencies,
-    'logger' | 'sessionCookie' | 'sessionRepository'
+    | 'automationRepository'
+    | 'executionRepository'
+    | 'logger'
+    | 'sessionCookie'
+    | 'sessionRepository'
   >;
   /** Database capability injected into routes that verify connectivity. */
   database: DatabaseHealthChecker;
@@ -139,6 +149,8 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   if (dependencies.instagramWebhook) {
     registerInstagramWebhookRoutes(app, {
       ...dependencies.instagramWebhook,
+      automationRepository: dependencies.automationRepository,
+      executionRepository: dependencies.executionRepository,
       logger: dependencies.logger,
       sessionCookie: dependencies.sessionCookie,
       sessionRepository: dependencies.sessionRepository,

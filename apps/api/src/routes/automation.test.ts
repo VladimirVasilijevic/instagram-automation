@@ -70,6 +70,12 @@ const createFixture = () => {
   const logger = { error: vi.fn(), info: vi.fn() };
   const app = createApp({
     automationRepository,
+    executionRepository: {
+      claimExecution: vi.fn(),
+      listRecentByAccountId: vi.fn(),
+      markFailed: vi.fn(),
+      markSucceeded: vi.fn(),
+    },
     database: { checkHealth: vi.fn() },
     instagramAuth: {
       appBaseUrl: 'https://app.example',

@@ -23,6 +23,12 @@ const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDep
     findEnabledByAccountAndMedia: vi.fn(),
     saveAutomation: vi.fn(),
   },
+  executionRepository: {
+    claimExecution: vi.fn(),
+    listRecentByAccountId: vi.fn(),
+    markFailed: vi.fn(),
+    markSucceeded: vi.fn(),
+  },
   instagramAuth: {
     appBaseUrl: 'https://app.example',
     redirectUri: 'https://app.example/api/auth/instagram/callback',

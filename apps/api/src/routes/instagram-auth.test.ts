@@ -73,6 +73,12 @@ const createFixture = () => {
       findEnabledByAccountAndMedia: vi.fn(),
       saveAutomation: vi.fn(),
     },
+    executionRepository: {
+      claimExecution: vi.fn(),
+      listRecentByAccountId: vi.fn(),
+      markFailed: vi.fn(),
+      markSucceeded: vi.fn(),
+    },
     database: { checkHealth: vi.fn() },
     logger,
     sessionCookie: { name: 'igauto_session', secure: true, ttlSeconds: 3600 },
