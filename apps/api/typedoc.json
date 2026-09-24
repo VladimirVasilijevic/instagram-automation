@@ -19,6 +19,7 @@
     "src/middleware/session.ts",
     "src/routes/auth.ts",
     "src/routes/automation.ts",
+    "src/routes/executions.ts",
     "src/routes/health.ts",
     "src/routes/instagram-auth.ts",
     "src/routes/instagram-webhook.ts",

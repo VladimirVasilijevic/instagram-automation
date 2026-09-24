@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { getCurrentAccount, logout, type CurrentAccount } from '../api/auth.js';
 import { AutomationEditor } from '../components/AutomationEditor.js';
+import { RecentActivity } from '../components/RecentActivity.js';
 import { WebhookSubscription } from '../components/WebhookSubscription.js';
 
 type AccountState =
@@ -134,6 +135,7 @@ export const AccountPage = () => {
               </p>
               <AutomationEditor />
               <WebhookSubscription />
+              <RecentActivity />
               {logoutError && (
                 <p role="alert" className="mt-4 text-sm text-red-800">
                   Logout could not be completed. Please try again.

@@ -4,7 +4,9 @@
     "src/App.tsx",
     "src/api/health.ts",
     "src/api/auth.ts",
+    "src/api/executions.ts",
     "src/components/StatusCard.tsx",
+    "src/components/RecentActivity.tsx",
     "src/pages/AccountPage.tsx",
     "src/pages/StatusPage.tsx"
   ],

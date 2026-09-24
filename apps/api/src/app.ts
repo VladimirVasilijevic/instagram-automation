@@ -12,6 +12,7 @@ import type { Logger } from './logging/logger.js';
 import { toSafeErrorContext } from './logging/logger.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAutomationRoutes } from './routes/automation.js';
+import { registerExecutionRoutes } from './routes/executions.js';
 import { registerHealthRoutes } from './routes/health.js';
 import {
   registerInstagramAuthRoutes,
@@ -97,6 +98,10 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     context.header('Cache-Control', 'no-store');
     await next();
   });
+  app.use('/api/executions', async (context, next) => {
+    context.header('Cache-Control', 'no-store');
+    await next();
+  });
 
   app.onError((error, context) => {
     dependencies.logger.error('Unhandled API error', toSafeErrorContext(error));
@@ -129,6 +134,12 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   registerAutomationRoutes(app, {
     automationRepository: dependencies.automationRepository,
     ...dependencies.instagramMedia,
+    logger: dependencies.logger,
+    sessionCookie: dependencies.sessionCookie,
+    sessionRepository: dependencies.sessionRepository,
+  });
+  registerExecutionRoutes(app, {
+    executionRepository: dependencies.executionRepository,
     logger: dependencies.logger,
     sessionCookie: dependencies.sessionCookie,
     sessionRepository: dependencies.sessionRepository,

@@ -88,6 +88,7 @@ Current documented operations:
 | GET    | `/api/webhooks/instagram`              | Meta verification query                     | Plaintext `200` challenge or `403`      |
 | POST   | `/api/webhooks/instagram`              | Signed Meta delivery                        | `200`, sanitized `400` or `401`         |
 | POST   | `/api/webhooks/instagram/subscription` | Session cookie                              | `204`, `401`, sanitized `502`           |
+| GET    | `/api/executions?limit=50`             | Session cookie                              | `200`, `400`, `401`, sanitized `503`    |
 
 Start OAuth through **Continue with Instagram** in the browser. Swagger request execution is not a
 replacement for the provider's browser consent flow. Authentication responses and `/api/me` use

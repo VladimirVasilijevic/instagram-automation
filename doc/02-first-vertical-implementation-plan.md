@@ -605,11 +605,11 @@ Show automation results to the owner.
 
 ## API
 
-- [ ] `GET /api/executions?limit=50`
-- [ ] Require authentication
-- [ ] Return only current account's executions
-- [ ] Newest first
-- [ ] Return safe error information
+- [x] `GET /api/executions?limit=50`
+- [x] Require authentication
+- [x] Return only current account's executions
+- [x] Newest first
+- [x] Return safe error information
 
 ## Frontend
 
@@ -623,12 +623,12 @@ Reply sent
 10:42
 ```
 
-- [ ] loading state
-- [ ] empty state
-- [ ] success state
-- [ ] failure state
-- [ ] mobile layout
-- [ ] desktop layout
+- [x] loading state
+- [x] empty state
+- [x] success state
+- [x] failure state
+- [x] mobile layout
+- [x] desktop layout
 
 ## Final acceptance test
 

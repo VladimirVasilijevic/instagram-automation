@@ -162,6 +162,9 @@ describe('API application', () => {
     expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('400');
     expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('502');
     expect(document.paths['/api/automation']?.put?.responses).toHaveProperty('503');
+    expect(document.paths['/api/executions']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/api/executions']?.get?.responses).toHaveProperty('401');
+    expect(document.paths['/api/executions']?.get?.responses).toHaveProperty('503');
   });
 
   it('serves Swagger UI configured with the OpenAPI document', async () => {
