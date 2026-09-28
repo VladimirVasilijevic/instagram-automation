@@ -15,7 +15,7 @@ const executionSchema = z.object({
   createdAt: z.string().datetime(),
   errorCode: z.string().nullable(),
   errorMessage: z.string().nullable(),
-  status: z.enum(['failed', 'processing', 'succeeded']),
+  status: z.enum(['failed', 'processing', 'retry_pending', 'succeeded', 'uncertain']),
 });
 const executionLimitSchema = z.coerce.number().int().min(1).max(50);
 const executionsRoute = createRoute({

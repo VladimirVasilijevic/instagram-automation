@@ -21,6 +21,10 @@ import {
 import { registerMeRoute } from './routes/me.js';
 import { registerMediaRoute } from './routes/media.js';
 import {
+  registerMaintenanceRoute,
+  type MaintenanceRouteDependencies,
+} from './routes/maintenance.js';
+import {
   registerInstagramWebhookRoutes,
   type InstagramWebhookRouteDependencies,
 } from './routes/instagram-webhook.js';
@@ -41,7 +45,16 @@ export interface AppDependencies {
   /** Account-scoped automation persistence used by configuration routes. */
   automationRepository: AutomationRepository;
   /** Idempotent comment-processing persistence used by webhook delivery. */
-  executionRepository: ExecutionRepository;
+  executionRepository: Pick<
+    ExecutionRepository,
+    | 'claimExecution'
+    | 'listRecentByAccountId'
+    | 'markDispatchStarted'
+    | 'markFailed'
+    | 'markRetryPending'
+    | 'markSucceeded'
+    | 'markUncertain'
+  >;
 
   /** Provider and persistence capabilities needed to connect an Instagram account. */
   instagramAuth: Omit<InstagramAuthDependencies, 'logger' | 'sessionCookie' | 'sessionRepository'>;
@@ -64,6 +77,9 @@ export interface AppDependencies {
 
   /** Server-side logger used by route and application error handlers. */
   logger: Logger;
+
+  /** Optional internal scheduled-maintenance endpoint. */
+  maintenance?: Omit<MaintenanceRouteDependencies, 'logger'>;
 
   /** Browser session-cookie settings shared by authentication handlers. */
   sessionCookie: SessionCookieConfig;
@@ -166,6 +182,9 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
       sessionCookie: dependencies.sessionCookie,
       sessionRepository: dependencies.sessionRepository,
     });
+  }
+  if (dependencies.maintenance) {
+    registerMaintenanceRoute(app, { ...dependencies.maintenance, logger: dependencies.logger });
   }
 
   if (dependencies.docsEnabled ?? true) {

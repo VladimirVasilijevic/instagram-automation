@@ -8,6 +8,8 @@ import { createInstagramCommentReplyClient } from './instagram/comment-reply-cli
 import { createInstagramLoginClient } from './instagram/login-client.js';
 import { createInstagramMediaClient } from './instagram/media-client.js';
 import { createInstagramWebhookClient } from './instagram/webhook-client.js';
+import { createInstagramTokenRefreshClient } from './instagram/token-refresh-client.js';
+import { runMaintenance } from './maintenance/run-maintenance.js';
 import { AesGcmTokenProtector } from './security/aes-gcm-token-protector.js';
 
 /** Application resources shared by the local server and the Vercel entry point. */
@@ -64,7 +66,22 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
         apiVersion: environment.META_API_VERSION,
       }),
       tokenProtector,
+      tokenRefreshRepository: database.tokenRefreshRepository,
       verifyToken: environment.META_WEBHOOK_VERIFY_TOKEN,
+    },
+    maintenance: {
+      cronSecret: environment.CRON_SECRET,
+      runMaintenance: () =>
+        runMaintenance({
+          executionRepository: database.executionRepository,
+          instagramCommentReplyClient: createInstagramCommentReplyClient({
+            apiVersion: environment.META_API_VERSION,
+          }),
+          instagramTokenRefreshClient: createInstagramTokenRefreshClient(),
+          logger,
+          tokenProtector,
+          tokenRefreshRepository: database.tokenRefreshRepository,
+        }),
     },
     database,
     docsEnabled: true,

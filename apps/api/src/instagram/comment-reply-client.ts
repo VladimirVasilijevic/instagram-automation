@@ -12,10 +12,16 @@ export interface ReplyToCommentInput {
   message: string;
 }
 
+/** Confirmed provider result from publishing one public comment reply. */
+export interface ReplyToCommentResult {
+  /** Opaque Meta identifier for the created reply. */
+  replyId: string;
+}
+
 /** Instagram boundary used to publish public replies to comments. */
 export interface InstagramCommentReplyClient {
   /** Publishes one public reply to the supplied Instagram comment. */
-  replyToComment(input: ReplyToCommentInput): Promise<void>;
+  replyToComment(input: ReplyToCommentInput): Promise<ReplyToCommentResult>;
 }
 
 /** Safe provider-failure metadata suitable for server logs. */
@@ -41,6 +47,25 @@ export class InstagramCommentReplyError extends Error {
   ) {
     super('Instagram comment reply failed', options);
     this.name = 'InstagramCommentReplyError';
+  }
+
+  /** Returns the conservative recovery decision without exposing provider content. */
+  recoveryKind(): 'authentication' | 'permanent' | 'retryable' | 'uncertain' {
+    if (this.diagnostics.reason !== 'http_error') return 'uncertain';
+    if (
+      this.diagnostics.httpStatus === 401 ||
+      this.diagnostics.httpStatus === 403 ||
+      this.diagnostics.metaErrorCode === 190
+    )
+      return 'authentication';
+    if (this.diagnostics.httpStatus === 429) return 'retryable';
+    if (
+      this.diagnostics.httpStatus &&
+      this.diagnostics.httpStatus >= 400 &&
+      this.diagnostics.httpStatus < 500
+    )
+      return 'permanent';
+    return 'uncertain';
   }
 
   /** Returns only application-selected diagnostic values. */
@@ -97,7 +122,7 @@ export const createInstagramCommentReplyClient = (
   config: InstagramCommentReplyConfig,
   fetcher: typeof fetch = fetch,
 ): InstagramCommentReplyClient => ({
-  async replyToComment({ accessToken, commentId, message }): Promise<void> {
+  async replyToComment({ accessToken, commentId, message }): Promise<{ replyId: string }> {
     const url = new URL(`https://graph.instagram.com/${config.apiVersion}/${commentId}/replies`);
     let httpStatus: number | undefined;
     try {
@@ -117,6 +142,11 @@ export const createInstagramCommentReplyClient = (
       try {
         payload = parseJson(text);
       } catch (error) {
+        if (!response.ok)
+          throw new InstagramCommentReplyError(
+            { reason: 'http_error', httpStatus },
+            { cause: error },
+          );
         throw new InstagramCommentReplyError(
           { reason: 'invalid_json', httpStatus },
           { cause: error },
@@ -132,6 +162,7 @@ export const createInstagramCommentReplyClient = (
       if (!responseSchema.safeParse(payload).success) {
         throw new InstagramCommentReplyError({ reason: 'invalid_response', httpStatus });
       }
+      return { replyId: responseSchema.parse(payload).id };
     } catch (error) {
       if (error instanceof InstagramCommentReplyError) throw error;
       throw new InstagramCommentReplyError(

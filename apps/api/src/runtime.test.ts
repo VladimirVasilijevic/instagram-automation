@@ -13,6 +13,7 @@ vi.mock('./database/database.js', () => ({
 
 const environment = {
   APP_BASE_URL: 'https://app.example',
+  CRON_SECRET: 'c'.repeat(32),
   META_APP_ID: '12345',
   META_APP_SECRET: 'test-secret',
   META_API_VERSION: 'v24.0',

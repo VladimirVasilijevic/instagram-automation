@@ -6,11 +6,15 @@ import { processComment } from './process-comment.js';
 
 const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 6).toString('base64'));
 const account: InstagramAccount = {
+  connectionStatus: 'active',
   id: 'account-id',
   instagramUserId: '17841400000000001',
   username: 'owner',
   accessTokenCiphertext: tokenProtector.encrypt('private-access-token'),
   tokenExpiresAt: new Date('2026-12-01T00:00:00.000Z'),
+  tokenRefreshFailureCode: null,
+  tokenRefreshLastSucceededAt: null,
+  tokenRefreshNextAttemptAt: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
 };
@@ -23,14 +27,21 @@ const event = {
   receivedAt: new Date('2026-09-23T12:00:00.000Z'),
 };
 const execution: Execution = {
+  attemptCount: 1,
   id: 'execution-id',
   automationId: 'automation-id',
   instagramCommentId: event.commentId,
   commenterUsername: event.username,
   commentText: event.text,
+  dispatchStartedAt: null,
   status: 'processing',
   errorCode: null,
   errorMessage: null,
+  failureKind: null,
+  leaseExpiresAt: new Date('2026-09-23T12:02:00.000Z'),
+  leaseId: 'lease-id',
+  nextAttemptAt: null,
+  providerReplyId: null,
   createdAt: event.receivedAt,
   updatedAt: event.receivedAt,
 };
@@ -50,12 +61,18 @@ const createFixture = () => {
     },
     executionRepository: {
       claimExecution: vi.fn().mockResolvedValue(execution),
+      markDispatchStarted: vi.fn().mockResolvedValue(true),
       markFailed: vi.fn().mockResolvedValue({ ...execution, status: 'failed' }),
+      markRetryPending: vi.fn().mockResolvedValue({ ...execution, status: 'retry_pending' }),
       markSucceeded: vi.fn().mockResolvedValue({ ...execution, status: 'succeeded' }),
+      markUncertain: vi.fn().mockResolvedValue({ ...execution, status: 'uncertain' }),
     },
-    instagramCommentReplyClient: { replyToComment: vi.fn().mockResolvedValue(undefined) },
+    instagramCommentReplyClient: {
+      replyToComment: vi.fn().mockResolvedValue({ replyId: 'reply-id' }),
+    },
     logger: { error: vi.fn(), info: vi.fn() },
     tokenProtector,
+    tokenRefreshRepository: { markAccountReconnectRequired: vi.fn().mockResolvedValue(true) },
   };
   return dependencies;
 };
@@ -87,6 +104,21 @@ describe('processComment', () => {
     }
   });
 
+  it('pauses new replies while the Instagram connection requires reconnection', async () => {
+    const f = createFixture();
+    f.accountRepository.findByInstagramUserId.mockResolvedValue({
+      ...account,
+      connectionStatus: 'reconnect_required',
+    });
+
+    await expect(processComment(event, f)).resolves.toEqual({
+      outcome: 'ignored',
+      reason: 'connection_inactive',
+    });
+    expect(f.automationRepository.findEnabledByAccountAndMedia).not.toHaveBeenCalled();
+    expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+  });
+
   it('claims, replies to, and completes one exact trigger match', async () => {
     const f = createFixture();
 
@@ -98,13 +130,18 @@ describe('processComment', () => {
       commenterUsername: event.username,
       commentText: ' #Hello ',
       instagramCommentId: event.commentId,
+      leaseExpiresAt: expect.any(Date),
     });
     expect(f.instagramCommentReplyClient.replyToComment).toHaveBeenCalledWith({
       accessToken: 'private-access-token',
       commentId: event.commentId,
       message: 'Thanks for commenting!',
     });
-    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith(execution.id);
+    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith(
+      execution.id,
+      execution.leaseId,
+      'reply-id',
+    );
   });
 
   it('stops a duplicate before calling Meta', async () => {
@@ -122,10 +159,15 @@ describe('processComment', () => {
     );
 
     await expect(processComment(event, f)).resolves.toEqual({ outcome: 'failed' });
-    expect(f.executionRepository.markFailed).toHaveBeenCalledWith(execution.id, {
-      errorCode: 'INSTAGRAM_REPLY_UNAVAILABLE',
-      errorMessage: 'The public reply could not be sent.',
-    });
+    expect(f.executionRepository.markUncertain).toHaveBeenCalledWith(
+      execution.id,
+      execution.leaseId,
+      {
+        errorCode: 'DELIVERY_OUTCOME_UNKNOWN',
+        errorMessage: 'Delivery requires manual review to prevent a duplicate reply.',
+        failureKind: 'uncertain',
+      },
+    );
     expect(JSON.stringify(f.logger.error.mock.calls)).not.toContain(event.text);
     expect(JSON.stringify(f.logger.error.mock.calls)).not.toContain('private provider detail');
   });

@@ -8,12 +8,14 @@ import {
   createPostgresAutomationRepository,
   createPostgresExecutionRepository,
   createPostgresSessionRepository,
+  createPostgresTokenRefreshRepository,
 } from './postgres-repositories.js';
 import type {
   AccountRepository,
   AutomationRepository,
   ExecutionRepository,
   SessionRepository,
+  TokenRefreshRepository,
 } from './repositories.js';
 
 /** Minimal database capability required by an API health check. */
@@ -44,6 +46,9 @@ export interface Database extends DatabaseHealthChecker {
 
   /** PostgreSQL-backed execution and recent-activity persistence. */
   executionRepository: ExecutionRepository;
+
+  /** PostgreSQL-backed expiring-token maintenance persistence. */
+  tokenRefreshRepository: TokenRefreshRepository;
 }
 
 /**
@@ -72,5 +77,6 @@ export const createDatabase = (connectionString: string): Database => {
     },
     executionRepository: createPostgresExecutionRepository(sql),
     sessionRepository: createPostgresSessionRepository(sql),
+    tokenRefreshRepository: createPostgresTokenRefreshRepository(sql),
   };
 };

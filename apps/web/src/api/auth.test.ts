@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getCurrentAccount, logout } from './auth.js';
 
 afterEach(() => vi.unstubAllGlobals());
-const account = { id: 'account-id', instagramUserId: '17841400000000001', username: 'example' };
+const account = {
+  connectionStatus: 'active',
+  id: 'account-id',
+  instagramUserId: '17841400000000001',
+  username: 'example',
+};
 
 describe('account API client', () => {
   it('returns only safe identity fields using same-origin credentials and no cache', async () => {
@@ -28,6 +33,7 @@ describe('account API client', () => {
     { account: null },
     { account: { ...account, username: '' } },
     { account: { ...account, instagramUserId: 123 } },
+    { account: { ...account, connectionStatus: 'private' } },
   ])('rejects invalid account data', async (payload) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
     await expect(getCurrentAccount()).rejects.toThrow('invalid response');

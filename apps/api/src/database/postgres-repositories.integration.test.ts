@@ -262,6 +262,7 @@ describeDatabase('PostgreSQL repositories', () => {
           commenterUsername: 'first_commenter',
           commentText: '#Hello',
           instagramCommentId: firstCommentId,
+          leaseExpiresAt: new Date(Date.now() + 120_000),
         });
 
         expect(firstExecution).toMatchObject({
@@ -279,6 +280,7 @@ describeDatabase('PostgreSQL repositories', () => {
             commenterUsername: 'duplicate_commenter',
             commentText: '#Hello',
             instagramCommentId: firstCommentId,
+            leaseExpiresAt: new Date(Date.now() + 120_000),
           }),
         ).resolves.toBeNull();
 
@@ -286,7 +288,11 @@ describeDatabase('PostgreSQL repositories', () => {
           throw new Error('First execution claim unexpectedly returned null');
         }
 
-        const succeededExecution = await executionRepository.markSucceeded(firstExecution.id);
+        const succeededExecution = await executionRepository.markSucceeded(
+          firstExecution.id,
+          firstExecution.leaseId!,
+          'reply-first',
+        );
 
         expect(succeededExecution).toMatchObject({
           errorCode: null,
@@ -294,11 +300,18 @@ describeDatabase('PostgreSQL repositories', () => {
           id: firstExecution.id,
           status: 'succeeded',
         });
-        await expect(executionRepository.markSucceeded(firstExecution.id)).resolves.toBeNull();
         await expect(
-          executionRepository.markFailed(firstExecution.id, {
+          executionRepository.markSucceeded(
+            firstExecution.id,
+            firstExecution.leaseId!,
+            'reply-first',
+          ),
+        ).resolves.toBeNull();
+        await expect(
+          executionRepository.markFailed(firstExecution.id, firstExecution.leaseId!, {
             errorCode: 'provider_rejected',
             errorMessage: 'The provider rejected the reply.',
+            failureKind: 'permanent',
           }),
         ).resolves.toBeNull();
 
@@ -307,6 +320,7 @@ describeDatabase('PostgreSQL repositories', () => {
           commenterUsername: null,
           commentText: '#Hello',
           instagramCommentId: secondCommentId,
+          leaseExpiresAt: new Date(Date.now() + 120_000),
         });
 
         if (!secondExecution) {
@@ -314,16 +328,22 @@ describeDatabase('PostgreSQL repositories', () => {
         }
 
         await expect(
-          executionRepository.markFailed(secondExecution.id, {
+          executionRepository.markFailed(secondExecution.id, secondExecution.leaseId!, {
             errorCode: ' ',
             errorMessage: 'Safe message',
+            failureKind: 'permanent',
           }),
         ).rejects.toThrow(TypeError);
 
-        const failedExecution = await executionRepository.markFailed(secondExecution.id, {
-          errorCode: 'provider_unavailable',
-          errorMessage: 'The reply provider is temporarily unavailable.',
-        });
+        const failedExecution = await executionRepository.markFailed(
+          secondExecution.id,
+          secondExecution.leaseId!,
+          {
+            errorCode: 'provider_unavailable',
+            errorMessage: 'The reply provider is temporarily unavailable.',
+            failureKind: 'permanent',
+          },
+        );
 
         expect(failedExecution).toMatchObject({
           errorCode: 'provider_unavailable',
@@ -331,13 +351,20 @@ describeDatabase('PostgreSQL repositories', () => {
           id: secondExecution.id,
           status: 'failed',
         });
-        await expect(executionRepository.markSucceeded(secondExecution.id)).resolves.toBeNull();
+        await expect(
+          executionRepository.markSucceeded(
+            secondExecution.id,
+            secondExecution.leaseId!,
+            'reply-second',
+          ),
+        ).resolves.toBeNull();
 
         const otherExecution = await executionRepository.claimExecution({
           automationId: otherAutomation.id,
           commenterUsername: 'other_commenter',
           commentText: '#Hello',
           instagramCommentId: otherCommentId,
+          leaseExpiresAt: new Date(Date.now() + 120_000),
         });
 
         if (!otherExecution) {

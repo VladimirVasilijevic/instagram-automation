@@ -5,6 +5,7 @@ import { parseEnvironment } from './environment.js';
 const tokenEncryptionKey = Buffer.alloc(32, 1).toString('base64');
 const requiredEnvironment = {
   APP_BASE_URL: 'https://app.example',
+  CRON_SECRET: 'c'.repeat(32),
   META_APP_ID: '12345',
   META_APP_SECRET: 'test-secret',
   META_API_VERSION: 'v24.0',
@@ -19,6 +20,7 @@ const requiredEnvironment = {
 describe('parseEnvironment', () => {
   it.each([
     'APP_BASE_URL',
+    'CRON_SECRET',
     'META_APP_ID',
     'META_APP_SECRET',
     'META_API_VERSION',
@@ -32,6 +34,7 @@ describe('parseEnvironment', () => {
     ['APP_BASE_URL', 'https://app.example/path'],
     ['APP_BASE_URL', 'javascript:alert(1)'],
     ['APP_BASE_URL', 'https://user:password@app.example'],
+    ['CRON_SECRET', 'too-short'],
     ['META_REDIRECT_URI', 'https://app.example/callback'],
     ['META_REDIRECT_URI', 'https://app.example/api/auth/instagram/callback?extra=value'],
     ['META_REDIRECT_URI', 'https://app.example/api/auth/instagram/callback#fragment'],

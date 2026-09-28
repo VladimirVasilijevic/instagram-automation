@@ -11,11 +11,15 @@ const appSecret = 'test-app-secret';
 const verifyToken = 'test-webhook-token';
 const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 9).toString('base64'));
 const account: InstagramAccount = {
+  connectionStatus: 'active',
   id: 'account-id',
   instagramUserId: '17841400000000001',
   username: 'example',
   accessTokenCiphertext: tokenProtector.encrypt('private-access-token'),
   tokenExpiresAt: new Date('2026-12-01T00:00:00.000Z'),
+  tokenRefreshFailureCode: null,
+  tokenRefreshLastSucceededAt: null,
+  tokenRefreshNextAttemptAt: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
 };
@@ -65,12 +69,17 @@ const createFixture = () => {
     saveAutomation: vi.fn(),
   };
   const instagramWebhookClient = { subscribeToComments: vi.fn().mockResolvedValue(undefined) };
-  const instagramCommentReplyClient = { replyToComment: vi.fn().mockResolvedValue(undefined) };
+  const instagramCommentReplyClient = {
+    replyToComment: vi.fn().mockResolvedValue({ replyId: 'reply-id' }),
+  };
   const executionRepository = {
     claimExecution: vi.fn().mockResolvedValue(null),
     listRecentByAccountId: vi.fn(),
+    markDispatchStarted: vi.fn(),
     markFailed: vi.fn(),
+    markRetryPending: vi.fn(),
     markSucceeded: vi.fn(),
+    markUncertain: vi.fn(),
   };
   const app = createApp({
     automationRepository,
@@ -91,6 +100,7 @@ const createFixture = () => {
       instagramCommentReplyClient,
       instagramWebhookClient,
       tokenProtector,
+      tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
       verifyToken,
     },
     logger,
@@ -158,7 +168,12 @@ describe('Instagram webhook routes', () => {
       replyText: 'Thanks for commenting!',
       enabled: true,
     });
-    f.executionRepository.claimExecution.mockResolvedValue({ id: 'execution-id' });
+    f.executionRepository.claimExecution.mockResolvedValue({
+      attemptCount: 1,
+      id: 'execution-id',
+      leaseId: 'lease-id',
+    });
+    f.executionRepository.markDispatchStarted.mockResolvedValue(true);
     f.executionRepository.markSucceeded.mockResolvedValue({ id: 'execution-id' });
     const body = JSON.stringify(commentPayload);
 
@@ -174,7 +189,11 @@ describe('Instagram webhook routes', () => {
       commentId: commentPayload.entry[0].changes[0].value.id,
       message: 'Thanks for commenting!',
     });
-    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith('execution-id');
+    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith(
+      'execution-id',
+      'lease-id',
+      'reply-id',
+    );
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
       commentEventCount: 1,
       duplicateCount: 0,

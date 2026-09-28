@@ -13,11 +13,15 @@ const createFixture = () => {
   const sessions = new Map<string, Session>();
   const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 5).toString('base64'));
   const account: InstagramAccount = {
+    connectionStatus: 'active',
     id: 'e9e90c93-1843-43d1-91d8-9ef894c26f4f',
     instagramUserId: '17841400000000001',
     username: 'example',
     accessTokenCiphertext: tokenProtector.encrypt('private-instagram-token'),
     tokenExpiresAt: new Date(Date.now() + 5_184_000_000),
+    tokenRefreshFailureCode: null,
+    tokenRefreshLastSucceededAt: null,
+    tokenRefreshNextAttemptAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -76,8 +80,11 @@ const createFixture = () => {
     executionRepository: {
       claimExecution: vi.fn(),
       listRecentByAccountId: vi.fn(),
+      markDispatchStarted: vi.fn(),
       markFailed: vi.fn(),
+      markRetryPending: vi.fn(),
       markSucceeded: vi.fn(),
+      markUncertain: vi.fn(),
     },
     database: { checkHealth: vi.fn() },
     logger,
@@ -166,6 +173,7 @@ describe('Instagram browser login', () => {
       expect(me.headers.get('cache-control')).toBe('no-store');
       await expect(me.json()).resolves.toEqual({
         account: {
+          connectionStatus: 'active',
           id: f.account.id,
           instagramUserId: f.account.instagramUserId,
           username: f.account.username,

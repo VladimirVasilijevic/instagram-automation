@@ -145,6 +145,7 @@ The Node.js backend will be responsible for:
 - encrypted Instagram access-token storage;
 - matching automation rules;
 - sending replies through the Meta API.
+- refreshing Instagram tokens and recovering safe reply attempts through scheduled maintenance.
 
 The backend uses Hono with OpenAPI-aware route definitions. Zod schemas describe HTTP contracts, and
 Postgres.js provides runtime database access. Swagger UI is available through the same-origin API
@@ -206,9 +207,18 @@ cannot authenticate even if its row has not been cleaned up.
 Automation persistence allows one configuration per account and always writes the first vertical
 slice's fixed `#Hello` trigger itself. Enabled lookups require both the owning account and selected
 media identifier. Execution persistence atomically claims an Instagram comment with
-`ON CONFLICT DO NOTHING`, permits only `processing` to terminal state transitions, and exposes
-recent activity through an account ownership join. Activity limits must be integers from 1 through
-50, and failure values must already be non-empty and sanitized before they reach the repository.
+`ON CONFLICT DO NOTHING`, leases each processing attempt, records the provider-dispatch boundary,
+and exposes recent activity through an account ownership join. Only explicit pre-delivery provider
+rejections such as rate limiting are eligible for a controlled retry, with at most three total
+attempts. A timeout, network failure, malformed success response, or stale execution that crossed
+the dispatch boundary becomes `uncertain` and is never retried automatically, preventing duplicate
+public replies. Activity limits must be integers from 1 through 50, and failure values must already
+be non-empty and sanitized before they reach the repository.
+
+Account persistence leases tokens that expire within seven days for refresh. Temporary refresh
+failures back off for one hour; expired, rejected, or undecryptable credentials mark the connection
+as `reconnect_required`. Reconnecting through Instagram replaces the credential and restores the
+active state.
 
 ### Application sessions
 
@@ -450,6 +460,7 @@ Current variable responsibilities:
 | `SESSION_COOKIE_NAME`       | Application session-cookie name         |                Yes |
 | `SESSION_TTL_SECONDS`       | Session lifetime, at most one year      |                Yes |
 | `TOKEN_ENCRYPTION_KEY`      | Encrypts stored Instagram access tokens |  Generated locally |
+| `CRON_SECRET`               | Authenticates scheduled maintenance     |  Generated locally |
 
 Never paste secret values into documentation, issues, commits, screenshots, or chat logs.
 
@@ -507,6 +518,64 @@ Both commands should return `1`.
 
 Do not print either database URL because it contains the database password.
 
+## Configure scheduled reliability maintenance
+
+Do this only after the reliability migration and API deployment are complete. Supabase Cron invokes
+one bounded maintenance pass every 15 minutes; it does not run reply delivery inside PostgreSQL.
+
+1. In **Database → Extensions**, enable `pg_cron` and `pg_net` if they are not already enabled.
+2. Generate one random secret of at least 32 characters. Store the same value as `CRON_SECRET` in
+   Vercel Production and in Supabase Vault. Never paste it into tracked files.
+3. In the Supabase SQL editor, replace only the placeholder in the first statement and run:
+
+```sql
+select vault.create_secret(
+  '<same random value configured as CRON_SECRET in Vercel>',
+  'instagram_maintenance_cron_secret'
+);
+
+select cron.schedule(
+  'instagram-reliability-maintenance',
+  '*/15 * * * *',
+  $job$
+  select net.http_post(
+    url := 'https://instagram-automation-henna-phi.vercel.app/api/internal/maintenance',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (
+        select decrypted_secret
+        from vault.decrypted_secrets
+        where name = 'instagram_maintenance_cron_secret'
+      )
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 10000
+  );
+  $job$
+);
+```
+
+The schedule stores only the Vault lookup, not the credential itself. Confirm the job and recent
+runs without selecting decrypted secrets:
+
+```sql
+select jobid, jobname, schedule, active
+from cron.job
+where jobname = 'instagram-reliability-maintenance';
+
+select status, start_time, end_time, return_message
+from cron.job_run_details
+where jobid = (
+  select jobid from cron.job where jobname = 'instagram-reliability-maintenance'
+)
+order by start_time desc
+limit 10;
+```
+
+To remove or replace the schedule, first resolve its numeric `jobid`, then call
+`select cron.unschedule(<jobid>);`. Supabase Free projects can pause after inactivity; while a
+project is paused, Cron, token refresh, and reply recovery do not run.
+
 ---
 
 # 9. Vercel setup
@@ -540,6 +609,7 @@ where login started. Use the stable production domain for the first real login t
 | `META_APP_SECRET`      | Instagram App Secret from Instagram Login settings              | Sensitive   |
 | `META_API_VERSION`     | `v24.0`, retained from the existing configuration               | Config      |
 | `META_REDIRECT_URI`    | Exact registered same-origin `/api/auth/instagram/callback` URL | Config      |
+| `CRON_SECRET`          | Same random value stored in Supabase Vault                      | Sensitive   |
 
 Do not add `DATABASE_MIGRATION_URL` to the deployed runtime and do not expose any of these values to
 the Vite frontend. Do not commit downloaded Vercel environment files. The `.vercel/` directory is

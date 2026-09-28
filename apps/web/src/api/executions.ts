@@ -11,7 +11,7 @@ export interface ExecutionActivity {
   /** Safe app-owned failure description, when processing failed. */
   errorMessage: string | null;
   /** Current processing result. */
-  status: 'failed' | 'processing' | 'succeeded';
+  status: 'failed' | 'processing' | 'retry_pending' | 'succeeded' | 'uncertain';
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -28,7 +28,9 @@ const readExecution = (value: unknown): ExecutionActivity => {
     !Number.isFinite(Date.parse(value.createdAt)) ||
     !isNullableString(value.errorCode) ||
     !isNullableString(value.errorMessage) ||
-    !['failed', 'processing', 'succeeded'].includes(String(value.status))
+    !['failed', 'processing', 'retry_pending', 'succeeded', 'uncertain'].includes(
+      String(value.status),
+    )
   ) {
     throw new Error('Invalid activity');
   }

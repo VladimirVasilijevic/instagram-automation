@@ -12,12 +12,16 @@ const buttonStyle =
 const statusStyle: Record<ExecutionActivity['status'], string> = {
   failed: 'bg-red-50 text-red-800',
   processing: 'bg-amber-50 text-amber-900',
+  retry_pending: 'bg-blue-50 text-blue-900',
   succeeded: 'bg-emerald-50 text-emerald-800',
+  uncertain: 'bg-orange-50 text-orange-900',
 };
 const statusText: Record<ExecutionActivity['status'], string> = {
   failed: 'Failed',
   processing: 'Processing',
+  retry_pending: 'Retry scheduled',
   succeeded: 'Succeeded',
+  uncertain: 'Review needed',
 };
 
 const formatTimestamp = (createdAt: string): string =>
@@ -106,6 +110,11 @@ export const RecentActivity = () => {
                 <p className="mt-1 text-sm text-slate-600">
                   {execution.status === 'succeeded' && 'Reply sent'}
                   {execution.status === 'processing' && 'Reply is being processed'}
+                  {execution.status === 'retry_pending' &&
+                    (execution.errorMessage ?? 'A controlled retry is scheduled.')}
+                  {execution.status === 'uncertain' &&
+                    (execution.errorMessage ??
+                      'Delivery was not retried because it may create a duplicate reply.')}
                   {execution.status === 'failed' &&
                     (execution.errorMessage ?? 'The public reply could not be sent.')}
                 </p>

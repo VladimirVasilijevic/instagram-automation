@@ -678,6 +678,61 @@ Reply sent
 
 ---
 
+# Milestone 8 — Reliability maintenance
+
+## Goal
+
+Keep the completed automation reliable without adding a queue or paid Vercel scheduler.
+
+## Backend and database
+
+- [x] Refresh active Instagram tokens that expire within seven days
+- [x] Mark expired or provider-rejected connections as requiring reconnection
+- [x] Protect maintenance with a separate `CRON_SECRET`
+- [x] Lease maintenance work so overlapping scheduler calls cannot own the same attempt
+- [x] Detect executions abandoned before or after provider dispatch
+- [x] Retry only explicit safe failures, with at most three total attempts
+- [x] Mark ambiguous delivery outcomes `uncertain` instead of risking a duplicate reply
+- [x] Persist the confirmed Meta reply ID after success
+- [x] Return safe aggregate maintenance counts and write safe Vercel logs
+
+## Owner experience
+
+- [x] Show `Retry scheduled` and `Review needed` activity states
+- [x] Show a reconnect warning and Instagram reconnect action
+- [x] Keep provider messages, credentials, and response bodies out of the browser and logs
+
+## Production activation
+
+- [ ] Apply `0003_reliability.sql`
+- [ ] Configure the same random `CRON_SECRET` in Vercel Production and Supabase Vault
+- [ ] Deploy the updated API and web application
+- [ ] Schedule Supabase Cron to call `POST /api/internal/maintenance` every 15 minutes
+- [ ] Confirm one successful Cron run and safe aggregate Vercel log entry
+- [ ] Complete the manual acceptance tests below
+
+## Manual acceptance tests
+
+1. Send a normal `#Hello` comment and confirm one reply plus `Succeeded` activity.
+2. Run the protected maintenance endpoint and confirm it returns only numeric aggregate counts.
+3. Run two maintenance requests close together and confirm leased work is not processed twice.
+4. Confirm an account marked `reconnect_required` displays the reconnect warning.
+5. Confirm an `uncertain` execution displays `Review needed` and is not claimed by later runs.
+6. Confirm the Cron history and Vercel logs contain no tokens, reply text, or provider response
+   body.
+
+## Done when
+
+```text
+✓ tokens refresh before expiry
+✓ expired or rejected credentials request reconnection
+✓ abandoned safe work recovers automatically
+✓ ambiguous delivery never creates an automatic duplicate
+✓ failures are visible in-app and in safe Vercel logs
+```
+
+---
+
 # Milestone summary
 
 | Milestone | Result                                         |
@@ -690,6 +745,7 @@ Reply sent
 | M5        | Real comment webhook reaches backend           |
 | M6        | `#Hello` produces real public reply            |
 | M7        | Activity shows result; vertical slice complete |
+| M8        | Tokens and reply delivery recover safely       |
 
 ---
 

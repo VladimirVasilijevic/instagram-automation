@@ -5,6 +5,9 @@ export interface Environment {
   /** Public frontend origin used for fixed login success and failure redirects. */
   APP_BASE_URL: string;
 
+  /** Bearer secret required by the Supabase Cron maintenance request. */
+  CRON_SECRET: string;
+
   /** Instagram Login client ID from the Instagram product settings. */
   META_APP_ID: string;
 
@@ -64,6 +67,7 @@ const environmentSchema: z.ZodType<Environment> = z
       (value) => URL.canParse(value) && new URL(value).pathname === '/',
       'Must be a site origin',
     ),
+    CRON_SECRET: z.string().trim().min(32, 'CRON_SECRET must contain at least 32 characters'),
     META_APP_ID: z.string().trim().regex(/^\d+$/, 'Must be a numeric Instagram app ID'),
     META_APP_SECRET: z.string().trim().min(1, 'META_APP_SECRET is required'),
     META_API_VERSION: z

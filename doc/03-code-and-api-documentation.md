@@ -90,6 +90,11 @@ Current documented operations:
 | POST   | `/api/webhooks/instagram/subscription` | Session cookie                              | `204`, `401`, sanitized `502`           |
 | GET    | `/api/executions?limit=50`             | Session cookie                              | `200`, `400`, `401`, sanitized `503`    |
 
+`POST /api/internal/maintenance` is deliberately excluded from Swagger/OpenAPI. It is a private
+machine endpoint authenticated by the separate `CRON_SECRET`, called only by Supabase Cron, and
+returns safe aggregate counts. It must not be invoked from a browser or exposed as an interactive
+operation.
+
 Start OAuth through **Continue with Instagram** in the browser. Swagger request execution is not a
 replacement for the provider's browser consent flow. Authentication responses and `/api/me` use
 `Cache-Control: no-store`; callback responses also suppress referrers. See the
@@ -98,8 +103,10 @@ replacement for the provider's browser consent flow. Authentication responses an
 The webhook delivery endpoint is public only to Meta. It verifies the one-time challenge with
 `META_WEBHOOK_VERIFY_TOKEN` and validates every delivery with the `X-Hub-Signature-256` HMAC made
 from `META_APP_SECRET`. A valid comment is matched only when its trimmed text is exactly `#Hello`;
-the server atomically claims its comment ID before calling Meta's public-reply API. Do not use
-Swagger to submit webhook deliveries.
+the server atomically claims its comment ID and records a dispatch boundary before calling Meta's
+public-reply API. Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous
+outcomes are left for manual review to prevent duplicate public replies. Do not use Swagger to
+submit webhook deliveries.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.

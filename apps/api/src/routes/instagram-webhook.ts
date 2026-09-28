@@ -7,6 +7,7 @@ import type {
   AccountRepository,
   AutomationRepository,
   ExecutionRepository,
+  TokenRefreshRepository,
 } from '../database/repositories.js';
 import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
 import type { InstagramWebhookClient } from '../instagram/webhook-client.js';
@@ -33,11 +34,21 @@ export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDepe
   /** Provider client that enables comments delivery for the signed-in account. */
   instagramWebhookClient: InstagramWebhookClient;
   /** Claims and completes idempotent comment processing records. */
-  executionRepository: Pick<ExecutionRepository, 'claimExecution' | 'markFailed' | 'markSucceeded'>;
+  executionRepository: Pick<
+    ExecutionRepository,
+    | 'claimExecution'
+    | 'markDispatchStarted'
+    | 'markFailed'
+    | 'markRetryPending'
+    | 'markSucceeded'
+    | 'markUncertain'
+  >;
   /** Receives safe lifecycle and rejection metadata. */
   logger: Logger;
   /** Decrypts the connected account token immediately before subscription. */
   tokenProtector: TokenProtector;
+  /** Records account reconnection state after an authentication rejection. */
+  tokenRefreshRepository: Pick<TokenRefreshRepository, 'markAccountReconnectRequired'>;
   /** Shared value Meta presents during the one-time callback handshake. */
   verifyToken: string;
 }

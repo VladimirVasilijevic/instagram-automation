@@ -20,6 +20,7 @@ const meRoute = createRoute({
             account: z.object({
               id: z.string().uuid(),
               instagramUserId: z.string(),
+              connectionStatus: z.enum(['active', 'reconnect_required']),
               username: z.string(),
             }),
           }),
@@ -50,6 +51,7 @@ export const registerMeRoute = (
         account: {
           id: account.id,
           instagramUserId: account.instagramUserId,
+          connectionStatus: account.connectionStatus,
           username: account.username,
         },
       },

@@ -123,8 +123,14 @@ export const AccountPage = () => {
           )}
           {state.status === 'connected' && (
             <>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800">
-                Connected
+              <span
+                className={`rounded-full px-3 py-1 text-sm font-medium ${
+                  state.account.connectionStatus === 'active'
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : 'bg-amber-50 text-amber-900'
+                }`}
+              >
+                {state.account.connectionStatus === 'active' ? 'Connected' : 'Reconnect required'}
               </span>
               <h2 className="mt-5 text-xl font-semibold break-words text-slate-950">
                 Connected as @{state.account.username}
@@ -133,6 +139,20 @@ export const AccountPage = () => {
                 Your Instagram account is connected. Choose a post and configure its reply, then
                 enable comment delivery.
               </p>
+              {state.account.connectionStatus === 'reconnect_required' && (
+                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                  <p role="alert" className="font-semibold">
+                    Reconnect Instagram
+                  </p>
+                  <p className="mt-2 text-sm leading-6">
+                    Instagram rejected or expired this connection. Automation is paused until you
+                    reconnect.
+                  </p>
+                  <a className={`${buttonStyle} mt-4`} href="/api/auth/instagram/start">
+                    Reconnect Instagram
+                  </a>
+                </div>
+              )}
               <AutomationEditor />
               <WebhookSubscription />
               <RecentActivity />

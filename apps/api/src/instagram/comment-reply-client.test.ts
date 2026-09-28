@@ -32,7 +32,7 @@ describe('Instagram comment-reply HTTP adapter', () => {
 
     await expect(
       createInstagramCommentReplyClient(config, fetcher).replyToComment(input),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ replyId: '17841400000000002' });
 
     const [url, request] = fetcher.mock.calls[0]!;
     expect(String(url)).toBe('https://graph.instagram.com/v24.0/17841400000000001/replies');
@@ -54,7 +54,7 @@ describe('Instagram comment-reply HTTP adapter', () => {
 
     await expect(
       createInstagramCommentReplyClient(config, fetcher).replyToComment(input),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ replyId: '17841400000000002' });
   });
 
   it('reports safe Meta diagnostics without response content', async () => {

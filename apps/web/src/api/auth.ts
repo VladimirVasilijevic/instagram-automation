@@ -1,5 +1,7 @@
 /** Safe account identity returned by the application's authenticated endpoint. */
 export interface CurrentAccount {
+  /** Whether automation can use the current Instagram credential. */
+  connectionStatus: 'active' | 'reconnect_required';
   /** Internal application account ID. */
   id: string;
   /** Instagram professional account ID. */
@@ -42,16 +44,23 @@ export const getCurrentAccount = async (signal?: AbortSignal): Promise<CurrentAc
       typeof account !== 'object' ||
       !('id' in account) ||
       !('instagramUserId' in account) ||
+      !('connectionStatus' in account) ||
       !('username' in account) ||
       typeof account.id !== 'string' ||
       !account.id ||
       typeof account.instagramUserId !== 'string' ||
       !account.instagramUserId ||
+      !['active', 'reconnect_required'].includes(String(account.connectionStatus)) ||
       typeof account.username !== 'string' ||
       !account.username.trim()
     )
       throw new Error('Invalid account');
-    return { id: account.id, instagramUserId: account.instagramUserId, username: account.username };
+    return {
+      connectionStatus: account.connectionStatus as CurrentAccount['connectionStatus'],
+      id: account.id,
+      instagramUserId: account.instagramUserId,
+      username: account.username,
+    };
   } catch (error) {
     throw new Error('Account service returned an invalid response. Please try again.', {
       cause: error,

@@ -49,4 +49,31 @@ describe('RecentActivity', () => {
     await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
     expect(screen.getByText('The public reply could not be sent.')).toBeInTheDocument();
   });
+
+  it('explains scheduled retries and ambiguous deliveries without provider details', async () => {
+    vi.mocked(getRecentExecutions).mockResolvedValue([
+      {
+        commenterUsername: 'retry_user',
+        commentText: '#Hello',
+        createdAt: '2026-09-24T12:00:00.000Z',
+        errorCode: 'INSTAGRAM_REPLY_RETRY_SCHEDULED',
+        errorMessage: 'Instagram temporarily rejected the reply. A controlled retry is scheduled.',
+        status: 'retry_pending',
+      },
+      {
+        commenterUsername: 'review_user',
+        commentText: '#Hello',
+        createdAt: '2026-09-24T12:01:00.000Z',
+        errorCode: 'DELIVERY_OUTCOME_UNKNOWN',
+        errorMessage: 'Delivery requires manual review to prevent a duplicate reply.',
+        status: 'uncertain',
+      },
+    ]);
+
+    render(<RecentActivity />);
+
+    expect(await screen.findByText('Retry scheduled')).toBeInTheDocument();
+    expect(screen.getByText('Review needed')).toBeInTheDocument();
+    expect(screen.getByText(/manual review to prevent a duplicate reply/)).toBeInTheDocument();
+  });
 });

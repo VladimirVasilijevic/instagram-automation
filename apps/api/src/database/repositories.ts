@@ -15,6 +15,18 @@ export interface InstagramAccount {
   /** Opaque Instagram account identifier supplied by Meta. */
   instagramUserId: string;
 
+  /** Whether provider calls may proceed or the owner must reconnect Instagram. */
+  connectionStatus: 'active' | 'reconnect_required';
+
+  /** Safe application-owned reason for the latest refresh failure. */
+  tokenRefreshFailureCode: string | null;
+
+  /** Last instant at which Meta successfully refreshed this token. */
+  tokenRefreshLastSucceededAt: Date | null;
+
+  /** Earliest instant at which another refresh attempt may be made. */
+  tokenRefreshNextAttemptAt: Date | null;
+
   /** Instant after which the Instagram access token must not be used. */
   tokenExpiresAt: Date;
 
@@ -38,6 +50,53 @@ export interface UpsertConnectedAccountInput {
 
   /** Current Instagram username returned by Meta. */
   username: string;
+}
+
+/** Expiring account leased by one maintenance invocation. */
+export interface TokenRefreshClaim {
+  /** Connected account containing the encrypted current token. */
+  account: InstagramAccount;
+  /** Opaque ownership token required to complete this refresh attempt. */
+  leaseId: string;
+}
+
+/** Result of one failed provider token-refresh request. */
+export interface TokenRefreshFailure {
+  /** Stable safe error category. */
+  errorCode: string;
+  /** Whether only a new Instagram login can repair the connection. */
+  reconnectRequired: boolean;
+  /** Earliest time at which a temporary failure may be retried. */
+  retryAt: Date | null;
+}
+
+/** Persistence used only by scheduled connection maintenance. */
+export interface TokenRefreshRepository {
+  /** Leases a bounded batch of active accounts whose tokens are nearing expiry. */
+  claimExpiringAccounts(
+    now: Date,
+    expiresBefore: Date,
+    leaseUntil: Date,
+    limit: number,
+  ): Promise<TokenRefreshClaim[]>;
+  /** Atomically replaces a refreshed encrypted token when the caller still owns the lease. */
+  completeTokenRefresh(
+    accountId: string,
+    leaseId: string,
+    accessTokenCiphertext: ProtectedToken,
+    tokenExpiresAt: Date,
+    refreshedAt: Date,
+  ): Promise<boolean>;
+  /** Records a sanitized refresh failure and releases the caller's lease. */
+  failTokenRefresh(
+    accountId: string,
+    leaseId: string,
+    failure: TokenRefreshFailure,
+  ): Promise<boolean>;
+  /** Marks already-expired active connections as requiring a new Instagram login. */
+  markExpiredAccountsReconnectRequired(now: Date): Promise<number>;
+  /** Marks an account after Meta explicitly rejects its token during a reply. */
+  markAccountReconnectRequired(accountId: string, errorCode: string): Promise<boolean>;
 }
 
 /** Persistence operations required by Instagram account connection and webhook processing. */
@@ -193,7 +252,7 @@ export interface AutomationRepository {
 }
 
 /** State of one claimed comment-processing attempt. */
-export type ExecutionStatus = 'failed' | 'processing' | 'succeeded';
+export type ExecutionStatus = 'failed' | 'processing' | 'retry_pending' | 'succeeded' | 'uncertain';
 
 /** Persisted result of claiming and processing one Instagram comment. */
 export interface Execution {
@@ -218,8 +277,29 @@ export interface Execution {
   /** Internal immutable execution identifier. */
   id: string;
 
+  /** Number of provider attempts already started for this comment. */
+  attemptCount: number;
+
+  /** Instant at which the current attempt crossed the provider dispatch boundary. */
+  dispatchStartedAt: Date | null;
+
+  /** Stable internal failure class used by recovery policy. */
+  failureKind: 'authentication' | 'permanent' | 'retryable' | 'uncertain' | null;
+
   /** Opaque Instagram comment identifier used as the idempotency key. */
   instagramCommentId: string;
+
+  /** Opaque ownership token for the currently processing attempt. */
+  leaseId: string | null;
+
+  /** Time after which maintenance may recover an undispatched attempt. */
+  leaseExpiresAt: Date | null;
+
+  /** Earliest time at which a controlled retry may be claimed. */
+  nextAttemptAt: Date | null;
+
+  /** Meta reply identifier returned only after confirmed success. */
+  providerReplyId: string | null;
 
   /** Current processing state. */
   status: ExecutionStatus;
@@ -241,6 +321,9 @@ export interface ClaimExecutionInput {
 
   /** Opaque Instagram comment identifier used as the idempotency key. */
   instagramCommentId: string;
+
+  /** Expiry of the initial processing lease. */
+  leaseExpiresAt: Date;
 }
 
 /** Sanitized failure values that are safe to persist and return through an internal API. */
@@ -250,6 +333,21 @@ export interface ExecutionFailure {
 
   /** Non-empty description with secrets and raw provider details removed. */
   errorMessage: string;
+
+  /** Stable recovery classification. */
+  failureKind: 'authentication' | 'permanent' | 'retryable' | 'uncertain';
+}
+
+/** Execution plus protected account and reply data needed by maintenance. */
+export interface ExecutionRetryClaim {
+  /** Connected account ID used for reconnection state changes. */
+  accountId: string;
+  /** Encrypted provider token decrypted only immediately before dispatch. */
+  accessTokenCiphertext: ProtectedToken;
+  /** Leased execution. */
+  execution: Execution;
+  /** Current owner-configured reply. */
+  replyText: string;
 }
 
 /** Persistence operations required by idempotent comment processing and recent activity. */
@@ -271,6 +369,15 @@ export interface ExecutionRepository {
    */
   listRecentByAccountId(accountId: string, limit: number): Promise<Execution[]>;
 
+  /** Leases safe due retries for active accounts and increments their attempt number. */
+  claimDueRetries(now: Date, leaseUntil: Date, limit: number): Promise<ExecutionRetryClaim[]>;
+
+  /** Resolves expired dispatched leases as uncertain and exhausted pre-dispatch leases as failed. */
+  resolveStaleExecutions(now: Date): Promise<number>;
+
+  /** Records the irreversible provider-dispatch boundary for the current lease owner. */
+  markDispatchStarted(executionId: string, leaseId: string, at: Date): Promise<boolean>;
+
   /**
    * Completes a processing execution with sanitized failure information.
    *
@@ -278,7 +385,26 @@ export interface ExecutionRepository {
    * @param failure - Non-empty application-owned and sanitized failure values.
    * @returns The failed execution, or `null` when it does not exist or is already terminal.
    */
-  markFailed(executionId: string, failure: ExecutionFailure): Promise<Execution | null>;
+  markFailed(
+    executionId: string,
+    leaseId: string,
+    failure: ExecutionFailure,
+  ): Promise<Execution | null>;
+
+  /** Schedules a controlled retry for an explicitly retryable rejection. */
+  markRetryPending(
+    executionId: string,
+    leaseId: string,
+    failure: ExecutionFailure,
+    retryAt: Date,
+  ): Promise<Execution | null>;
+
+  /** Stops automatic delivery after an ambiguous provider outcome. */
+  markUncertain(
+    executionId: string,
+    leaseId: string,
+    failure: ExecutionFailure,
+  ): Promise<Execution | null>;
 
   /**
    * Completes a processing execution successfully.
@@ -286,5 +412,9 @@ export interface ExecutionRepository {
    * @param executionId - Internal execution identifier.
    * @returns The succeeded execution, or `null` when it does not exist or is already terminal.
    */
-  markSucceeded(executionId: string): Promise<Execution | null>;
+  markSucceeded(
+    executionId: string,
+    leaseId: string,
+    providerReplyId: string,
+  ): Promise<Execution | null>;
 }

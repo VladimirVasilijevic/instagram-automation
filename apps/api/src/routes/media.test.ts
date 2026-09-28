@@ -8,11 +8,15 @@ import { createSessionToken } from '../security/session-token.js';
 
 const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 7).toString('base64'));
 const account: InstagramAccount = {
+  connectionStatus: 'active',
   id: 'e9e90c93-1843-43d1-91d8-9ef894c26f4f',
   instagramUserId: '17841400000000001',
   username: 'example_account',
   accessTokenCiphertext: tokenProtector.encrypt('private-instagram-token'),
   tokenExpiresAt: new Date('2026-12-01T00:00:00.000Z'),
+  tokenRefreshFailureCode: null,
+  tokenRefreshLastSucceededAt: null,
+  tokenRefreshNextAttemptAt: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
 };
@@ -54,8 +58,11 @@ const createFixture = () => {
     executionRepository: {
       claimExecution: vi.fn(),
       listRecentByAccountId: vi.fn(),
+      markDispatchStarted: vi.fn(),
       markFailed: vi.fn(),
+      markRetryPending: vi.fn(),
       markSucceeded: vi.fn(),
+      markUncertain: vi.fn(),
     },
     database: { checkHealth: vi.fn() },
     instagramAuth: {

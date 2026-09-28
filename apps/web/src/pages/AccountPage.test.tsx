@@ -11,7 +11,12 @@ vi.mock('../api/auth.js', () => ({ getCurrentAccount: vi.fn(), logout: vi.fn() }
 vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
 vi.mock('../api/executions.js', () => ({ getRecentExecutions: vi.fn() }));
 vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
-const account = { id: 'account-id', instagramUserId: '17841400000000001', username: 'example' };
+const account = {
+  connectionStatus: 'active' as const,
+  id: 'account-id',
+  instagramUserId: '17841400000000001',
+  username: 'example',
+};
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(getRecentMedia).mockResolvedValue([]);
@@ -42,6 +47,20 @@ describe('account and connect screens', () => {
     expect(await screen.findByText('Connected as @example')).toBeInTheDocument();
     expect(getCurrentAccount).toHaveBeenCalledTimes(2);
     expect(window.location.pathname).toBe('/app');
+  });
+  it('shows a reconnect warning when token maintenance pauses the account', async () => {
+    vi.mocked(getCurrentAccount).mockResolvedValue({
+      ...account,
+      connectionStatus: 'reconnect_required',
+    });
+    render(<AccountPage />);
+
+    expect(await screen.findByText('Reconnect required')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Reconnect Instagram');
+    expect(screen.getByRole('link', { name: 'Reconnect Instagram' })).toHaveAttribute(
+      'href',
+      '/api/auth/instagram/start',
+    );
   });
   it('returns an expired /app session to the connect screen', async () => {
     window.history.replaceState(null, '', '/app');

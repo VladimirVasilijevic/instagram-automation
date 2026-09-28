@@ -2,15 +2,13 @@ import type {
   AccountRepository,
   AutomationRepository,
   ExecutionRepository,
+  TokenRefreshRepository,
 } from '../database/repositories.js';
-import {
-  InstagramCommentReplyError,
-  type InstagramCommentReplyClient,
-} from '../instagram/comment-reply-client.js';
+import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
 import type { CommentEvent } from '../instagram/webhook-events.js';
 import type { Logger } from '../logging/logger.js';
-import { toSafeErrorContext } from '../logging/logger.js';
 import type { TokenProtector } from '../security/token-protector.js';
+import { deliverReply } from './deliver-reply.js';
 
 /** A verified comment did not qualify for an automation reply. */
 export interface IgnoredCommentProcessResult {
@@ -18,7 +16,11 @@ export interface IgnoredCommentProcessResult {
   outcome: 'ignored';
 
   /** Safe reason why an automation reply was not eligible. */
-  reason: 'account_not_connected' | 'no_enabled_automation' | 'trigger_not_matched';
+  reason:
+    | 'account_not_connected'
+    | 'connection_inactive'
+    | 'no_enabled_automation'
+    | 'trigger_not_matched';
 }
 
 /** A delivery repeated a comment that was already claimed. */
@@ -55,7 +57,15 @@ export interface ProcessCommentDependencies {
   automationRepository: Pick<AutomationRepository, 'findEnabledByAccountAndMedia'>;
 
   /** Atomically records processing ownership and its terminal result. */
-  executionRepository: Pick<ExecutionRepository, 'claimExecution' | 'markFailed' | 'markSucceeded'>;
+  executionRepository: Pick<
+    ExecutionRepository,
+    | 'claimExecution'
+    | 'markDispatchStarted'
+    | 'markFailed'
+    | 'markRetryPending'
+    | 'markSucceeded'
+    | 'markUncertain'
+  >;
 
   /** Publishes a reply only after an execution has been claimed. */
   instagramCommentReplyClient: InstagramCommentReplyClient;
@@ -65,6 +75,9 @@ export interface ProcessCommentDependencies {
 
   /** Decrypts an account token only immediately before the provider request. */
   tokenProtector: TokenProtector;
+
+  /** Records provider authentication rejection for account reconnect warnings. */
+  tokenRefreshRepository: Pick<TokenRefreshRepository, 'markAccountReconnectRequired'>;
 }
 
 /**
@@ -82,6 +95,9 @@ export const processComment = async (
     event.instagramAccountId,
   );
   if (!account) return { outcome: 'ignored', reason: 'account_not_connected' };
+  if (account.connectionStatus !== 'active') {
+    return { outcome: 'ignored', reason: 'connection_inactive' };
+  }
 
   const automation = await dependencies.automationRepository.findEnabledByAccountAndMedia(
     account.id,
@@ -97,32 +113,19 @@ export const processComment = async (
     commenterUsername: event.username,
     commentText: event.text,
     instagramCommentId: event.commentId,
+    leaseExpiresAt: new Date(Date.now() + 2 * 60 * 1000),
   });
   if (!execution) return { outcome: 'duplicate' };
 
-  try {
-    await dependencies.instagramCommentReplyClient.replyToComment({
-      accessToken: dependencies.tokenProtector.decrypt(account.accessTokenCiphertext),
+  const outcome = await deliverReply(
+    {
+      accountId: account.id,
+      accessTokenCiphertext: account.accessTokenCiphertext,
       commentId: event.commentId,
+      execution,
       message: automation.replyText,
-    });
-  } catch (error) {
-    dependencies.logger.error(
-      'Instagram comment reply failed',
-      error instanceof InstagramCommentReplyError
-        ? error.toLogContext()
-        : toSafeErrorContext(error),
-    );
-    const failedExecution = await dependencies.executionRepository.markFailed(execution.id, {
-      errorCode: 'INSTAGRAM_REPLY_UNAVAILABLE',
-      errorMessage: 'The public reply could not be sent.',
-    });
-    if (!failedExecution)
-      throw new Error('Claimed execution could not be marked failed', { cause: error });
-    return { outcome: 'failed' };
-  }
-
-  const succeededExecution = await dependencies.executionRepository.markSucceeded(execution.id);
-  if (!succeededExecution) throw new Error('Claimed execution could not be marked succeeded');
-  return { outcome: 'succeeded' };
+    },
+    dependencies,
+  );
+  return { outcome: outcome === 'succeeded' ? 'succeeded' : 'failed' };
 };

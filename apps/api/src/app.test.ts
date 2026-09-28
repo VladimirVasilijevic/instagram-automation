@@ -26,8 +26,11 @@ const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDep
   executionRepository: {
     claimExecution: vi.fn(),
     listRecentByAccountId: vi.fn(),
+    markDispatchStarted: vi.fn(),
     markFailed: vi.fn(),
+    markRetryPending: vi.fn(),
     markSucceeded: vi.fn(),
+    markUncertain: vi.fn(),
   },
   instagramAuth: {
     appBaseUrl: 'https://app.example',
