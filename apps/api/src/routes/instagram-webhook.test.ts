@@ -154,7 +154,13 @@ describe('Instagram webhook routes', () => {
       commentEventCount: 1,
       duplicateCount: 0,
       failedCount: 0,
+      ignoredAccountNotConnectedCount: 1,
+      ignoredConnectionInactiveCount: 0,
       ignoredCount: 1,
+      ignoredNestedCommentCount: 0,
+      ignoredNoEnabledAutomationCount: 0,
+      ignoredOwnCommentCount: 0,
+      ignoredTriggerNotMatchedCount: 0,
       succeededCount: 0,
     });
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('#Hello');
@@ -223,7 +229,13 @@ describe('Instagram webhook routes', () => {
       commentEventCount: 1,
       duplicateCount: 0,
       failedCount: 0,
+      ignoredAccountNotConnectedCount: 0,
+      ignoredConnectionInactiveCount: 0,
       ignoredCount: 0,
+      ignoredNestedCommentCount: 0,
+      ignoredNoEnabledAutomationCount: 0,
+      ignoredOwnCommentCount: 0,
+      ignoredTriggerNotMatchedCount: 0,
       succeededCount: 1,
     });
   });

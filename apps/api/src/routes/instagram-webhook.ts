@@ -2,7 +2,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import type { OpenAPIHono } from '@hono/zod-openapi';
 
-import { COMMENT_PROCESS_OUTCOME, processComment } from '../automation/process-comment.js';
+import {
+  COMMENT_PROCESS_OUTCOME,
+  processComment,
+  type IgnoredCommentProcessResult,
+} from '../automation/process-comment.js';
 import type {
   AccountRepository,
   AutomationRepository,
@@ -58,6 +62,15 @@ export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDepe
 
 const equalBuffers = (left: Buffer, right: Buffer): boolean =>
   left.length === right.length && timingSafeEqual(left, right);
+
+const createIgnoredReasonCounts = (): Record<IgnoredCommentProcessResult['reason'], number> => ({
+  account_not_connected: 0,
+  connection_inactive: 0,
+  nested_comment: 0,
+  no_enabled_automation: 0,
+  own_comment: 0,
+  trigger_not_matched: 0,
+});
 
 /** Verifies Meta's SHA-256 signature over the exact delivery bytes. */
 export const verifyWebhookSignature = (
@@ -120,16 +133,26 @@ export const registerInstagramWebhookRoutes = (
       return context.text('Bad Request', 400);
     }
     const outcomeCounts = { duplicateCount: 0, failedCount: 0, ignoredCount: 0, succeededCount: 0 };
+    const ignoredReasonCounts = createIgnoredReasonCounts();
     for (const event of normalized.events) {
       const result = await processComment(event, dependencies);
       if (result.outcome === COMMENT_PROCESS_OUTCOME.DUPLICATE) outcomeCounts.duplicateCount += 1;
       if (result.outcome === COMMENT_PROCESS_OUTCOME.FAILED) outcomeCounts.failedCount += 1;
-      if (result.outcome === COMMENT_PROCESS_OUTCOME.IGNORED) outcomeCounts.ignoredCount += 1;
+      if (result.outcome === COMMENT_PROCESS_OUTCOME.IGNORED) {
+        outcomeCounts.ignoredCount += 1;
+        ignoredReasonCounts[result.reason] += 1;
+      }
       if (result.outcome === COMMENT_PROCESS_OUTCOME.SUCCEEDED) outcomeCounts.succeededCount += 1;
     }
     dependencies.logger.info('Instagram webhook processed', {
       commentEventCount: normalized.events.length,
       ...outcomeCounts,
+      ignoredAccountNotConnectedCount: ignoredReasonCounts.account_not_connected,
+      ignoredConnectionInactiveCount: ignoredReasonCounts.connection_inactive,
+      ignoredNestedCommentCount: ignoredReasonCounts.nested_comment,
+      ignoredNoEnabledAutomationCount: ignoredReasonCounts.no_enabled_automation,
+      ignoredOwnCommentCount: ignoredReasonCounts.own_comment,
+      ignoredTriggerNotMatchedCount: ignoredReasonCounts.trigger_not_matched,
     });
     return context.text('EVENT_RECEIVED', 200);
   });
