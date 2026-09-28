@@ -4,14 +4,16 @@ import { getAutomation, saveAutomation } from './automation.js';
 
 afterEach(() => vi.unstubAllGlobals());
 const automation = {
+  deliveryMode: 'public',
   enabled: true,
   mediaId: '17841400000000002',
+  privateReplyText: null,
   replyText: 'Hello! Thanks for commenting.',
   triggerText: '#Hello',
 } as const;
 
 describe('automation API client', () => {
-  it('loads null or a valid fixed-trigger automation', async () => {
+  it('loads null or a valid configurable automation', async () => {
     const fetcher = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ automation: null })))
@@ -32,9 +34,12 @@ describe('automation API client', () => {
 
     await expect(
       saveAutomation({
+        deliveryMode: 'public',
         enabled: true,
         mediaId: automation.mediaId,
+        privateReplyText: null,
         replyText: automation.replyText,
+        triggerText: automation.triggerText,
       }),
     ).resolves.toEqual(automation);
     expect(fetcher).toHaveBeenCalledWith(
@@ -43,9 +48,12 @@ describe('automation API client', () => {
         method: 'PUT',
         credentials: 'same-origin',
         body: JSON.stringify({
+          deliveryMode: 'public',
           enabled: true,
           mediaId: automation.mediaId,
+          privateReplyText: null,
           replyText: automation.replyText,
+          triggerText: automation.triggerText,
         }),
       }),
     );
@@ -53,7 +61,7 @@ describe('automation API client', () => {
 
   it.each([
     {},
-    { automation: { ...automation, triggerText: '#Other' } },
+    { automation: { ...automation, triggerText: 'Other' } },
     { automation: { ...automation, replyText: '' } },
   ])('rejects invalid responses: %j', async (payload) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
@@ -66,7 +74,14 @@ describe('automation API client', () => {
       vi.fn().mockResolvedValue(new Response('private error', { status: 503 })),
     );
     await expect(
-      saveAutomation({ enabled: false, mediaId: 'media', replyText: 'Reply' }),
+      saveAutomation({
+        deliveryMode: 'public',
+        enabled: false,
+        mediaId: 'media',
+        privateReplyText: null,
+        replyText: 'Reply',
+        triggerText: '#Hello',
+      }),
     ).rejects.toThrow('could not be saved');
   });
 });

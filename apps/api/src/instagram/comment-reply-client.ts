@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { RECOVERY_KIND, type RecoveryKind } from '../automation/recovery.js';
+
 /** Server-side input for publishing one public reply to an Instagram comment. */
 export interface ReplyToCommentInput {
   /** Server-only access token decrypted immediately before the provider request. */
@@ -50,22 +52,22 @@ export class InstagramCommentReplyError extends Error {
   }
 
   /** Returns the conservative recovery decision without exposing provider content. */
-  recoveryKind(): 'authentication' | 'permanent' | 'retryable' | 'uncertain' {
-    if (this.diagnostics.reason !== 'http_error') return 'uncertain';
+  recoveryKind(): RecoveryKind {
+    if (this.diagnostics.reason !== 'http_error') return RECOVERY_KIND.UNCERTAIN;
     if (
       this.diagnostics.httpStatus === 401 ||
       this.diagnostics.httpStatus === 403 ||
       this.diagnostics.metaErrorCode === 190
     )
-      return 'authentication';
-    if (this.diagnostics.httpStatus === 429) return 'retryable';
+      return RECOVERY_KIND.AUTHENTICATION;
+    if (this.diagnostics.httpStatus === 429) return RECOVERY_KIND.RETRYABLE;
     if (
       this.diagnostics.httpStatus &&
       this.diagnostics.httpStatus >= 400 &&
       this.diagnostics.httpStatus < 500
     )
-      return 'permanent';
-    return 'uncertain';
+      return RECOVERY_KIND.PERMANENT;
+    return RECOVERY_KIND.UNCERTAIN;
   }
 
   /** Returns only application-selected diagnostic values. */

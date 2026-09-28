@@ -1,24 +1,43 @@
-/** The single fixed-trigger automation configured by the signed-in account. */
+import { DELIVERY_MODE, isDeliveryMode, type DeliveryMode } from '@instagram-automation/contracts';
+
+export type { DeliveryMode } from '@instagram-automation/contracts';
+
+/** The single comment automation configured by the signed-in account. */
 export interface Automation {
+  /** Selected reply channels. */
+  deliveryMode: DeliveryMode;
   /** Whether a matching comment may trigger a reply. */
   enabled: boolean;
   /** Selected Instagram media identifier. */
   mediaId: string;
-  /** Reply text posted for the fixed trigger. */
+  /** Private message when private delivery is enabled. */
+  privateReplyText: string | null;
+  /** Public reply text when public delivery is enabled. */
   replyText: string;
-  /** Fixed trigger supported by this first vertical slice. */
-  triggerText: '#Hello';
+  /** Configured hashtag matched case-insensitively. */
+  triggerText: string;
 }
 
 /** Owner-controlled values submitted when saving the automation. */
 export interface SaveAutomationInput {
+  /** Selected public/private delivery behavior. */
+  deliveryMode: DeliveryMode;
+  /** Whether new matching comments may run the automation. */
   enabled: boolean;
+  /** Selected Instagram post or reel identifier. */
   mediaId: string;
+  /** Private message text, or null when private delivery is disabled. */
+  privateReplyText: string | null;
+  /** Public reply text, or an empty string when public delivery is disabled. */
   replyText: string;
+  /** Exact hashtag trigger after trimming. */
+  triggerText: string;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === 'string';
 
 const request = async (
   path: string,
@@ -40,20 +59,29 @@ const request = async (
 };
 
 const readAutomation = (value: unknown): Automation => {
+  const deliveryMode = isRecord(value) ? value.deliveryMode : undefined;
   if (
     !isRecord(value) ||
+    !isDeliveryMode(deliveryMode) ||
     typeof value.enabled !== 'boolean' ||
     typeof value.mediaId !== 'string' ||
     value.mediaId.trim() === '' ||
+    !isNullableString(value.privateReplyText) ||
     typeof value.replyText !== 'string' ||
-    value.replyText.trim() === '' ||
-    value.triggerText !== '#Hello'
+    typeof value.triggerText !== 'string' ||
+    !/^#\S{1,99}$/.test(value.triggerText) ||
+    (deliveryMode !== DELIVERY_MODE.PRIVATE && value.replyText.trim() === '') ||
+    (deliveryMode !== DELIVERY_MODE.PUBLIC &&
+      (value.privateReplyText === null || value.privateReplyText.trim() === '')) ||
+    (deliveryMode === DELIVERY_MODE.PUBLIC && value.privateReplyText !== null)
   ) {
     throw new Error('Invalid automation');
   }
   return {
+    deliveryMode,
     enabled: value.enabled,
     mediaId: value.mediaId,
+    privateReplyText: value.privateReplyText,
     replyText: value.replyText,
     triggerText: value.triggerText,
   };

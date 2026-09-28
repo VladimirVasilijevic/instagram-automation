@@ -52,14 +52,18 @@ describe('automation editor', () => {
 
   it('restores saved settings, selects the matching post, and saves trimmed input', async () => {
     vi.mocked(getAutomation).mockResolvedValue({
+      deliveryMode: 'public',
       enabled: false,
       mediaId: media[1]!.id,
+      privateReplyText: null,
       replyText: 'Existing reply',
       triggerText: '#Hello',
     });
     vi.mocked(saveAutomation).mockResolvedValue({
+      deliveryMode: 'public',
       enabled: true,
       mediaId: media[0]!.id,
+      privateReplyText: null,
       replyText: 'Updated reply',
       triggerText: '#Hello',
     });
@@ -78,9 +82,12 @@ describe('automation editor', () => {
 
     await waitFor(() =>
       expect(saveAutomation).toHaveBeenCalledWith({
+        deliveryMode: 'public',
         enabled: true,
         mediaId: media[0]!.id,
+        privateReplyText: null,
         replyText: 'Updated reply',
+        triggerText: '#Hello',
       }),
     );
     expect(await screen.findByRole('status')).toHaveTextContent('Automation saved');
@@ -103,10 +110,46 @@ describe('automation editor', () => {
     expect(screen.queryByText('private save detail')).not.toBeInTheDocument();
   });
 
+  it('saves separate public and private messages in both mode', async () => {
+    vi.mocked(saveAutomation).mockResolvedValue({
+      deliveryMode: 'both',
+      enabled: true,
+      mediaId: media[0]!.id,
+      privateReplyText: 'Private message',
+      replyText: 'Public message',
+      triggerText: '#test',
+    });
+    render(<AutomationEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
+    fireEvent.change(screen.getByLabelText('Comment trigger'), { target: { value: ' #test ' } });
+    fireEvent.click(screen.getByLabelText('Public reply and private DM'));
+    fireEvent.change(screen.getByLabelText('Public reply'), {
+      target: { value: ' Public message ' },
+    });
+    fireEvent.change(screen.getByLabelText('Private message'), {
+      target: { value: ' Private message ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    await waitFor(() =>
+      expect(saveAutomation).toHaveBeenCalledWith({
+        deliveryMode: 'both',
+        enabled: true,
+        mediaId: media[0]!.id,
+        privateReplyText: 'Private message',
+        replyText: 'Public message',
+        triggerText: '#test',
+      }),
+    );
+  });
+
   it('requires a current selected post when saved media is no longer recent', async () => {
     vi.mocked(getAutomation).mockResolvedValue({
+      deliveryMode: 'public',
       enabled: true,
       mediaId: 'older-media',
+      privateReplyText: null,
       replyText: 'Existing reply',
       triggerText: '#Hello',
     });

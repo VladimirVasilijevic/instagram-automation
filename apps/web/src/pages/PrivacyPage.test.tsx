@@ -9,6 +9,9 @@ describe('PrivacyPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument();
     expect(screen.getByText(/Instagram professional account ID and username/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/public comment replies, private replies, or both/i),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'wascke@gmail.com' })).toHaveLength(2);
     expect(screen.getAllByRole('link', { name: 'wascke@gmail.com' })[0]).toHaveAttribute(
       'href',

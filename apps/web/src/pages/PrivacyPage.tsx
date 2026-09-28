@@ -11,7 +11,7 @@ export const PrivacyPage = () => (
           Instagram Automation
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Privacy Policy</h1>
-        <p className="mt-4 text-sm text-slate-500">Last updated: September 23, 2026</p>
+        <p className="mt-4 text-sm text-slate-500">Last updated: September 28, 2026</p>
       </header>
 
       <div className="mt-8 space-y-8 leading-7 text-slate-700">
@@ -19,8 +19,8 @@ export const PrivacyPage = () => (
           <h2 className="text-xl font-semibold text-slate-950">What this app does</h2>
           <p className="mt-3">
             Instagram Automation connects an eligible Instagram professional account, lets the
-            account owner choose media and configure comment-reply automation, and receives
-            Instagram comment events for that connected account.
+            account owner choose media and configure public comment replies, private replies, or
+            both, and receives Instagram comment events for that connected account.
           </p>
         </section>
 
@@ -29,10 +29,10 @@ export const PrivacyPage = () => (
           <ul className="mt-3 list-disc space-y-2 pl-6">
             <li>Instagram professional account ID and username provided through Meta login.</li>
             <li>An encrypted long-lived access token needed to call the Instagram API.</li>
-            <li>Selected media IDs, automation settings, and configured reply text.</li>
+            <li>Selected media IDs, automation settings, and configured public or private text.</li>
             <li>
-              Comment webhook information such as account, media, and comment IDs, commenter
-              username, comment text, and receipt time.
+              Comment webhook information such as account, media, comment and commenter IDs,
+              commenter username, comment text, and receipt time.
             </li>
             <li>Short-lived browser cookies used to protect login and application sessions.</li>
           </ul>
@@ -43,7 +43,7 @@ export const PrivacyPage = () => (
           <p className="mt-3">
             We use this information only to authenticate the connected account, display its
             Instagram media, save the owner&apos;s automation settings, receive comment events, and
-            process configured replies through Meta&apos;s Instagram API.
+            process configured public and private replies through Meta&apos;s Instagram API.
           </p>
         </section>
 
@@ -52,8 +52,9 @@ export const PrivacyPage = () => (
           <p className="mt-3">
             We do not sell or rent personal information. Information is sent to Meta/Instagram when
             required to authenticate the account, read permitted account data, receive subscribed
-            events, or publish a configured reply. Hosting and database providers may process
-            information on our behalf to operate this app.
+            events, publish a configured comment reply, or send a comment-authorized private reply.
+            Hosting and database providers may process information on our behalf to operate this
+            app.
           </p>
         </section>
 

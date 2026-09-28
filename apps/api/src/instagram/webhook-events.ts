@@ -6,8 +6,12 @@ export interface CommentEvent {
   instagramAccountId: string;
   /** Opaque Instagram comment identifier. */
   commentId: string;
+  /** Instagram-scoped commenter identifier when Meta includes one. */
+  commenterId: string | null;
   /** Opaque Instagram media identifier on which the comment was made. */
   mediaId: string;
+  /** Parent comment identifier for nested replies; null for top-level comments. */
+  parentCommentId: string | null;
   /** Commenter's username when Meta includes one. */
   username: string | null;
   /** Original comment text. This must not be written to logs. */
@@ -19,11 +23,15 @@ export interface CommentEvent {
 const identifier = z.string().trim().min(1).max(128);
 const commentValueSchema = z.object({
   from: z
-    .object({ username: z.string().trim().min(1).max(256) })
+    .object({
+      id: identifier.optional(),
+      username: z.string().trim().min(1).max(256).optional(),
+    })
     .nullable()
     .optional(),
   id: identifier,
   media: z.object({ id: identifier }),
+  parent_id: identifier.optional(),
   text: z.string().max(2_200),
 });
 const envelopeSchema = z.object({
@@ -70,8 +78,10 @@ export const normalizeCommentEvents = (
       if (!comment.success) return { success: false };
       events.push({
         commentId: comment.data.id,
+        commenterId: comment.data.from?.id ?? null,
         instagramAccountId: entry.id,
         mediaId: comment.data.media.id,
+        parentCommentId: comment.data.parent_id ?? null,
         receivedAt,
         text: comment.data.text,
         username: comment.data.from?.username ?? null,

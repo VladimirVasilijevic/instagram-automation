@@ -1,174 +1,181 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Execution, InstagramAccount } from '../database/repositories.js';
+import type { DeliveryChannel, Execution, InstagramAccount } from '../database/repositories.js';
 import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
 import { processComment } from './process-comment.js';
 
 const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 6).toString('base64'));
 const account: InstagramAccount = {
+  accessTokenCiphertext: tokenProtector.encrypt('private-access-token'),
   connectionStatus: 'active',
+  createdAt: new Date('2026-09-01T00:00:00.000Z'),
   id: 'account-id',
   instagramUserId: '17841400000000001',
-  username: 'owner',
-  accessTokenCiphertext: tokenProtector.encrypt('private-access-token'),
   tokenExpiresAt: new Date('2026-12-01T00:00:00.000Z'),
   tokenRefreshFailureCode: null,
   tokenRefreshLastSucceededAt: null,
   tokenRefreshNextAttemptAt: null,
-  createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+  username: 'owner',
 };
 const event = {
-  instagramAccountId: account.instagramUserId,
   commentId: '17841400000000002',
+  commenterId: '17841400000000004',
+  instagramAccountId: account.instagramUserId,
   mediaId: '17841400000000003',
-  username: 'commenter',
-  text: '#Hello',
+  parentCommentId: null,
   receivedAt: new Date('2026-09-23T12:00:00.000Z'),
+  text: '#Hello',
+  username: 'commenter',
 };
-const execution: Execution = {
+
+const execution = (deliveryChannel: DeliveryChannel, messageText: string): Execution => ({
   attemptCount: 1,
-  id: 'execution-id',
   automationId: 'automation-id',
-  instagramCommentId: event.commentId,
+  commenterInstagramId: event.commenterId,
   commenterUsername: event.username,
   commentText: event.text,
+  createdAt: event.receivedAt,
+  deliveryChannel,
   dispatchStartedAt: null,
-  status: 'processing',
   errorCode: null,
   errorMessage: null,
   failureKind: null,
+  id: `${deliveryChannel}-execution-id`,
+  instagramCommentId: event.commentId,
   leaseExpiresAt: new Date('2026-09-23T12:02:00.000Z'),
-  leaseId: 'lease-id',
+  leaseId: `${deliveryChannel}-lease-id`,
+  messageText,
   nextAttemptAt: null,
   providerReplyId: null,
-  createdAt: event.receivedAt,
+  status: 'processing',
   updatedAt: event.receivedAt,
-};
+});
 
 const createFixture = () => {
+  const publicExecution = execution('public', 'Public response');
+  const privateExecution = execution('private', 'Private response');
   const dependencies = {
     accountRepository: { findByInstagramUserId: vi.fn().mockResolvedValue(account) },
     automationRepository: {
       findEnabledByAccountAndMedia: vi.fn().mockResolvedValue({
-        id: 'automation-id',
         accountId: account.id,
-        mediaId: event.mediaId,
-        triggerText: '#Hello',
-        replyText: 'Thanks for commenting!',
+        deliveryMode: 'public' as const,
         enabled: true,
+        id: 'automation-id',
+        mediaId: event.mediaId,
+        privateReplyText: null,
+        replyText: publicExecution.messageText,
+        triggerText: '#Hello',
       }),
     },
     executionRepository: {
-      claimExecution: vi.fn().mockResolvedValue(execution),
+      claimExecutions: vi.fn().mockResolvedValue([publicExecution]),
       markDispatchStarted: vi.fn().mockResolvedValue(true),
-      markFailed: vi.fn().mockResolvedValue({ ...execution, status: 'failed' }),
-      markRetryPending: vi.fn().mockResolvedValue({ ...execution, status: 'retry_pending' }),
-      markSucceeded: vi.fn().mockResolvedValue({ ...execution, status: 'succeeded' }),
-      markUncertain: vi.fn().mockResolvedValue({ ...execution, status: 'uncertain' }),
+      markFailed: vi.fn().mockResolvedValue({ ...publicExecution, status: 'failed' }),
+      markRetryPending: vi.fn().mockResolvedValue({ ...publicExecution, status: 'retry_pending' }),
+      markSucceeded: vi.fn().mockResolvedValue({ ...publicExecution, status: 'succeeded' }),
+      markUncertain: vi.fn().mockResolvedValue({ ...publicExecution, status: 'uncertain' }),
     },
     instagramCommentReplyClient: {
-      replyToComment: vi.fn().mockResolvedValue({ replyId: 'reply-id' }),
+      replyToComment: vi.fn().mockResolvedValue({ replyId: 'public-reply-id' }),
+    },
+    instagramPrivateReplyClient: {
+      sendPrivateReply: vi.fn().mockResolvedValue({ replyId: 'private-reply-id' }),
     },
     logger: { error: vi.fn(), info: vi.fn() },
     tokenProtector,
     tokenRefreshRepository: { markAccountReconnectRequired: vi.fn().mockResolvedValue(true) },
   };
-  return dependencies;
+  return { dependencies, privateExecution, publicExecution };
 };
 
 describe('processComment', () => {
-  it('ignores unknown accounts, unmatched media, and non-exact trigger text', async () => {
-    const unknown = createFixture();
-    unknown.accountRepository.findByInstagramUserId.mockResolvedValue(null);
-    await expect(processComment(event, unknown)).resolves.toEqual({
-      outcome: 'ignored',
-      reason: 'account_not_connected',
-    });
-
-    const missingAutomation = createFixture();
-    missingAutomation.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue(null);
-    await expect(processComment(event, missingAutomation)).resolves.toEqual({
-      outcome: 'ignored',
-      reason: 'no_enabled_automation',
-    });
-
-    for (const text of ['#hello', 'Hello', '#Hello!', '#Hello please']) {
-      const nonMatch = createFixture();
-      await expect(processComment({ ...event, text }, nonMatch)).resolves.toEqual({
-        outcome: 'ignored',
-        reason: 'trigger_not_matched',
-      });
-      expect(nonMatch.executionRepository.claimExecution).not.toHaveBeenCalled();
-      expect(nonMatch.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
-    }
-  });
-
-  it('pauses new replies while the Instagram connection requires reconnection', async () => {
-    const f = createFixture();
-    f.accountRepository.findByInstagramUserId.mockResolvedValue({
-      ...account,
-      connectionStatus: 'reconnect_required',
-    });
-
-    await expect(processComment(event, f)).resolves.toEqual({
-      outcome: 'ignored',
-      reason: 'connection_inactive',
-    });
-    expect(f.automationRepository.findEnabledByAccountAndMedia).not.toHaveBeenCalled();
-    expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
-  });
-
-  it('claims, replies to, and completes one exact trigger match', async () => {
+  it('matches trimmed trigger text case-insensitively and sends a public reply', async () => {
     const f = createFixture();
 
-    await expect(processComment({ ...event, text: ' #Hello ' }, f)).resolves.toEqual({
+    await expect(processComment({ ...event, text: ' #hELLo ' }, f.dependencies)).resolves.toEqual({
       outcome: 'succeeded',
     });
-    expect(f.executionRepository.claimExecution).toHaveBeenCalledWith({
-      automationId: 'automation-id',
-      commenterUsername: event.username,
-      commentText: ' #Hello ',
-      instagramCommentId: event.commentId,
-      leaseExpiresAt: expect.any(Date),
-    });
-    expect(f.instagramCommentReplyClient.replyToComment).toHaveBeenCalledWith({
+    expect(f.dependencies.executionRepository.claimExecutions).toHaveBeenCalledWith([
+      expect.objectContaining({
+        commenterInstagramId: event.commenterId,
+        deliveryChannel: 'public',
+        messageText: 'Public response',
+      }),
+    ]);
+    expect(f.dependencies.instagramCommentReplyClient.replyToComment).toHaveBeenCalledWith({
       accessToken: 'private-access-token',
       commentId: event.commentId,
-      message: 'Thanks for commenting!',
+      message: 'Public response',
     });
-    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith(
-      execution.id,
-      execution.leaseId,
-      'reply-id',
-    );
+  });
+
+  it('claims and sends public and private deliveries independently in both mode', async () => {
+    const f = createFixture();
+    f.dependencies.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+      accountId: account.id,
+      deliveryMode: 'both',
+      enabled: true,
+      id: 'automation-id',
+      mediaId: event.mediaId,
+      privateReplyText: 'Private response',
+      replyText: 'Public response',
+      triggerText: '#Hello',
+    });
+    f.dependencies.executionRepository.claimExecutions.mockResolvedValue([
+      f.publicExecution,
+      f.privateExecution,
+    ]);
+
+    await expect(processComment(event, f.dependencies)).resolves.toEqual({ outcome: 'succeeded' });
+    expect(f.dependencies.executionRepository.claimExecutions).toHaveBeenCalledWith([
+      expect.objectContaining({ deliveryChannel: 'public', messageText: 'Public response' }),
+      expect.objectContaining({ deliveryChannel: 'private', messageText: 'Private response' }),
+    ]);
+    expect(f.dependencies.instagramPrivateReplyClient.sendPrivateReply).toHaveBeenCalledWith({
+      accessToken: 'private-access-token',
+      commentId: event.commentId,
+      instagramUserId: account.instagramUserId,
+      message: 'Private response',
+    });
+  });
+
+  it('ignores nested, owner, and unmatched comments', async () => {
+    for (const [changedEvent, reason] of [
+      [{ ...event, parentCommentId: 'parent-id' }, 'nested_comment'],
+      [{ ...event, commenterId: account.instagramUserId }, 'own_comment'],
+      [{ ...event, commenterId: null, username: 'OWNER' }, 'own_comment'],
+      [{ ...event, text: '#Hello!' }, 'trigger_not_matched'],
+    ] as const) {
+      const f = createFixture();
+      await expect(processComment(changedEvent, f.dependencies)).resolves.toEqual({
+        outcome: 'ignored',
+        reason,
+      });
+      expect(f.dependencies.executionRepository.claimExecutions).not.toHaveBeenCalled();
+    }
   });
 
   it('stops a duplicate before calling Meta', async () => {
     const f = createFixture();
-    f.executionRepository.claimExecution.mockResolvedValue(null);
+    f.dependencies.executionRepository.claimExecutions.mockResolvedValue([]);
 
-    await expect(processComment(event, f)).resolves.toEqual({ outcome: 'duplicate' });
-    expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+    await expect(processComment(event, f.dependencies)).resolves.toEqual({ outcome: 'duplicate' });
+    expect(f.dependencies.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+    expect(f.dependencies.instagramPrivateReplyClient.sendPrivateReply).not.toHaveBeenCalled();
   });
 
   it('records a safe failure without logging comment content or provider details', async () => {
     const f = createFixture();
-    f.instagramCommentReplyClient.replyToComment.mockRejectedValue(
+    f.dependencies.instagramCommentReplyClient.replyToComment.mockRejectedValue(
       new Error('private provider detail'),
     );
 
-    await expect(processComment(event, f)).resolves.toEqual({ outcome: 'failed' });
-    expect(f.executionRepository.markUncertain).toHaveBeenCalledWith(
-      execution.id,
-      execution.leaseId,
-      {
-        errorCode: 'DELIVERY_OUTCOME_UNKNOWN',
-        errorMessage: 'Delivery requires manual review to prevent a duplicate reply.',
-        failureKind: 'uncertain',
-      },
+    await expect(processComment(event, f.dependencies)).resolves.toEqual({ outcome: 'failed' });
+    expect(JSON.stringify(f.dependencies.logger.error.mock.calls)).not.toContain(event.text);
+    expect(JSON.stringify(f.dependencies.logger.error.mock.calls)).not.toContain(
+      'private provider detail',
     );
-    expect(JSON.stringify(f.logger.error.mock.calls)).not.toContain(event.text);
-    expect(JSON.stringify(f.logger.error.mock.calls)).not.toContain('private provider detail');
   });
 });

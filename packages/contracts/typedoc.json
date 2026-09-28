@@ -1,0 +1,13 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "excludePrivate": true,
+  "out": "../../dist/docs/contracts-code",
+  "readme": "none",
+  "requiredToBeDocumented": ["Function", "Property", "TypeAlias", "Variable"],
+  "treatWarningsAsErrors": true,
+  "validation": {
+    "invalidLink": true,
+    "notDocumented": true
+  }
+}

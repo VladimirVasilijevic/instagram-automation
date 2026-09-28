@@ -1,6 +1,9 @@
-import { deliverReply } from '../automation/deliver-reply.js';
+import { EXECUTION_STATUS } from '@instagram-automation/contracts';
+
+import { deliverReply, type ReplyDeliveryOutcome } from '../automation/deliver-reply.js';
 import type { ExecutionRepository, TokenRefreshRepository } from '../database/repositories.js';
 import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
+import type { InstagramPrivateReplyClient } from '../instagram/private-reply-client.js';
 import type { InstagramTokenRefreshClient } from '../instagram/token-refresh-client.js';
 import type { Logger } from '../logging/logger.js';
 import type { TokenProtector } from '../security/token-protector.js';
@@ -33,6 +36,7 @@ export const runMaintenance = async (
   dependencies: {
     executionRepository: ExecutionRepository;
     instagramCommentReplyClient: InstagramCommentReplyClient;
+    instagramPrivateReplyClient: InstagramPrivateReplyClient;
     instagramTokenRefreshClient: InstagramTokenRefreshClient;
     logger: Logger;
     tokenProtector: TokenProtector;
@@ -55,11 +59,11 @@ export const runMaintenance = async (
     new Date(now.getTime() + 2 * 60 * 1000),
     25,
   );
-  const replyCounts = {
-    failed: 0,
-    retry_pending: 0,
-    succeeded: 0,
-    uncertain: 0,
+  const replyCounts: Record<ReplyDeliveryOutcome, number> = {
+    [EXECUTION_STATUS.FAILED]: 0,
+    [EXECUTION_STATUS.RETRY_PENDING]: 0,
+    [EXECUTION_STATUS.SUCCEEDED]: 0,
+    [EXECUTION_STATUS.UNCERTAIN]: 0,
   };
   for (const claim of claims) {
     const outcome = await deliverReply(
@@ -68,7 +72,8 @@ export const runMaintenance = async (
         accessTokenCiphertext: claim.accessTokenCiphertext,
         commentId: claim.execution.instagramCommentId,
         execution: claim.execution,
-        message: claim.replyText,
+        instagramUserId: claim.instagramUserId,
+        message: claim.execution.messageText,
       },
       dependencies,
       now,
@@ -78,10 +83,10 @@ export const runMaintenance = async (
   const summary: MaintenanceSummary = {
     expiredTokenCount: tokens.expiredCount,
     reconnectRequiredCount: tokens.reconnectRequiredCount,
-    replyFailedCount: replyCounts.failed,
-    replyRetryPendingCount: replyCounts.retry_pending,
-    replySucceededCount: replyCounts.succeeded,
-    replyUncertainCount: replyCounts.uncertain,
+    replyFailedCount: replyCounts[EXECUTION_STATUS.FAILED],
+    replyRetryPendingCount: replyCounts[EXECUTION_STATUS.RETRY_PENDING],
+    replySucceededCount: replyCounts[EXECUTION_STATUS.SUCCEEDED],
+    replyUncertainCount: replyCounts[EXECUTION_STATUS.UNCERTAIN],
     staleExecutionCount,
     tokenRefreshFailedCount: tokens.failedCount,
     tokenRefreshedCount: tokens.refreshedCount,

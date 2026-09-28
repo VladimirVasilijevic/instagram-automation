@@ -10,6 +10,8 @@ beforeEach(() => vi.resetAllMocks());
 
 describe('RecentActivity', () => {
   it('renders empty and successful activity states', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     vi.mocked(getRecentExecutions)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
@@ -17,16 +19,26 @@ describe('RecentActivity', () => {
           commenterUsername: 'commenter',
           commentText: '#Hello',
           createdAt: '2026-09-24T12:00:00.000Z',
-          errorCode: null,
-          errorMessage: null,
-          status: 'succeeded',
+          deliveries: [
+            { channel: 'public', errorCode: null, errorMessage: null, status: 'succeeded' },
+            { channel: 'private', errorCode: null, errorMessage: null, status: 'succeeded' },
+          ],
         },
       ]);
     render(<RecentActivity />);
     expect(await screen.findByText('No automation activity yet.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh activity' }));
     expect(await screen.findByText('@commenter')).toBeInTheDocument();
-    expect(screen.getByText('Reply sent')).toBeInTheDocument();
+    expect(screen.getByText('Public reply')).toBeInTheDocument();
+    expect(screen.getByText('Private DM')).toBeInTheDocument();
+    expect(screen.getAllByText('Message sent')).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'Open Instagram profile' })).toHaveAttribute(
+      'href',
+      'https://www.instagram.com/commenter/',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Copy username' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('commenter'));
+    expect(screen.getByRole('button', { name: 'Username copied' })).toBeInTheDocument();
   });
 
   it('renders safe failures and retries loading', async () => {
@@ -37,9 +49,14 @@ describe('RecentActivity', () => {
           commenterUsername: null,
           commentText: '#Hello',
           createdAt: '2026-09-24T12:00:00.000Z',
-          errorCode: 'INSTAGRAM_REPLY_UNAVAILABLE',
-          errorMessage: 'The public reply could not be sent.',
-          status: 'failed',
+          deliveries: [
+            {
+              channel: 'public',
+              errorCode: 'INSTAGRAM_REPLY_UNAVAILABLE',
+              errorMessage: 'The public reply could not be sent.',
+              status: 'failed',
+            },
+          ],
         },
       ]);
     render(<RecentActivity />);
@@ -56,17 +73,28 @@ describe('RecentActivity', () => {
         commenterUsername: 'retry_user',
         commentText: '#Hello',
         createdAt: '2026-09-24T12:00:00.000Z',
-        errorCode: 'INSTAGRAM_REPLY_RETRY_SCHEDULED',
-        errorMessage: 'Instagram temporarily rejected the reply. A controlled retry is scheduled.',
-        status: 'retry_pending',
+        deliveries: [
+          {
+            channel: 'private',
+            errorCode: 'INSTAGRAM_REPLY_RETRY_SCHEDULED',
+            errorMessage:
+              'Instagram temporarily rejected the reply. A controlled retry is scheduled.',
+            status: 'retry_pending',
+          },
+        ],
       },
       {
         commenterUsername: 'review_user',
         commentText: '#Hello',
         createdAt: '2026-09-24T12:01:00.000Z',
-        errorCode: 'DELIVERY_OUTCOME_UNKNOWN',
-        errorMessage: 'Delivery requires manual review to prevent a duplicate reply.',
-        status: 'uncertain',
+        deliveries: [
+          {
+            channel: 'public',
+            errorCode: 'DELIVERY_OUTCOME_UNKNOWN',
+            errorMessage: 'Delivery requires manual review to prevent a duplicate reply.',
+            status: 'uncertain',
+          },
+        ],
       },
     ]);
 

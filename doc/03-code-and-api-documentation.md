@@ -42,12 +42,14 @@ TypeDoc writes the generated HTML sites to:
 
 ```text
 dist/docs/api-code/index.html
+dist/docs/contracts-code/index.html
 dist/docs/web-code/index.html
 ```
 
 `dist/` is ignored because the HTML is generated output. The source comments and the TypeDoc
-configuration in `apps/api/typedoc.json` and `apps/web/typedoc.json` are committed and remain
-authoritative. TypeDoc treats missing required comments, invalid links, and warnings as failures.
+configuration in `apps/api/typedoc.json`, `apps/web/typedoc.json`, and
+`packages/contracts/typedoc.json` are committed and remain authoritative. TypeDoc treats missing
+required comments, invalid links, and warnings as failures.
 
 ## Interactive HTTP API documentation
 
@@ -88,6 +90,9 @@ Current documented operations:
 | GET    | `/api/webhooks/instagram`              | Meta verification query                     | Plaintext `200` challenge or `403`      |
 | POST   | `/api/webhooks/instagram`              | Signed Meta delivery                        | `200`, sanitized `400` or `401`         |
 | POST   | `/api/webhooks/instagram/subscription` | Session cookie                              | `204`, `401`, sanitized `502`           |
+| GET    | `/api/media?limit=12`                  | Session cookie                              | `200`, `400`, `401`, sanitized `502`    |
+| GET    | `/api/automation`                      | Session cookie                              | `200`, `401`, sanitized `503`           |
+| PUT    | `/api/automation`                      | Session cookie and automation JSON          | `200`, `400`, `401`, sanitized errors   |
 | GET    | `/api/executions?limit=50`             | Session cookie                              | `200`, `400`, `401`, sanitized `503`    |
 
 `POST /api/internal/maintenance` is deliberately excluded from Swagger/OpenAPI. It is a private
@@ -102,11 +107,12 @@ replacement for the provider's browser consent flow. Authentication responses an
 
 The webhook delivery endpoint is public only to Meta. It verifies the one-time challenge with
 `META_WEBHOOK_VERIFY_TOKEN` and validates every delivery with the `X-Hub-Signature-256` HMAC made
-from `META_APP_SECRET`. A valid comment is matched only when its trimmed text is exactly `#Hello`;
-the server atomically claims its comment ID and records a dispatch boundary before calling Meta's
-public-reply API. Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous
-outcomes are left for manual review to prevent duplicate public replies. Do not use Swagger to
-submit webhook deliveries.
+from `META_APP_SECRET`. A valid top-level comment is matched when its trimmed text equals the
+owner-configured hashtag without regard to capitalization. The server atomically claims each
+selected delivery channel and records a dispatch boundary before calling Meta's public- or
+private-reply API. Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous
+outcomes are left for manual review to prevent duplicate messages. Do not use Swagger to submit
+webhook deliveries.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.

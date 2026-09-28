@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from '@hono/zod-openapi';
+import { DELIVERY_CHANNEL, EXECUTION_STATUS } from '@instagram-automation/contracts';
 
 import { errorResponseSchema } from '../contracts/http.js';
 import type { Execution, ExecutionRepository } from '../database/repositories.js';
@@ -9,13 +10,17 @@ import {
   type SessionMiddlewareDependencies,
 } from '../middleware/session.js';
 
+const deliverySchema = z.object({
+  channel: z.enum(DELIVERY_CHANNEL),
+  errorCode: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+  status: z.enum(EXECUTION_STATUS),
+});
 const executionSchema = z.object({
   commenterUsername: z.string().nullable(),
   commentText: z.string(),
   createdAt: z.string().datetime(),
-  errorCode: z.string().nullable(),
-  errorMessage: z.string().nullable(),
-  status: z.enum(['failed', 'processing', 'retry_pending', 'succeeded', 'uncertain']),
+  deliveries: z.array(deliverySchema).min(1).max(2),
 });
 const executionLimitSchema = z.coerce.number().int().min(1).max(50);
 const executionsRoute = createRoute({
@@ -61,13 +66,31 @@ export interface ExecutionRouteDependencies extends SessionMiddlewareDependencie
   logger: Logger;
 }
 
-const toExecutionResponse = (execution: Execution) => ({
-  commenterUsername: execution.commenterUsername,
-  commentText: execution.commentText,
-  createdAt: execution.createdAt.toISOString(),
+const toExecutionResponses = (executions: Execution[]) => {
+  const groups = new Map<string, ReturnType<typeof createExecutionResponse>>();
+  for (const execution of executions) {
+    const existing = groups.get(execution.instagramCommentId);
+    if (existing) {
+      existing.deliveries.push(toDeliveryResponse(execution));
+    } else {
+      groups.set(execution.instagramCommentId, createExecutionResponse(execution));
+    }
+  }
+  return [...groups.values()];
+};
+
+const toDeliveryResponse = (execution: Execution) => ({
+  channel: execution.deliveryChannel,
   errorCode: execution.errorCode,
   errorMessage: execution.errorMessage,
   status: execution.status,
+});
+
+const createExecutionResponse = (execution: Execution) => ({
+  commenterUsername: execution.commenterUsername,
+  commentText: execution.commentText,
+  createdAt: execution.createdAt.toISOString(),
+  deliveries: [toDeliveryResponse(execution)],
 });
 
 /** Registers the session-protected route that returns safe, account-owned automation activity. */
@@ -97,7 +120,7 @@ export const registerExecutionRoutes = (
         account.id,
         parsedLimit.data,
       );
-      return context.json({ executions: executions.map(toExecutionResponse) }, 200);
+      return context.json({ executions: toExecutionResponses(executions) }, 200);
     } catch (error) {
       dependencies.logger.error('Execution activity load failed', toSafeErrorContext(error));
       return context.json(

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import postgres from 'postgres';
@@ -20,6 +21,10 @@ if (integrationTestsEnabled) {
 }
 
 const describeDatabase = integrationTestsEnabled ? describe : describe.skip;
+const multichannelMigrationPath = resolve(
+  import.meta.dirname,
+  '../../../../db/migrations/0004_multichannel_replies.sql',
+);
 
 describeDatabase('PostgreSQL repositories', () => {
   const rollbackSignal = new Error('rollback integration transaction');
@@ -177,6 +182,7 @@ describeDatabase('PostgreSQL repositories', () => {
     const instagramUserId = `automation-integration-${randomUUID()}`;
     const otherInstagramUserId = `other-automation-integration-${randomUUID()}`;
     const firstCommentId = `comment-${randomUUID()}`;
+    const legacyCommentId = `legacy-comment-${randomUUID()}`;
     const secondCommentId = `comment-${randomUUID()}`;
     const otherCommentId = `comment-${randomUUID()}`;
     const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 4).toString('base64'));
@@ -184,6 +190,19 @@ describeDatabase('PostgreSQL repositories', () => {
 
     try {
       await sql.begin(async (transactionSql) => {
+        const [schemaState] = await transactionSql<{ migration_applied: boolean }[]>`
+          select exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'app_private'
+              and table_name = 'automations'
+              and column_name = 'delivery_mode'
+          ) as migration_applied
+        `;
+        if (!schemaState?.migration_applied) {
+          await transactionSql.unsafe(await readFile(multichannelMigrationPath, 'utf8'));
+        }
+
         const accountRepository = createPostgresAccountRepository(transactionSql);
         const automationRepository = createPostgresAutomationRepository(transactionSql);
         const executionRepository = createPostgresExecutionRepository(transactionSql);
@@ -201,26 +220,70 @@ describeDatabase('PostgreSQL repositories', () => {
         });
         const firstAutomation = await automationRepository.saveAutomation({
           accountId: account.id,
+          deliveryMode: 'public',
           enabled: false,
           mediaId: 'first-media',
+          privateReplyText: null,
           replyText: 'First reply',
+          triggerText: '#Hello',
         });
         const updatedAutomation = await automationRepository.saveAutomation({
           accountId: account.id,
+          deliveryMode: 'public',
           enabled: true,
           mediaId: 'selected-media',
+          privateReplyText: null,
           replyText: 'Updated reply',
+          triggerText: '#Hello',
         });
 
         expect(updatedAutomation).toMatchObject({
           accountId: account.id,
+          deliveryMode: 'public',
           enabled: true,
           id: firstAutomation.id,
           mediaId: 'selected-media',
+          privateReplyText: null,
           replyText: 'Updated reply',
           triggerText: '#Hello',
         });
         expect(updatedAutomation.createdAt).toEqual(firstAutomation.createdAt);
+
+        const [legacyExecution] = await transactionSql<
+          {
+            delivery_channel: string;
+            id: string;
+            message_text: string;
+          }[]
+        >`
+          insert into app_private.executions (
+            automation_id,
+            instagram_comment_id,
+            commenter_username,
+            comment_text,
+            status,
+            lease_id,
+            lease_expires_at
+          ) values (
+            ${updatedAutomation.id},
+            ${legacyCommentId},
+            'legacy_commenter',
+            '#Hello',
+            'processing',
+            gen_random_uuid(),
+            ${new Date(Date.now() + 120_000)}
+          )
+          returning id, delivery_channel, message_text
+        `;
+        expect(legacyExecution).toMatchObject({
+          delivery_channel: 'public',
+          message_text: updatedAutomation.replyText,
+        });
+        await transactionSql`
+          delete from app_private.executions
+          where id = ${legacyExecution!.id}
+        `;
+
         await expect(automationRepository.findByAccountId(account.id)).resolves.toEqual(
           updatedAutomation,
         );
@@ -236,9 +299,12 @@ describeDatabase('PostgreSQL repositories', () => {
 
         const disabledAutomation = await automationRepository.saveAutomation({
           accountId: account.id,
+          deliveryMode: 'public',
           enabled: false,
           mediaId: 'selected-media',
+          privateReplyText: null,
           replyText: 'Updated reply',
+          triggerText: '#Hello',
         });
 
         await expect(
@@ -247,22 +313,31 @@ describeDatabase('PostgreSQL repositories', () => {
 
         const enabledAutomation = await automationRepository.saveAutomation({
           accountId: account.id,
+          deliveryMode: 'public',
           enabled: true,
           mediaId: disabledAutomation.mediaId,
+          privateReplyText: null,
           replyText: disabledAutomation.replyText,
+          triggerText: '#Hello',
         });
         const otherAutomation = await automationRepository.saveAutomation({
           accountId: otherAccount.id,
+          deliveryMode: 'public',
           enabled: true,
           mediaId: 'other-media',
+          privateReplyText: null,
           replyText: 'Other reply',
+          triggerText: '#Hello',
         });
         const firstExecution = await executionRepository.claimExecution({
           automationId: enabledAutomation.id,
+          commenterInstagramId: 'first-commenter-id',
           commenterUsername: 'first_commenter',
           commentText: '#Hello',
           instagramCommentId: firstCommentId,
+          deliveryChannel: 'public',
           leaseExpiresAt: new Date(Date.now() + 120_000),
+          messageText: 'Updated reply',
         });
 
         expect(firstExecution).toMatchObject({
@@ -277,10 +352,13 @@ describeDatabase('PostgreSQL repositories', () => {
         await expect(
           executionRepository.claimExecution({
             automationId: otherAutomation.id,
+            commenterInstagramId: 'duplicate-commenter-id',
             commenterUsername: 'duplicate_commenter',
             commentText: '#Hello',
             instagramCommentId: firstCommentId,
+            deliveryChannel: 'public',
             leaseExpiresAt: new Date(Date.now() + 120_000),
+            messageText: 'Other reply',
           }),
         ).resolves.toBeNull();
 
@@ -317,10 +395,13 @@ describeDatabase('PostgreSQL repositories', () => {
 
         const secondExecution = await executionRepository.claimExecution({
           automationId: enabledAutomation.id,
+          commenterInstagramId: null,
           commenterUsername: null,
           commentText: '#Hello',
           instagramCommentId: secondCommentId,
+          deliveryChannel: 'public',
           leaseExpiresAt: new Date(Date.now() + 120_000),
+          messageText: 'Updated reply',
         });
 
         if (!secondExecution) {
@@ -361,10 +442,13 @@ describeDatabase('PostgreSQL repositories', () => {
 
         const otherExecution = await executionRepository.claimExecution({
           automationId: otherAutomation.id,
+          commenterInstagramId: 'other-commenter-id',
           commenterUsername: 'other_commenter',
           commentText: '#Hello',
           instagramCommentId: otherCommentId,
+          deliveryChannel: 'public',
           leaseExpiresAt: new Date(Date.now() + 120_000),
+          messageText: 'Other reply',
         });
 
         if (!otherExecution) {
@@ -394,6 +478,27 @@ describeDatabase('PostgreSQL repositories', () => {
         expect(accountActivity).not.toEqual(
           expect.arrayContaining([expect.objectContaining({ id: otherExecution.id })]),
         );
+        const [privateExecution] = await executionRepository.claimExecutions([
+          {
+            automationId: enabledAutomation.id,
+            commenterInstagramId: 'first-commenter-id',
+            commenterUsername: 'first_commenter',
+            commentText: '#Hello',
+            deliveryChannel: 'private',
+            instagramCommentId: firstCommentId,
+            leaseExpiresAt: new Date(Date.now() + 120_000),
+            messageText: 'Private reply',
+          },
+        ]);
+        expect(privateExecution).toMatchObject({
+          deliveryChannel: 'private',
+          instagramCommentId: firstCommentId,
+          messageText: 'Private reply',
+        });
+        await expect(executionRepository.listRecentByAccountId(account.id, 1)).resolves.toEqual([
+          expect.objectContaining({ id: firstExecution.id, deliveryChannel: 'public' }),
+          expect.objectContaining({ id: privateExecution!.id, deliveryChannel: 'private' }),
+        ]);
         await expect(executionRepository.listRecentByAccountId(account.id, 0)).rejects.toThrow(
           RangeError,
         );

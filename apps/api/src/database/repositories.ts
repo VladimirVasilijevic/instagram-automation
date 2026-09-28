@@ -1,5 +1,18 @@
+import type {
+  DeliveryChannel,
+  DeliveryMode,
+  ExecutionStatus,
+} from '@instagram-automation/contracts';
+
 import type { SessionTokenHash } from '../security/session-token.js';
 import type { ProtectedToken } from '../security/token-protector.js';
+import type { RecoveryKind } from '../automation/recovery.js';
+
+export type {
+  DeliveryChannel,
+  DeliveryMode,
+  ExecutionStatus,
+} from '@instagram-automation/contracts';
 
 /** Persisted Instagram Professional account owned by an application user. */
 export interface InstagramAccount {
@@ -198,11 +211,17 @@ export interface Automation {
   /** Opaque Instagram media identifier selected by the owner. */
   mediaId: string;
 
+  /** Selected delivery channels for a matching comment. */
+  deliveryMode: DeliveryMode;
+
+  /** Configured private reply sent for a matching comment. */
+  privateReplyText: string | null;
+
   /** Configured public reply sent for a matching comment. */
   replyText: string;
 
-  /** Fixed trigger supported by the first vertical slice. */
-  triggerText: '#Hello';
+  /** Owner-configured hashtag matched case-insensitively after trimming. */
+  triggerText: string;
 
   /** Time at which the automation row was last changed. */
   updatedAt: Date;
@@ -216,11 +235,20 @@ export interface SaveAutomationInput {
   /** Whether matching comments may currently trigger a reply. */
   enabled: boolean;
 
+  /** Selected delivery channels for a matching comment. */
+  deliveryMode: DeliveryMode;
+
   /** Opaque Instagram media identifier selected by the owner. */
   mediaId: string;
 
   /** Configured public reply sent for a matching comment. */
   replyText: string;
+
+  /** Configured private reply sent for a matching comment. */
+  privateReplyText: string | null;
+
+  /** Owner-configured hashtag trigger. */
+  triggerText: string;
 }
 
 /** Persistence operations required by automation configuration and comment processing. */
@@ -251,9 +279,6 @@ export interface AutomationRepository {
   saveAutomation(input: SaveAutomationInput): Promise<Automation>;
 }
 
-/** State of one claimed comment-processing attempt. */
-export type ExecutionStatus = 'failed' | 'processing' | 'retry_pending' | 'succeeded' | 'uncertain';
-
 /** Persisted result of claiming and processing one Instagram comment. */
 export interface Execution {
   /** Internal automation identifier that processed the comment. */
@@ -264,6 +289,9 @@ export interface Execution {
 
   /** Instagram username when supplied by the normalized webhook event. */
   commenterUsername: string | null;
+
+  /** Instagram-scoped commenter ID when supplied by Meta. */
+  commenterInstagramId: string | null;
 
   /** Time at which processing first claimed the comment. */
   createdAt: Date;
@@ -283,11 +311,17 @@ export interface Execution {
   /** Instant at which the current attempt crossed the provider dispatch boundary. */
   dispatchStartedAt: Date | null;
 
+  /** Public comment or private reply provider boundary used for this execution. */
+  deliveryChannel: DeliveryChannel;
+
   /** Stable internal failure class used by recovery policy. */
-  failureKind: 'authentication' | 'permanent' | 'retryable' | 'uncertain' | null;
+  failureKind: RecoveryKind | null;
 
   /** Opaque Instagram comment identifier used as the idempotency key. */
   instagramCommentId: string;
+
+  /** Immutable message text used by initial delivery and controlled retries. */
+  messageText: string;
 
   /** Opaque ownership token for the currently processing attempt. */
   leaseId: string | null;
@@ -319,8 +353,17 @@ export interface ClaimExecutionInput {
   /** Instagram username when supplied by the normalized webhook event. */
   commenterUsername: string | null;
 
+  /** Instagram-scoped commenter ID when supplied by Meta. */
+  commenterInstagramId: string | null;
+
+  /** Delivery channel claimed independently for this comment. */
+  deliveryChannel: DeliveryChannel;
+
   /** Opaque Instagram comment identifier used as the idempotency key. */
   instagramCommentId: string;
+
+  /** Immutable message text for initial delivery and retries. */
+  messageText: string;
 
   /** Expiry of the initial processing lease. */
   leaseExpiresAt: Date;
@@ -335,7 +378,7 @@ export interface ExecutionFailure {
   errorMessage: string;
 
   /** Stable recovery classification. */
-  failureKind: 'authentication' | 'permanent' | 'retryable' | 'uncertain';
+  failureKind: RecoveryKind;
 }
 
 /** Execution plus protected account and reply data needed by maintenance. */
@@ -344,14 +387,17 @@ export interface ExecutionRetryClaim {
   accountId: string;
   /** Encrypted provider token decrypted only immediately before dispatch. */
   accessTokenCiphertext: ProtectedToken;
+  /** Connected professional account ID required by private replies. */
+  instagramUserId: string;
   /** Leased execution. */
   execution: Execution;
-  /** Current owner-configured reply. */
-  replyText: string;
 }
 
 /** Persistence operations required by idempotent comment processing and recent activity. */
 export interface ExecutionRepository {
+  /** Atomically claims every requested delivery channel for one comment. */
+  claimExecutions(inputs: ClaimExecutionInput[]): Promise<Execution[]>;
+
   /**
    * Atomically claims a comment for processing.
    *

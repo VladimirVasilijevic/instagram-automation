@@ -195,25 +195,25 @@ separate `auth.sessions` table.
 ### Application persistence
 
 The API database wrapper constructs account, session, automation, and execution repositories from
-the same Postgres.js client used for health checks. Repository contracts are separate from their
-PostgreSQL adapters, while remaining inside `apps/api` until another runtime consumer justifies
-activating shared workspace packages.
+the same Postgres.js client used for health checks. Repository interfaces remain beside their
+PostgreSQL adapters. Serialized delivery modes, delivery channels, and execution statuses are
+defined once in `packages/contracts` because both the API and browser validate those values.
 
 Account persistence accepts only the opaque protected-token type returned by AES-GCM encryption.
 Session persistence accepts only the opaque SHA-256 hash returned by session-token generation. An
 active-session lookup also requires `expires_at > now()` in PostgreSQL, so an expired credential
 cannot authenticate even if its row has not been cleaned up.
 
-Automation persistence allows one configuration per account and always writes the first vertical
-slice's fixed `#Hello` trigger itself. Enabled lookups require both the owning account and selected
-media identifier. Execution persistence atomically claims an Instagram comment with
-`ON CONFLICT DO NOTHING`, leases each processing attempt, records the provider-dispatch boundary,
-and exposes recent activity through an account ownership join. Only explicit pre-delivery provider
-rejections such as rate limiting are eligible for a controlled retry, with at most three total
-attempts. A timeout, network failure, malformed success response, or stale execution that crossed
-the dispatch boundary becomes `uncertain` and is never retried automatically, preventing duplicate
-public replies. Activity limits must be integers from 1 through 50, and failure values must already
-be non-empty and sanitized before they reach the repository.
+Automation persistence allows one configurable hashtag and delivery mode per account. Enabled
+lookups require both the owning account and selected media identifier. Execution persistence
+atomically claims each selected delivery channel with `ON CONFLICT DO NOTHING`, leases each
+processing attempt, records the provider-dispatch boundary, and exposes grouped recent activity
+through an account ownership join. Only explicit pre-delivery provider rejections such as rate
+limiting are eligible for a controlled retry, with at most three total attempts. A timeout, network
+failure, malformed success response, or stale execution that crossed the dispatch boundary becomes
+`uncertain` and is never retried automatically, preventing duplicate messages. Activity limits must
+be integers from 1 through 50, and failure values must already be non-empty and sanitized before
+they reach the repository.
 
 Account persistence leases tokens that expire within seven days for refresh. Temporary refresh
 failures back off for one hour; expired, rejected, or undecryptable credentials mark the connection
@@ -699,14 +699,13 @@ migration database query succeeds
 
 ---
 
-# 12. Next implementation steps
+# 12. Current implementation status
 
-The Milestone 1 production connectivity checks pass, and Milestones 3–4 real Instagram login, media
-selection, and automation configuration are complete. Continue with the
-[milestone plan](02-first-vertical-implementation-plan.md):
-
-1. implement comment webhook verification and subscription in Milestone 5;
-2. implement public replies and activity in Milestones 6–7.
+Milestones 1–8 provide production connectivity, Instagram login, media selection, signed comment
+webhooks, public replies, activity, and scheduled reliability maintenance. Milestone 9 adds an
+editable exact hashtag trigger plus public-only, private-only, or combined delivery. See the
+[milestone plan](02-first-vertical-implementation-plan.md) and the
+[private-reply activation guide](06-private-message-automation.md).
 
 ---
 

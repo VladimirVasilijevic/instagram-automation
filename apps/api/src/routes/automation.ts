@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from '@hono/zod-openapi';
+import { DELIVERY_MODE } from '@instagram-automation/contracts';
 
 import { errorResponseSchema } from '../contracts/http.js';
 import type { Automation, AutomationRepository } from '../database/repositories.js';
@@ -13,19 +14,50 @@ import {
 import type { TokenProtector } from '../security/token-protector.js';
 
 const automationSchema = z.object({
+  deliveryMode: z.enum(DELIVERY_MODE),
   enabled: z.boolean(),
   mediaId: z.string(),
+  privateReplyText: z.string().nullable(),
   replyText: z.string(),
-  triggerText: z.literal('#Hello'),
+  triggerText: z.string(),
 });
 const automationResponseSchema = z.object({ automation: automationSchema.nullable() });
 const saveAutomationSchema = z
   .object({
+    deliveryMode: z.enum(DELIVERY_MODE),
     enabled: z.boolean(),
     mediaId: z.string().trim().min(1),
-    replyText: z.string().trim().min(1),
+    privateReplyText: z.string().trim().max(1000).nullable(),
+    replyText: z.string().trim().max(2200),
+    triggerText: z
+      .string()
+      .trim()
+      .regex(/^#\S{1,99}$/),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.deliveryMode !== DELIVERY_MODE.PRIVATE && value.replyText === '') {
+      context.addIssue({
+        code: 'custom',
+        path: ['replyText'],
+        message: 'Public reply is required',
+      });
+    }
+    if (value.deliveryMode !== DELIVERY_MODE.PUBLIC && !value.privateReplyText) {
+      context.addIssue({
+        code: 'custom',
+        path: ['privateReplyText'],
+        message: 'Private reply is required',
+      });
+    }
+    if (value.deliveryMode === DELIVERY_MODE.PUBLIC && value.privateReplyText !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['privateReplyText'],
+        message: 'Private reply must be null',
+      });
+    }
+  });
 
 const getAutomationRoute = createRoute({
   method: 'get',
@@ -54,12 +86,11 @@ const saveAutomationRoute = createRoute({
   summary: 'Create or replace the signed-in account automation',
   responses: {
     200: {
-      description: 'The saved account automation. The trigger is fixed to #Hello.',
+      description: 'The saved account automation and selected delivery channels.',
       content: { 'application/json': { schema: z.object({ automation: automationSchema }) } },
     },
     400: {
-      description:
-        'The request is invalid, changes the trigger, or selects media not owned by the account.',
+      description: 'The request is invalid or selects media not owned by the account.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
     401: {
@@ -93,13 +124,15 @@ export interface AutomationRouteDependencies extends SessionMiddlewareDependenci
 }
 
 const toAutomationResponse = (automation: Automation) => ({
+  deliveryMode: automation.deliveryMode,
   enabled: automation.enabled,
   mediaId: automation.mediaId,
+  privateReplyText: automation.privateReplyText,
   replyText: automation.replyText,
   triggerText: automation.triggerText,
 });
 
-/** Registers authenticated load and save operations for one fixed-trigger automation per account. */
+/** Registers authenticated load and save operations for one comment automation per account. */
 export const registerAutomationRoutes = (
   app: OpenAPIHono,
   dependencies: AutomationRouteDependencies,
@@ -135,7 +168,7 @@ export const registerAutomationRoutes = (
         {
           error: {
             code: 'INVALID_AUTOMATION_INPUT',
-            message: 'Automation settings must include a media ID, reply text, and enabled state.',
+            message: 'Automation settings are incomplete or invalid.',
           },
         },
         400,
@@ -147,7 +180,7 @@ export const registerAutomationRoutes = (
         {
           error: {
             code: 'INVALID_AUTOMATION_INPUT',
-            message: 'Automation settings must include a media ID, reply text, and enabled state.',
+            message: 'Automation settings are incomplete or invalid.',
           },
         },
         400,

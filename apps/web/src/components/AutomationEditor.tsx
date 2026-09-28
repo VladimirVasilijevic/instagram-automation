@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { getAutomation, saveAutomation } from '../api/automation.js';
+import { DELIVERY_MODE } from '@instagram-automation/contracts';
+
+import { getAutomation, saveAutomation, type DeliveryMode } from '../api/automation.js';
 import { getRecentMedia, type RecentMedia } from '../api/media.js';
 
 type EditorState =
@@ -18,12 +20,15 @@ const primaryButtonStyle =
 const mediaLabel = (item: RecentMedia): string =>
   item.caption?.trim() || `${item.mediaType.toLowerCase()} ${item.id}`;
 
-/** Renders the owner-facing media selection and fixed-trigger automation editor. */
+/** Renders the owner-facing media, trigger, and delivery-channel automation editor. */
 export const AutomationEditor = () => {
   const [state, setState] = useState<EditorState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [selectedMediaId, setSelectedMediaId] = useState('');
+  const [triggerText, setTriggerText] = useState('#Hello');
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(DELIVERY_MODE.PUBLIC);
   const [replyText, setReplyText] = useState('');
+  const [privateReplyText, setPrivateReplyText] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -42,7 +47,10 @@ export const AutomationEditor = () => {
         );
         setState({ status: 'ready', media, savedMediaUnavailable });
         setSelectedMediaId(savedMediaUnavailable ? '' : (automation?.mediaId ?? ''));
+        setTriggerText(automation?.triggerText ?? '#Hello');
+        setDeliveryMode(automation?.deliveryMode ?? DELIVERY_MODE.PUBLIC);
         setReplyText(automation?.replyText ?? 'Hello! Thanks for commenting.');
+        setPrivateReplyText(automation?.privateReplyText ?? 'Thanks for commenting!');
         setEnabled(automation?.enabled ?? true);
       })
       .catch(() => {
@@ -52,18 +60,33 @@ export const AutomationEditor = () => {
   }, [attempt]);
 
   const save = async () => {
-    if (!selectedMediaId || replyText.trim() === '') return;
+    const trimmedTrigger = triggerText.trim();
+    const publicRequired = deliveryMode !== DELIVERY_MODE.PRIVATE;
+    const privateRequired = deliveryMode !== DELIVERY_MODE.PUBLIC;
+    if (
+      !selectedMediaId ||
+      !/^#\S{1,99}$/.test(trimmedTrigger) ||
+      (publicRequired && replyText.trim() === '') ||
+      (privateRequired && privateReplyText.trim() === '')
+    )
+      return;
     setSaving(true);
     setSaveError(false);
     setSaved(false);
     try {
       const automation = await saveAutomation({
+        deliveryMode,
         enabled,
         mediaId: selectedMediaId,
-        replyText: replyText.trim(),
+        privateReplyText: privateRequired ? privateReplyText.trim() : null,
+        replyText: publicRequired ? replyText.trim() : '',
+        triggerText: trimmedTrigger,
       });
+      setDeliveryMode(automation.deliveryMode);
       setSelectedMediaId(automation.mediaId);
+      setPrivateReplyText(automation.privateReplyText ?? '');
       setReplyText(automation.replyText);
+      setTriggerText(automation.triggerText);
       setEnabled(automation.enabled);
       setSaved(true);
     } catch {
@@ -99,14 +122,21 @@ export const AutomationEditor = () => {
     );
   }
 
-  const canSave = Boolean(selectedMediaId) && replyText.trim() !== '' && !saving;
+  const publicRequired = deliveryMode !== DELIVERY_MODE.PRIVATE;
+  const privateRequired = deliveryMode !== DELIVERY_MODE.PUBLIC;
+  const triggerValid = /^#\S{1,99}$/.test(triggerText.trim());
+  const canSave =
+    Boolean(selectedMediaId) &&
+    triggerValid &&
+    (!publicRequired || replyText.trim() !== '') &&
+    (!privateRequired || privateReplyText.trim() !== '') &&
+    !saving;
   return (
     <section className="mt-8 border-t border-slate-200 pt-8" aria-live="polite">
       <div className="max-w-2xl">
         <h3 className="text-xl font-semibold text-slate-950">Create your automation</h3>
         <p className="mt-2 leading-7 text-slate-600">
-          Choose one recent post. Comments containing <span className="font-semibold">#Hello</span>{' '}
-          will receive your reply when the automation is enabled.
+          Choose one recent post, a hashtag trigger, and where matching replies should be sent.
         </p>
       </div>
 
@@ -174,26 +204,78 @@ export const AutomationEditor = () => {
         <label className="block">
           <span className="text-sm font-semibold text-slate-950">Comment trigger</span>
           <input
-            className="mt-2 block min-h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-slate-700"
-            value="#Hello"
-            readOnly
-            aria-readonly="true"
-          />
-          <span className="mt-2 block text-sm text-slate-600">
-            The trigger is fixed for this first automation.
-          </span>
-        </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-slate-950">Public reply</span>
-          <textarea
-            className="mt-2 block min-h-28 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-            value={replyText}
+            aria-label="Comment trigger"
+            className="mt-2 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+            value={triggerText}
             onChange={(event) => {
-              setReplyText(event.target.value);
+              setTriggerText(event.target.value);
               setSaved(false);
             }}
           />
+          <span className="mt-2 block text-sm text-slate-600">
+            Use one hashtag without spaces. Matching ignores capitalization and surrounding spaces.
+          </span>
         </label>
+        <fieldset>
+          <legend className="text-sm font-semibold text-slate-950">Reply delivery</legend>
+          <div className="mt-2 grid gap-2">
+            {(
+              [
+                [DELIVERY_MODE.PUBLIC, 'Public reply only'],
+                [DELIVERY_MODE.PRIVATE, 'Private DM only'],
+                [DELIVERY_MODE.BOTH, 'Public reply and private DM'],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} className="flex items-center gap-3 text-sm text-slate-800">
+                <input
+                  type="radio"
+                  name="delivery-mode"
+                  value={value}
+                  checked={deliveryMode === value}
+                  onChange={() => {
+                    setDeliveryMode(value);
+                    setSaved(false);
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {publicRequired && (
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-950">Public reply</span>
+            <textarea
+              aria-label="Public reply"
+              className="mt-2 block min-h-28 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+              value={replyText}
+              onChange={(event) => {
+                setReplyText(event.target.value);
+                setSaved(false);
+              }}
+            />
+          </label>
+        )}
+        {privateRequired && (
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-950">Private message</span>
+            <textarea
+              aria-label="Private message"
+              className="mt-2 block min-h-28 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+              value={privateReplyText}
+              onChange={(event) => {
+                setPrivateReplyText(event.target.value);
+                setSaved(false);
+              }}
+            />
+            <span className="mt-2 block text-sm text-slate-600">
+              Instagram permits one private reply for each qualifying comment.
+            </span>
+          </label>
+        )}
       </div>
 
       <label className="mt-6 flex items-center gap-3 text-sm font-medium text-slate-950">

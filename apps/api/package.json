@@ -21,6 +21,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json"
   },
   "dependencies": {
+    "@instagram-automation/contracts": "workspace:*",
     "@hono/node-server": "2.1.1",
     "@hono/swagger-ui": "0.6.1",
     "@hono/zod-openapi": "1.6.1",

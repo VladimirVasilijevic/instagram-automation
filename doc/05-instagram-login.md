@@ -148,7 +148,7 @@ shared production database during this work. Both integration files remain skipp
 9. Cancel a new Instagram authorization and verify the safe cancellation message. Reopening a used
    callback must not create another session; begin a fresh login instead.
 
-Milestones 3 through 6 are implemented. The current automation sends a configured public reply only
-when a subscribed comment on the selected media has trimmed text exactly equal to `#Hello`. Webhook
-comment IDs are atomically claimed before replies are sent, preventing duplicate delivery from
-creating a second public reply. Periodic token refresh and activity history remain later work.
+Milestones 3 through 8 are implemented. The current automation matches a configurable hashtag after
+trimming and without regard to capitalization. Each selected public or private delivery channel is
+atomically claimed before Meta is called, preventing a duplicate webhook from creating a second
+message. Periodic maintenance refreshes tokens and safely recovers eligible reply attempts.

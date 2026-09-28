@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import type { OpenAPIHono } from '@hono/zod-openapi';
 
-import { processComment } from '../automation/process-comment.js';
+import { COMMENT_PROCESS_OUTCOME, processComment } from '../automation/process-comment.js';
 import type {
   AccountRepository,
   AutomationRepository,
@@ -10,6 +10,7 @@ import type {
   TokenRefreshRepository,
 } from '../database/repositories.js';
 import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
+import type { InstagramPrivateReplyClient } from '../instagram/private-reply-client.js';
 import type { InstagramWebhookClient } from '../instagram/webhook-client.js';
 import { InstagramWebhookError } from '../instagram/webhook-client.js';
 import { normalizeCommentEvents } from '../instagram/webhook-events.js';
@@ -31,12 +32,14 @@ export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDepe
   appSecret: string;
   /** Provider client that enables comments delivery for the signed-in account. */
   instagramCommentReplyClient: InstagramCommentReplyClient;
+  /** Provider client that sends comment-addressed private replies. */
+  instagramPrivateReplyClient: InstagramPrivateReplyClient;
   /** Provider client that enables comments delivery for the signed-in account. */
   instagramWebhookClient: InstagramWebhookClient;
   /** Claims and completes idempotent comment processing records. */
   executionRepository: Pick<
     ExecutionRepository,
-    | 'claimExecution'
+    | 'claimExecutions'
     | 'markDispatchStarted'
     | 'markFailed'
     | 'markRetryPending'
@@ -119,10 +122,10 @@ export const registerInstagramWebhookRoutes = (
     const outcomeCounts = { duplicateCount: 0, failedCount: 0, ignoredCount: 0, succeededCount: 0 };
     for (const event of normalized.events) {
       const result = await processComment(event, dependencies);
-      if (result.outcome === 'duplicate') outcomeCounts.duplicateCount += 1;
-      if (result.outcome === 'failed') outcomeCounts.failedCount += 1;
-      if (result.outcome === 'ignored') outcomeCounts.ignoredCount += 1;
-      if (result.outcome === 'succeeded') outcomeCounts.succeededCount += 1;
+      if (result.outcome === COMMENT_PROCESS_OUTCOME.DUPLICATE) outcomeCounts.duplicateCount += 1;
+      if (result.outcome === COMMENT_PROCESS_OUTCOME.FAILED) outcomeCounts.failedCount += 1;
+      if (result.outcome === COMMENT_PROCESS_OUTCOME.IGNORED) outcomeCounts.ignoredCount += 1;
+      if (result.outcome === COMMENT_PROCESS_OUTCOME.SUCCEEDED) outcomeCounts.succeededCount += 1;
     }
     dependencies.logger.info('Instagram webhook processed', {
       commentEventCount: normalized.events.length,

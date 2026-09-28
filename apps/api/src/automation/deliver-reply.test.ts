@@ -10,9 +10,11 @@ const now = new Date('2026-09-28T12:00:00.000Z');
 const execution = (attemptCount = 1): Execution => ({
   attemptCount,
   automationId: 'automation-id',
+  commenterInstagramId: 'commenter-id',
   commenterUsername: 'commenter',
   commentText: '#Hello',
   createdAt: now,
+  deliveryChannel: 'public',
   dispatchStartedAt: null,
   errorCode: null,
   errorMessage: null,
@@ -21,6 +23,7 @@ const execution = (attemptCount = 1): Execution => ({
   instagramCommentId: 'comment-id',
   leaseExpiresAt: new Date(now.getTime() + 120_000),
   leaseId: 'lease-id',
+  messageText: 'Thanks!',
   nextAttemptAt: null,
   providerReplyId: null,
   status: 'processing',
@@ -39,11 +42,15 @@ const fixture = () => {
   const instagramCommentReplyClient = {
     replyToComment: vi.fn().mockResolvedValue({ replyId: 'reply-id' }),
   };
+  const instagramPrivateReplyClient = {
+    sendPrivateReply: vi.fn().mockResolvedValue({ replyId: 'private-reply-id' }),
+  };
   const tokenRefreshRepository = { markAccountReconnectRequired: vi.fn() };
   return {
     dependencies: {
       executionRepository,
       instagramCommentReplyClient,
+      instagramPrivateReplyClient,
       logger,
       tokenProtector: {
         decrypt: vi.fn().mockReturnValue('plaintext-token'),
@@ -53,6 +60,7 @@ const fixture = () => {
     },
     executionRepository,
     instagramCommentReplyClient,
+    instagramPrivateReplyClient,
     tokenRefreshRepository,
   };
 };
@@ -62,6 +70,7 @@ const input = (value: Execution) => ({
   accessTokenCiphertext: 'encrypted-token' as ProtectedToken,
   commentId: 'comment-id',
   execution: value,
+  instagramUserId: 'instagram-account-id',
   message: 'Thanks!',
 });
 
@@ -84,6 +93,23 @@ describe('reply delivery recovery policy', () => {
       'lease-id',
       'reply-id',
     );
+  });
+
+  it('uses the private reply boundary for a private execution', async () => {
+    const f = fixture();
+    const privateExecution = { ...execution(), deliveryChannel: 'private' as const };
+
+    await expect(deliverReply(input(privateExecution), f.dependencies, now)).resolves.toBe(
+      'succeeded',
+    );
+
+    expect(f.instagramPrivateReplyClient.sendPrivateReply).toHaveBeenCalledWith({
+      accessToken: 'plaintext-token',
+      commentId: 'comment-id',
+      instagramUserId: 'instagram-account-id',
+      message: 'Thanks!',
+    });
+    expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
   });
 
   it('schedules only explicit rate-limit failures and stops after three attempts', async () => {

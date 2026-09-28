@@ -34,7 +34,7 @@ const commentPayload = {
           value: {
             id: '17841400000000002',
             media: { id: '17841400000000003' },
-            from: { username: 'commenter' },
+            from: { id: '17841400000000004', username: 'commenter' },
             text: '#Hello',
           },
         },
@@ -72,8 +72,11 @@ const createFixture = () => {
   const instagramCommentReplyClient = {
     replyToComment: vi.fn().mockResolvedValue({ replyId: 'reply-id' }),
   };
+  const instagramPrivateReplyClient = {
+    sendPrivateReply: vi.fn().mockResolvedValue({ replyId: 'private-reply-id' }),
+  };
   const executionRepository = {
-    claimExecution: vi.fn().mockResolvedValue(null),
+    claimExecutions: vi.fn().mockResolvedValue([]),
     listRecentByAccountId: vi.fn(),
     markDispatchStarted: vi.fn(),
     markFailed: vi.fn(),
@@ -98,6 +101,7 @@ const createFixture = () => {
       accountRepository,
       appSecret,
       instagramCommentReplyClient,
+      instagramPrivateReplyClient,
       instagramWebhookClient,
       tokenProtector,
       tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
@@ -165,14 +169,35 @@ describe('Instagram webhook routes', () => {
       accountId: account.id,
       mediaId: commentPayload.entry[0].changes[0].value.media.id,
       triggerText: '#Hello',
+      deliveryMode: 'public',
+      privateReplyText: null,
       replyText: 'Thanks for commenting!',
       enabled: true,
     });
-    f.executionRepository.claimExecution.mockResolvedValue({
-      attemptCount: 1,
-      id: 'execution-id',
-      leaseId: 'lease-id',
-    });
+    f.executionRepository.claimExecutions.mockResolvedValue([
+      {
+        attemptCount: 1,
+        automationId: 'automation-id',
+        commenterInstagramId: commentPayload.entry[0].changes[0].value.from.id,
+        commenterUsername: 'commenter',
+        commentText: '#Hello',
+        createdAt: new Date('2026-09-01T00:00:00.000Z'),
+        deliveryChannel: 'public',
+        dispatchStartedAt: null,
+        errorCode: null,
+        errorMessage: null,
+        failureKind: null,
+        id: 'execution-id',
+        instagramCommentId: commentPayload.entry[0].changes[0].value.id,
+        leaseExpiresAt: new Date('2026-09-01T00:02:00.000Z'),
+        leaseId: 'lease-id',
+        messageText: 'Thanks for commenting!',
+        nextAttemptAt: null,
+        providerReplyId: null,
+        status: 'processing',
+        updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    ]);
     f.executionRepository.markDispatchStarted.mockResolvedValue(true);
     f.executionRepository.markSucceeded.mockResolvedValue({ id: 'execution-id' });
     const body = JSON.stringify(commentPayload);

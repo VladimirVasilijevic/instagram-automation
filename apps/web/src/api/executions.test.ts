@@ -7,9 +7,7 @@ const execution = {
   commenterUsername: 'commenter',
   commentText: '#Hello',
   createdAt: '2026-09-24T12:00:00.000Z',
-  errorCode: null,
-  errorMessage: null,
-  status: 'succeeded',
+  deliveries: [{ channel: 'public', errorCode: null, errorMessage: null, status: 'succeeded' }],
 };
 
 describe('execution activity API client', () => {
@@ -25,11 +23,12 @@ describe('execution activity API client', () => {
     );
   });
 
-  it.each([{}, { executions: {} }, { executions: [{ ...execution, status: 'private' }] }])(
-    'rejects invalid activity responses: %j',
-    async (payload) => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
-      await expect(getRecentExecutions()).rejects.toThrow('invalid response');
-    },
-  );
+  it.each([
+    {},
+    { executions: {} },
+    { executions: [{ ...execution, deliveries: [{ channel: 'other', status: 'succeeded' }] }] },
+  ])('rejects invalid activity responses: %j', async (payload) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
+    await expect(getRecentExecutions()).rejects.toThrow('invalid response');
+  });
 });

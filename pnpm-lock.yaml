@@ -44,6 +44,9 @@ importers:
       '@hono/zod-openapi':
         specifier: 1.6.1
         version: 1.6.1(hono@4.13.5)(zod@4.5.4)
+      '@instagram-automation/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       hono:
         specifier: 4.13.5
         version: 4.13.5
@@ -69,6 +72,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@instagram-automation/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -121,7 +127,11 @@ importers:
 
   packages/application: {}
 
-  packages/contracts: {}
+  packages/contracts:
+    devDependencies:
+      typedoc:
+        specifier: 0.28.20
+        version: 0.28.20(typescript@6.0.3)
 
   packages/domain: {}
 

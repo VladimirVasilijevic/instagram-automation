@@ -23,7 +23,9 @@ const account: InstagramAccount = {
 const automation: Automation = {
   id: 'automation-id',
   accountId: account.id,
+  deliveryMode: 'public',
   mediaId: '17841400000000002',
+  privateReplyText: null,
   triggerText: '#Hello',
   replyText: 'Hello! Thanks for commenting.',
   enabled: true,
@@ -32,8 +34,10 @@ const automation: Automation = {
 };
 
 const responseAutomation = {
+  deliveryMode: automation.deliveryMode,
   enabled: automation.enabled,
   mediaId: automation.mediaId,
+  privateReplyText: automation.privateReplyText,
   replyText: automation.replyText,
   triggerText: automation.triggerText,
 };
@@ -75,7 +79,7 @@ const createFixture = () => {
   const app = createApp({
     automationRepository,
     executionRepository: {
-      claimExecution: vi.fn(),
+      claimExecutions: vi.fn(),
       listRecentByAccountId: vi.fn(),
       markDispatchStarted: vi.fn(),
       markFailed: vi.fn(),
@@ -153,14 +157,17 @@ describe('automation configuration routes', () => {
     expect(f.logger.error).toHaveBeenCalledOnce();
   });
 
-  it('trims and saves owner-controlled input with the fixed trigger', async () => {
+  it('trims and saves owner-controlled trigger and delivery settings', async () => {
     const f = createFixture();
     const response = await f.app.request('/api/automation', {
       method: 'PUT',
       headers: { ...f.headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        deliveryMode: 'public',
         mediaId: ` ${automation.mediaId} `,
+        privateReplyText: null,
         replyText: ` ${automation.replyText} `,
+        triggerText: ' #Hello ',
         enabled: true,
       }),
     });
@@ -169,8 +176,11 @@ describe('automation configuration routes', () => {
     await expect(response.json()).resolves.toEqual({ automation: responseAutomation });
     expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith({
       accountId: account.id,
+      deliveryMode: 'public',
       mediaId: automation.mediaId,
+      privateReplyText: null,
       replyText: automation.replyText,
+      triggerText: '#Hello',
       enabled: true,
     });
     expect(f.instagramMediaClient.listRecentMedia).toHaveBeenCalledWith({
@@ -180,13 +190,56 @@ describe('automation configuration routes', () => {
     });
   });
 
+  it('saves distinct public and private text when both channels are selected', async () => {
+    const f = createFixture();
+    const bothAutomation = {
+      ...automation,
+      deliveryMode: 'both' as const,
+      privateReplyText: 'Private response',
+      replyText: 'Public response',
+      triggerText: '#test',
+    };
+    f.automationRepository.saveAutomation.mockResolvedValue(bothAutomation);
+
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: { ...f.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deliveryMode: 'both',
+        enabled: true,
+        mediaId: automation.mediaId,
+        privateReplyText: ' Private response ',
+        replyText: ' Public response ',
+        triggerText: ' #test ',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith({
+      accountId: account.id,
+      deliveryMode: 'both',
+      enabled: true,
+      mediaId: automation.mediaId,
+      privateReplyText: 'Private response',
+      replyText: 'Public response',
+      triggerText: '#test',
+    });
+  });
+
   it('rejects a selected media ID outside the connected account recent-media list', async () => {
     const f = createFixture();
     f.instagramMediaClient.listRecentMedia.mockResolvedValue([]);
     const response = await f.app.request('/api/automation', {
       method: 'PUT',
       headers: { ...f.headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mediaId: automation.mediaId, replyText: 'Reply', enabled: true }),
+      body: JSON.stringify({
+        deliveryMode: 'public',
+        enabled: true,
+        mediaId: automation.mediaId,
+        privateReplyText: null,
+        replyText: 'Reply',
+        triggerText: '#Hello',
+      }),
     });
 
     expect(response.status).toBe(400);
@@ -209,7 +262,14 @@ describe('automation configuration routes', () => {
     const response = await f.app.request('/api/automation', {
       method: 'PUT',
       headers: { ...f.headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mediaId: automation.mediaId, replyText: 'Reply', enabled: true }),
+      body: JSON.stringify({
+        deliveryMode: 'public',
+        enabled: true,
+        mediaId: automation.mediaId,
+        privateReplyText: null,
+        replyText: 'Reply',
+        triggerText: '#Hello',
+      }),
     });
     const body = await response.text();
 
@@ -239,7 +299,7 @@ describe('automation configuration routes', () => {
     { mediaId: 'media', replyText: '   ', enabled: true },
     { mediaId: 'media', replyText: 'Reply', enabled: 'true' },
     { mediaId: 'media', replyText: 'Reply', enabled: true, triggerText: '#Other' },
-  ])('rejects invalid or trigger-changing input: %j', async (body) => {
+  ])('rejects invalid input: %j', async (body) => {
     const f = createFixture();
     const response = await f.app.request('/api/automation', {
       method: 'PUT',
@@ -251,7 +311,7 @@ describe('automation configuration routes', () => {
     await expect(response.json()).resolves.toEqual({
       error: {
         code: 'INVALID_AUTOMATION_INPUT',
-        message: 'Automation settings must include a media ID, reply text, and enabled state.',
+        message: 'Automation settings are incomplete or invalid.',
       },
     });
     expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
@@ -270,7 +330,7 @@ describe('automation configuration routes', () => {
     expect(JSON.parse(body)).toEqual({
       error: {
         code: 'INVALID_AUTOMATION_INPUT',
-        message: 'Automation settings must include a media ID, reply text, and enabled state.',
+        message: 'Automation settings are incomplete or invalid.',
       },
     });
   });
@@ -281,7 +341,14 @@ describe('automation configuration routes', () => {
     const response = await f.app.request('/api/automation', {
       method: 'PUT',
       headers: { ...f.headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mediaId: automation.mediaId, replyText: 'Reply', enabled: false }),
+      body: JSON.stringify({
+        deliveryMode: 'public',
+        enabled: false,
+        mediaId: automation.mediaId,
+        privateReplyText: null,
+        replyText: 'Reply',
+        triggerText: '#Hello',
+      }),
     });
     const body = await response.text();
 

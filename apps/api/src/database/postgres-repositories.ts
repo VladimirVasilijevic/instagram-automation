@@ -1,5 +1,12 @@
 import postgres from 'postgres';
 
+import {
+  EXECUTION_STATUS,
+  type DeliveryChannel,
+  type DeliveryMode,
+  type ExecutionStatus,
+} from '@instagram-automation/contracts';
+import { RECOVERY_KIND, type RecoveryKind } from '../automation/recovery.js';
 import type { ProtectedToken } from '../security/token-protector.js';
 import type {
   AccountRepository,
@@ -11,7 +18,6 @@ import type {
   Execution,
   ExecutionFailure,
   ExecutionRepository,
-  ExecutionStatus,
   InstagramAccount,
   SaveAutomationInput,
   Session,
@@ -47,11 +53,13 @@ interface SessionRow {
 interface AutomationRow {
   account_id: string;
   created_at: Date;
+  delivery_mode: DeliveryMode;
   enabled: boolean;
   id: string;
   media_id: string;
+  private_reply_text: string | null;
   reply_text: string;
-  trigger_text: '#Hello';
+  trigger_text: string;
   updated_at: Date;
 }
 
@@ -59,16 +67,19 @@ interface ExecutionRow {
   attempt_count: number;
   automation_id: string;
   comment_text: string;
+  commenter_instagram_id: string | null;
   commenter_username: string | null;
   created_at: Date;
   dispatch_started_at: Date | null;
+  delivery_channel: DeliveryChannel;
   error_code: string | null;
   error_message: string | null;
-  failure_kind: 'authentication' | 'permanent' | 'retryable' | 'uncertain' | null;
+  failure_kind: RecoveryKind | null;
   id: string;
   instagram_comment_id: string;
   lease_expires_at: Date | null;
   lease_id: string | null;
+  message_text: string;
   next_attempt_at: Date | null;
   provider_reply_id: string | null;
   status: ExecutionStatus;
@@ -78,7 +89,7 @@ interface ExecutionRow {
 interface ExecutionRetryRow extends ExecutionRow {
   account_id: string;
   access_token_ciphertext: string;
-  reply_text: string;
+  instagram_user_id: string;
 }
 
 interface AuthenticatedSessionRow extends AccountRow {
@@ -112,9 +123,11 @@ const toSession = (row: SessionRow): Session => ({
 const toAutomation = (row: AutomationRow): Automation => ({
   accountId: row.account_id,
   createdAt: row.created_at,
+  deliveryMode: row.delivery_mode,
   enabled: row.enabled,
   id: row.id,
   mediaId: row.media_id,
+  privateReplyText: row.private_reply_text,
   replyText: row.reply_text,
   triggerText: row.trigger_text,
   updatedAt: row.updated_at,
@@ -124,9 +137,11 @@ const toExecution = (row: ExecutionRow): Execution => ({
   attemptCount: row.attempt_count,
   automationId: row.automation_id,
   commentText: row.comment_text,
+  commenterInstagramId: row.commenter_instagram_id,
   commenterUsername: row.commenter_username,
   createdAt: row.created_at,
   dispatchStartedAt: row.dispatch_started_at,
+  deliveryChannel: row.delivery_channel,
   errorCode: row.error_code,
   errorMessage: row.error_message,
   failureKind: row.failure_kind,
@@ -134,6 +149,7 @@ const toExecution = (row: ExecutionRow): Execution => ({
   instagramCommentId: row.instagram_comment_id,
   leaseExpiresAt: row.lease_expires_at,
   leaseId: row.lease_id,
+  messageText: row.message_text,
   nextAttemptAt: row.next_attempt_at,
   providerReplyId: row.provider_reply_id,
   status: row.status,
@@ -390,7 +406,8 @@ export const createPostgresAutomationRepository = (
 ): AutomationRepository => ({
   async findByAccountId(accountId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, account_id, media_id, trigger_text, reply_text, enabled, created_at, updated_at
+      select id, account_id, media_id, trigger_text, delivery_mode, reply_text,
+        private_reply_text, enabled, created_at, updated_at
       from app_private.automations
       where account_id = ${accountId}
       limit 1
@@ -401,7 +418,8 @@ export const createPostgresAutomationRepository = (
 
   async findEnabledByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, account_id, media_id, trigger_text, reply_text, enabled, created_at, updated_at
+      select id, account_id, media_id, trigger_text, delivery_mode, reply_text,
+        private_reply_text, enabled, created_at, updated_at
       from app_private.automations
       where account_id = ${accountId}
         and media_id = ${mediaId}
@@ -414,15 +432,22 @@ export const createPostgresAutomationRepository = (
 
   async saveAutomation(input: SaveAutomationInput): Promise<Automation> {
     const rows = await sql<AutomationRow[]>`
-      insert into app_private.automations (account_id, media_id, trigger_text, reply_text, enabled)
-      values (${input.accountId}, ${input.mediaId}, '#Hello', ${input.replyText}, ${input.enabled})
+      insert into app_private.automations (
+        account_id, media_id, trigger_text, delivery_mode, reply_text, private_reply_text, enabled
+      ) values (
+        ${input.accountId}, ${input.mediaId}, ${input.triggerText}, ${input.deliveryMode},
+        ${input.replyText}, ${input.privateReplyText}, ${input.enabled}
+      )
       on conflict (account_id) do update
       set
         media_id = excluded.media_id,
-        trigger_text = '#Hello',
+        trigger_text = excluded.trigger_text,
+        delivery_mode = excluded.delivery_mode,
         reply_text = excluded.reply_text,
+        private_reply_text = excluded.private_reply_text,
         enabled = excluded.enabled
-      returning id, account_id, media_id, trigger_text, reply_text, enabled, created_at, updated_at
+      returning id, account_id, media_id, trigger_text, delivery_mode, reply_text,
+        private_reply_text, enabled, created_at, updated_at
     `;
     const automation = rows[0];
 
@@ -438,11 +463,68 @@ export const createPostgresAutomationRepository = (
 export const createPostgresExecutionRepository = (
   sql: PostgresQueryClient,
 ): ExecutionRepository => ({
+  async claimExecutions(inputs): Promise<Execution[]> {
+    if (inputs.length < 1 || inputs.length > 2) {
+      throw new RangeError('Execution claim must contain one or two delivery channels');
+    }
+    const payload = inputs.map((input) => ({
+      automation_id: input.automationId,
+      comment_text: input.commentText,
+      commenter_instagram_id: input.commenterInstagramId,
+      commenter_username: input.commenterUsername,
+      delivery_channel: input.deliveryChannel,
+      instagram_comment_id: input.instagramCommentId,
+      lease_expires_at: input.leaseExpiresAt.toISOString(),
+      message_text: input.messageText,
+    }));
+    const rows = await sql<ExecutionRow[]>`
+      insert into app_private.executions (
+        automation_id,
+        instagram_comment_id,
+        delivery_channel,
+        message_text,
+        commenter_instagram_id,
+        commenter_username,
+        comment_text,
+        status,
+        lease_id,
+        lease_expires_at
+      )
+      select
+        requested.automation_id,
+        requested.instagram_comment_id,
+        requested.delivery_channel,
+        requested.message_text,
+        requested.commenter_instagram_id,
+        requested.commenter_username,
+        requested.comment_text,
+        ${EXECUTION_STATUS.PROCESSING},
+        gen_random_uuid(),
+        requested.lease_expires_at
+      from jsonb_to_recordset(${sql.json(payload)}::jsonb) as requested(
+        automation_id uuid,
+        instagram_comment_id text,
+        delivery_channel text,
+        message_text text,
+        commenter_instagram_id text,
+        commenter_username text,
+        comment_text text,
+        lease_expires_at timestamptz
+      )
+      on conflict (instagram_comment_id, delivery_channel) do nothing
+      returning *
+    `;
+    return rows.map(toExecution);
+  },
+
   async claimExecution(input: ClaimExecutionInput): Promise<Execution | null> {
     const rows = await sql<ExecutionRow[]>`
       insert into app_private.executions (
         automation_id,
         instagram_comment_id,
+        delivery_channel,
+        message_text,
+        commenter_instagram_id,
         commenter_username,
         comment_text,
         status,
@@ -451,31 +533,17 @@ export const createPostgresExecutionRepository = (
       ) values (
         ${input.automationId},
         ${input.instagramCommentId},
+        ${input.deliveryChannel},
+        ${input.messageText},
+        ${input.commenterInstagramId},
         ${input.commenterUsername},
         ${input.commentText},
-        'processing',
+        ${EXECUTION_STATUS.PROCESSING},
         gen_random_uuid(),
         ${input.leaseExpiresAt}
       )
-      on conflict (instagram_comment_id) do nothing
-      returning
-        id,
-        automation_id,
-        instagram_comment_id,
-        commenter_username,
-        comment_text,
-        status,
-        error_code,
-        error_message,
-        attempt_count,
-        next_attempt_at,
-        lease_id,
-        lease_expires_at,
-        dispatch_started_at,
-        provider_reply_id,
-        failure_kind,
-        created_at,
-        updated_at
+      on conflict (instagram_comment_id, delivery_channel) do nothing
+      returning *
     `;
 
     return rows[0] ? toExecution(rows[0]) : null;
@@ -487,29 +555,23 @@ export const createPostgresExecutionRepository = (
     }
 
     const rows = await sql<ExecutionRow[]>`
+      with recent_comments as (
+        select execution.instagram_comment_id, max(execution.created_at) as created_at
+        from app_private.executions as execution
+        inner join app_private.automations as automation on automation.id = execution.automation_id
+        where automation.account_id = ${accountId}
+        group by execution.instagram_comment_id
+        order by created_at desc, execution.instagram_comment_id desc
+        limit ${limit}
+      )
       select
-        execution.id,
-        execution.automation_id,
-        execution.instagram_comment_id,
-        execution.commenter_username,
-        execution.comment_text,
-        execution.status,
-        execution.error_code,
-        execution.error_message,
-        execution.attempt_count,
-        execution.next_attempt_at,
-        execution.lease_id,
-        execution.lease_expires_at,
-        execution.dispatch_started_at,
-        execution.provider_reply_id,
-        execution.failure_kind,
-        execution.created_at,
-        execution.updated_at
+        execution.*
       from app_private.executions as execution
       inner join app_private.automations as automation on automation.id = execution.automation_id
+      inner join recent_comments on recent_comments.instagram_comment_id = execution.instagram_comment_id
       where automation.account_id = ${accountId}
-      order by execution.created_at desc, execution.id desc
-      limit ${limit}
+      order by recent_comments.created_at desc, execution.instagram_comment_id desc,
+        execution.delivery_channel desc
     `;
 
     return rows.map(toExecution);
@@ -530,11 +592,11 @@ export const createPostgresExecutionRepository = (
           and execution.attempt_count < 3
           and (
             (
-              execution.status = 'retry_pending'
+              execution.status = ${EXECUTION_STATUS.RETRY_PENDING}
               and execution.next_attempt_at <= ${now}
             )
             or (
-              execution.status = 'processing'
+              execution.status = ${EXECUTION_STATUS.PROCESSING}
               and execution.dispatch_started_at is null
               and execution.lease_expires_at <= ${now}
             )
@@ -545,7 +607,7 @@ export const createPostgresExecutionRepository = (
       ), claimed as (
         update app_private.executions as execution
         set
-          status = 'processing',
+          status = ${EXECUTION_STATUS.PROCESSING},
           attempt_count = execution.attempt_count + 1,
           next_attempt_at = null,
           lease_id = gen_random_uuid(),
@@ -561,7 +623,7 @@ export const createPostgresExecutionRepository = (
       select
         claimed.*,
         automation.account_id,
-        automation.reply_text,
+        account.instagram_user_id,
         account.access_token_ciphertext
       from claimed
       inner join app_private.automations as automation on automation.id = claimed.automation_id
@@ -571,7 +633,7 @@ export const createPostgresExecutionRepository = (
       accountId: row.account_id,
       accessTokenCiphertext: row.access_token_ciphertext as ProtectedToken,
       execution: toExecution(row),
-      replyText: row.reply_text,
+      instagramUserId: row.instagram_user_id,
     }));
   },
 
@@ -579,8 +641,14 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<{ id: string }[]>`
       update app_private.executions
       set
-        status = case when dispatch_started_at is not null then 'uncertain' else 'failed' end,
-        failure_kind = case when dispatch_started_at is not null then 'uncertain' else 'permanent' end,
+        status = case
+          when dispatch_started_at is not null then ${EXECUTION_STATUS.UNCERTAIN}
+          else ${EXECUTION_STATUS.FAILED}
+        end,
+        failure_kind = case
+          when dispatch_started_at is not null then ${RECOVERY_KIND.UNCERTAIN}
+          else ${RECOVERY_KIND.PERMANENT}
+        end,
         error_code = case
           when dispatch_started_at is not null then 'DELIVERY_OUTCOME_UNKNOWN'
           else 'RETRY_ATTEMPTS_EXHAUSTED'
@@ -588,11 +656,11 @@ export const createPostgresExecutionRepository = (
         error_message = case
           when dispatch_started_at is not null
             then 'Delivery requires manual review to prevent a duplicate reply.'
-          else 'The public reply could not be sent after controlled recovery attempts.'
+          else 'The reply could not be sent after controlled recovery attempts.'
         end,
         lease_id = null,
         lease_expires_at = null
-      where status = 'processing'
+      where status = ${EXECUTION_STATUS.PROCESSING}
         and lease_expires_at <= ${now}
         and (dispatch_started_at is not null or attempt_count >= 3)
       returning id
@@ -604,7 +672,8 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<{ id: string }[]>`
       update app_private.executions
       set dispatch_started_at = ${at}
-      where id = ${executionId} and status = 'processing' and lease_id = ${leaseId}
+      where id = ${executionId} and status = ${EXECUTION_STATUS.PROCESSING}
+        and lease_id = ${leaseId}
       returning id
     `;
     return rows.length === 1;
@@ -618,7 +687,7 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       update app_private.executions
       set
-        status = 'failed',
+        status = ${EXECUTION_STATUS.FAILED},
         error_code = ${failure.errorCode},
         error_message = ${failure.errorMessage},
         failure_kind = ${failure.failureKind},
@@ -626,26 +695,9 @@ export const createPostgresExecutionRepository = (
         lease_id = null,
         lease_expires_at = null
       where id = ${executionId}
-        and status = 'processing'
+        and status = ${EXECUTION_STATUS.PROCESSING}
         and lease_id = ${leaseId}
-      returning
-        id,
-        automation_id,
-        instagram_comment_id,
-        commenter_username,
-        comment_text,
-        status,
-        error_code,
-        error_message,
-        attempt_count,
-        next_attempt_at,
-        lease_id,
-        lease_expires_at,
-        dispatch_started_at,
-        provider_reply_id,
-        failure_kind,
-        created_at,
-        updated_at
+      returning *
     `;
 
     return rows[0] ? toExecution(rows[0]) : null;
@@ -658,7 +710,7 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       update app_private.executions
       set
-        status = 'retry_pending',
+        status = ${EXECUTION_STATUS.RETRY_PENDING},
         error_code = ${failure.errorCode},
         error_message = ${failure.errorMessage},
         failure_kind = ${failure.failureKind},
@@ -666,7 +718,8 @@ export const createPostgresExecutionRepository = (
         lease_id = null,
         lease_expires_at = null,
         dispatch_started_at = null
-      where id = ${executionId} and status = 'processing' and lease_id = ${leaseId}
+      where id = ${executionId} and status = ${EXECUTION_STATUS.PROCESSING}
+        and lease_id = ${leaseId}
       returning *
     `;
     return rows[0] ? toExecution(rows[0]) : null;
@@ -679,14 +732,15 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       update app_private.executions
       set
-        status = 'uncertain',
+        status = ${EXECUTION_STATUS.UNCERTAIN},
         error_code = ${failure.errorCode},
         error_message = ${failure.errorMessage},
         failure_kind = ${failure.failureKind},
         next_attempt_at = null,
         lease_id = null,
         lease_expires_at = null
-      where id = ${executionId} and status = 'processing' and lease_id = ${leaseId}
+      where id = ${executionId} and status = ${EXECUTION_STATUS.PROCESSING}
+        and lease_id = ${leaseId}
       returning *
     `;
     return rows[0] ? toExecution(rows[0]) : null;
@@ -697,7 +751,7 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       update app_private.executions
       set
-        status = 'succeeded',
+        status = ${EXECUTION_STATUS.SUCCEEDED},
         error_code = null,
         error_message = null,
         failure_kind = null,
@@ -706,26 +760,9 @@ export const createPostgresExecutionRepository = (
         lease_id = null,
         lease_expires_at = null
       where id = ${executionId}
-        and status = 'processing'
+        and status = ${EXECUTION_STATUS.PROCESSING}
         and lease_id = ${leaseId}
-      returning
-        id,
-        automation_id,
-        instagram_comment_id,
-        commenter_username,
-        comment_text,
-        status,
-        error_code,
-        error_message,
-        attempt_count,
-        next_attempt_at,
-        lease_id,
-        lease_expires_at,
-        dispatch_started_at,
-        provider_reply_id,
-        failure_kind,
-        created_at,
-        updated_at
+      returning *
     `;
 
     return rows[0] ? toExecution(rows[0]) : null;

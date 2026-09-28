@@ -7,6 +7,7 @@ import { logger } from './logging/logger.js';
 import { createInstagramCommentReplyClient } from './instagram/comment-reply-client.js';
 import { createInstagramLoginClient } from './instagram/login-client.js';
 import { createInstagramMediaClient } from './instagram/media-client.js';
+import { createInstagramPrivateReplyClient } from './instagram/private-reply-client.js';
 import { createInstagramWebhookClient } from './instagram/webhook-client.js';
 import { createInstagramTokenRefreshClient } from './instagram/token-refresh-client.js';
 import { runMaintenance } from './maintenance/run-maintenance.js';
@@ -62,6 +63,9 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
       instagramCommentReplyClient: createInstagramCommentReplyClient({
         apiVersion: environment.META_API_VERSION,
       }),
+      instagramPrivateReplyClient: createInstagramPrivateReplyClient({
+        apiVersion: environment.META_API_VERSION,
+      }),
       instagramWebhookClient: createInstagramWebhookClient({
         apiVersion: environment.META_API_VERSION,
       }),
@@ -75,6 +79,9 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
         runMaintenance({
           executionRepository: database.executionRepository,
           instagramCommentReplyClient: createInstagramCommentReplyClient({
+            apiVersion: environment.META_API_VERSION,
+          }),
+          instagramPrivateReplyClient: createInstagramPrivateReplyClient({
             apiVersion: environment.META_API_VERSION,
           }),
           instagramTokenRefreshClient: createInstagramTokenRefreshClient(),

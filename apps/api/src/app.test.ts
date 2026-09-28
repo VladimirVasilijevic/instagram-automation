@@ -24,7 +24,7 @@ const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDep
     saveAutomation: vi.fn(),
   },
   executionRepository: {
-    claimExecution: vi.fn(),
+    claimExecutions: vi.fn(),
     listRecentByAccountId: vi.fn(),
     markDispatchStarted: vi.fn(),
     markFailed: vi.fn(),

@@ -1,6 +1,6 @@
 # First Vertical Slice — Implementation Plan
 
-## Instagram Login → Select Post → `#Hello` → Public Reply → Activity
+## Instagram Login → Select Post → Hashtag Trigger → Public/Private Reply → Activity
 
 **Date:** 2026-09-01 **Status:** Ready to execute **Task system:** Simple checklist, no Beads
 
@@ -17,17 +17,17 @@ show latest 12 posts/reels
         ↓
 select one post
         ↓
-set public reply text
+choose public reply, private DM, or both
         ↓
 enable automation
         ↓
-someone comments exactly #Hello
+someone comments the configured hashtag
         ↓
 webhook received
         ↓
 exact rule matched
         ↓
-public reply sent
+selected delivery channels sent
         ↓
 activity shows SUCCESS
 ```
@@ -733,6 +733,60 @@ Keep the completed automation reliable without adding a queue or paid Vercel sch
 
 ---
 
+# Milestone 9 — Configurable public and private replies
+
+## Goal
+
+Let the account owner configure one hashtag trigger per selected post and choose a public reply, one
+comment-authorized private message, or both.
+
+## Application and database
+
+- [x] Make the hashtag trigger editable, trimmed, and case-insensitive for exact matching
+- [x] Ignore replies to comments and comments made by the connected professional account
+- [x] Store `public`, `private`, or `both` delivery mode with separate message text
+- [x] Create one idempotent execution per comment and delivery channel
+- [x] Preserve the Milestone 8 lease, retry, and uncertain-delivery policy for both channels
+- [x] Show public and private status independently in recent activity
+- [x] Let the owner copy the commenter username and open the Instagram profile
+- [x] Update the public privacy policy for private-message processing
+
+## Production activation
+
+- [ ] Apply `0004_multichannel_replies.sql` to production Supabase
+- [ ] Deploy the reviewed application
+- [ ] Save and reload each delivery mode in production
+- [ ] Complete the real Meta acceptance tests below
+- [ ] Confirm the current token is accepted for private replies; reconnect or request an additional
+      permission only if Meta returns a permission-specific rejection
+
+## Manual acceptance tests
+
+1. Configure `#test` in **Public reply only** mode. Comment `#TeSt` from another account and confirm
+   exactly one public reply and no private message.
+2. Comment `#test please`, reply to another comment with `#test`, and comment from the connected
+   owner account. Confirm all three produce no automation delivery.
+3. Configure **Private DM only** and comment `#test` from another account. Confirm one private
+   message, no public reply, and a successful **Private DM** activity row.
+4. Configure **Public reply and private DM** and comment once from another account. Confirm exactly
+   one of each delivery and independent activity statuses.
+5. Replay the same webhook/comment ID and confirm neither channel is duplicated.
+6. Use **Copy username** and **Open Instagram profile** from activity.
+7. Confirm Vercel logs contain channel and safe status metadata but no tokens, message text, comment
+   text, usernames, or Meta response bodies.
+
+## Done when
+
+```text
+✓ configurable exact hashtag matching works
+✓ selected public/private channels deliver independently
+✓ duplicate webhook deliveries do not duplicate messages
+✓ per-channel status and commenter lookup work
+✓ production Meta private-reply acceptance is verified
+```
+
+---
+
 # Milestone summary
 
 | Milestone | Result                                         |
@@ -746,6 +800,7 @@ Keep the completed automation reliable without adding a queue or paid Vercel sch
 | M6        | `#Hello` produces real public reply            |
 | M7        | Activity shows result; vertical slice complete |
 | M8        | Tokens and reply delivery recover safely       |
+| M9        | Configurable public and private replies        |
 
 ---
 
@@ -797,12 +852,10 @@ Vertical slice is complete.
 
 ---
 
-# Do not add during this vertical slice
+# Deferred beyond Milestone 9
 
 ```text
-private DMs
 new follower automation
-editable keyword
 multiple keywords
 multiple automations
 multiple Instagram accounts
@@ -833,11 +886,11 @@ A real user can complete this without developer intervention:
 1. Login with Instagram
 2. See their Professional account
 3. Select one of their latest posts/reels
-4. Write a public reply
+4. Choose public reply, private DM, or both and write the required message text
 5. Enable automation
-6. Another user comments exactly #Hello
-7. The configured public reply appears
-8. The owner sees SUCCESS in Activity
+6. Another user comments the configured hashtag
+7. The selected delivery or deliveries appear
+8. The owner sees each channel status in Activity
 ```
 
 After that, freeze v0.1 and decide the next vertical slice separately.

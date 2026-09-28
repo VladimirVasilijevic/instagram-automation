@@ -47,7 +47,7 @@ export interface AppDependencies {
   /** Idempotent comment-processing persistence used by webhook delivery. */
   executionRepository: Pick<
     ExecutionRepository,
-    | 'claimExecution'
+    | 'claimExecutions'
     | 'listRecentByAccountId'
     | 'markDispatchStarted'
     | 'markFailed'

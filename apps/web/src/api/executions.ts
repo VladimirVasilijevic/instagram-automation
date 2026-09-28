@@ -6,18 +6,43 @@ export interface ExecutionActivity {
   commentText: string;
   /** ISO-8601 time when processing claimed the comment. */
   createdAt: string;
-  /** Safe app-owned failure category, when processing failed. */
+  /** Independent public and private delivery results. */
+  deliveries: ExecutionDeliveryActivity[];
+}
+
+/** Safe status for one reply channel. */
+export interface ExecutionDeliveryActivity {
+  /** Public comment reply or private message. */
+  channel: DeliveryChannel;
+  /** Safe app-owned failure category. */
   errorCode: string | null;
-  /** Safe app-owned failure description, when processing failed. */
+  /** Safe app-owned failure description. */
   errorMessage: string | null;
-  /** Current processing result. */
-  status: 'failed' | 'processing' | 'retry_pending' | 'succeeded' | 'uncertain';
+  /** Current channel result. */
+  status: ExecutionStatus;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === 'string';
+
+const readDelivery = (value: unknown): ExecutionDeliveryActivity => {
+  if (
+    !isRecord(value) ||
+    !isDeliveryChannel(value.channel) ||
+    !isNullableString(value.errorCode) ||
+    !isNullableString(value.errorMessage) ||
+    !isExecutionStatus(value.status)
+  )
+    throw new Error('Invalid delivery activity');
+  return {
+    channel: value.channel,
+    errorCode: value.errorCode,
+    errorMessage: value.errorMessage,
+    status: value.status,
+  };
+};
 
 const readExecution = (value: unknown): ExecutionActivity => {
   if (
@@ -26,11 +51,9 @@ const readExecution = (value: unknown): ExecutionActivity => {
     typeof value.commentText !== 'string' ||
     typeof value.createdAt !== 'string' ||
     !Number.isFinite(Date.parse(value.createdAt)) ||
-    !isNullableString(value.errorCode) ||
-    !isNullableString(value.errorMessage) ||
-    !['failed', 'processing', 'retry_pending', 'succeeded', 'uncertain'].includes(
-      String(value.status),
-    )
+    !Array.isArray(value.deliveries) ||
+    value.deliveries.length < 1 ||
+    value.deliveries.length > 2
   ) {
     throw new Error('Invalid activity');
   }
@@ -38,9 +61,7 @@ const readExecution = (value: unknown): ExecutionActivity => {
     commenterUsername: value.commenterUsername,
     commentText: value.commentText,
     createdAt: value.createdAt,
-    errorCode: value.errorCode,
-    errorMessage: value.errorMessage,
-    status: value.status as ExecutionActivity['status'],
+    deliveries: value.deliveries.map(readDelivery),
   };
 };
 
@@ -68,3 +89,9 @@ export const getRecentExecutions = async (signal?: AbortSignal): Promise<Executi
     throw new Error('Activity returned an invalid response. Please try again.', { cause: error });
   }
 };
+import {
+  isDeliveryChannel,
+  isExecutionStatus,
+  type DeliveryChannel,
+  type ExecutionStatus,
+} from '@instagram-automation/contracts';
