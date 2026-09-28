@@ -704,12 +704,12 @@ Keep the completed automation reliable without adding a queue or paid Vercel sch
 
 ## Production activation
 
-- [ ] Apply `0003_reliability.sql`
-- [ ] Configure the same random `CRON_SECRET` in Vercel Production and Supabase Vault
-- [ ] Deploy the updated API and web application
-- [ ] Schedule Supabase Cron to call `POST /api/internal/maintenance` every 15 minutes
-- [ ] Confirm one successful Cron run and safe aggregate Vercel log entry
-- [ ] Complete the manual acceptance tests below
+- [x] Apply `0003_reliability.sql`
+- [x] Configure the same random `CRON_SECRET` in Vercel Production and Supabase Vault
+- [x] Deploy the updated API and web application
+- [x] Schedule Supabase Cron to call `POST /api/internal/maintenance` every 15 minutes
+- [x] Confirm successful Cron runs and safe aggregate Vercel log entries
+- [x] Complete the manual acceptance tests below
 
 ## Manual acceptance tests
 
