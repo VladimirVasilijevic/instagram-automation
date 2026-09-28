@@ -364,17 +364,17 @@ A normal personal/consumer Instagram account is not supported by this integratio
 
 ## Permissions required for v0.1
 
-Only request:
+Request:
 
 ```text
 instagram_business_basic
 instagram_business_manage_comments
+instagram_business_manage_messages
 ```
 
 Do not request yet:
 
 ```text
-instagram_business_manage_messages
 instagram_business_content_publish
 instagram_business_manage_insights
 ```

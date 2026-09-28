@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../app.js';
 import type { InstagramAccount, Session } from '../database/repositories.js';
-import { createInstagramLoginClient, InstagramLoginError } from '../instagram/login-client.js';
+import {
+  createInstagramLoginClient,
+  InstagramLoginError,
+  instagramLoginScopes,
+} from '../instagram/login-client.js';
 import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
 import type { OAuthStateInput } from '../security/oauth-state.js';
 import { createSessionToken, hashSessionToken } from '../security/session-token.js';
@@ -290,7 +294,7 @@ describe('Instagram browser login', () => {
             data: [
               {
                 access_token: 'short-token',
-                permissions: ['instagram_business_basic', 'instagram_business_manage_comments'],
+                permissions: [...instagramLoginScopes],
               },
             ],
           }),
@@ -376,7 +380,7 @@ describe('Instagram browser login', () => {
         new Response(
           JSON.stringify({
             access_token: secret,
-            permissions: 'instagram_business_basic,instagram_business_manage_comments',
+            permissions: instagramLoginScopes.join(','),
           }),
         ),
         new Response(JSON.stringify({ access_token: secret, expires_in: 3600 })),

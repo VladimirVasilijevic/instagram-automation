@@ -71,10 +71,12 @@ the unversioned endpoints specified by the
 10. `/api/me` returns only account ID, Instagram ID, and username. Logout revokes the session and
     expires the cookie. A failed logout remains visible and can be retried.
 
-The requested scopes are `instagram_business_basic` and `instagram_business_manage_comments`. The UI
-shows application-owned error messages for cancellation, invalid state, missing permissions,
-configuration mismatch, and temporary failures. Raw provider descriptions and credentials are never
-included in those responses or application logs. Authentication responses are not cacheable.
+The requested scopes are `instagram_business_basic`, `instagram_business_manage_comments`, and
+`instagram_business_manage_messages`. The messaging scope is required for comment-authorized private
+replies. The UI shows application-owned error messages for cancellation, invalid state, missing
+permissions, configuration mismatch, and temporary failures. Raw provider descriptions and
+credentials are never included in those responses or application logs. Authentication responses are
+not cacheable.
 
 The original infrastructure page remains at `/status`. The existing Milestone 1 diagrams describe
 that infrastructure and do not yet depict this OAuth flow.
@@ -140,7 +142,8 @@ shared production database during this work. Both integration files remain skipp
    immediately, so production configuration and the schema should be ready first.
 5. Verify `/api/health`, `/api/health/database`, and anonymous `/api/me` on the deployed origin.
 6. Open the production root and click **Continue with Instagram**. Sign in as the eligible test
-   account and grant profile/comment access. Confirm the correct `@username` at `/app`.
+   account and grant profile, comment, and message access. Confirm the correct `@username` at
+   `/app`.
 7. Refresh `/app` and confirm the same account. Inspect `/api/me` to confirm it contains only the
    three identity fields. The application session cookie should be HTTP-only, Secure, and
    SameSite=Lax.

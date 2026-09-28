@@ -99,7 +99,7 @@ The first MVP does not currently require:
 - a custom domain;
 - a staging environment;
 - analytics;
-- Instagram direct-message permissions.
+- Instagram content-publishing or insights permissions.
 
 ---
 

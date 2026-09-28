@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
-/** Permissions needed by the first Instagram comment automation slice. */
+/** Permissions required for profile, comment, and private-message automation. */
 export const instagramLoginScopes = [
   'instagram_business_basic',
   'instagram_business_manage_comments',
+  'instagram_business_manage_messages',
 ] as const;
 
 /** Server-only connection details obtained after an Instagram authorization. */

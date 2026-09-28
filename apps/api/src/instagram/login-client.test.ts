@@ -114,13 +114,15 @@ describe('Instagram Login HTTP adapter', () => {
       permissions: [
         ' instagram_business_basic ',
         'instagram_business_manage_comments',
+        'instagram_business_manage_messages',
         'instagram_business_basic',
         '',
       ],
     },
     {
       wrapped: false,
-      permissions: ' instagram_business_basic , instagram_business_manage_comments, ',
+      permissions:
+        ' instagram_business_basic , instagram_business_manage_comments, instagram_business_manage_messages, ',
     },
   ])('normalizes string and array permissions: %j', async ({ wrapped, permissions }) => {
     const token = { ...shortToken, permissions };
@@ -144,6 +146,10 @@ describe('Instagram Login HTTP adapter', () => {
     [],
     ['instagram_business_basic'],
     ['instagram_business_manage_comments'],
+    ['instagram_business_manage_messages'],
+    ['instagram_business_basic', 'instagram_business_manage_comments'],
+    ['instagram_business_basic', 'instagram_business_manage_messages'],
+    ['instagram_business_manage_comments', 'instagram_business_manage_messages'],
     [' ', 'unknown_scope'],
   ])('rejects ungranted required permissions after normalization: %j', async (permissions) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json({ ...shortToken, permissions }));
@@ -186,10 +192,13 @@ describe('Instagram Login HTTP adapter', () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
-  it('rejects missing comment permission before exchanging the token further', async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(json({ ...shortToken, permissions: 'instagram_business_basic' }));
+  it('rejects missing messaging permission before exchanging the token further', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        ...shortToken,
+        permissions: 'instagram_business_basic,instagram_business_manage_comments',
+      }),
+    );
     const operation = createInstagramLoginClient(config, fetcher).completeLogin('code');
     await expect(operation).rejects.toMatchObject({ permissionsMissing: true });
     expect(await failureContext(operation)).toEqual({

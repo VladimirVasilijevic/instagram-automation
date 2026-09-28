@@ -22,8 +22,12 @@ automatically because doing so could duplicate a message.
 2. Apply `db/migrations/0004_multichannel_replies.sql` in Supabase SQL Editor.
 3. Commit and push only after explicit approval.
 4. Wait for the Vercel production deployment to become ready.
-5. Open the app, reload the automation editor, and save the desired mode and message text.
-6. Run the manual acceptance cases in the Milestone 9 plan.
+5. In Meta's Instagram use-case settings, enable `instagram_business_manage_messages` at an access
+   level that covers the test account.
+6. Reconnect Instagram and grant profile, comment, and message access so the stored token contains
+   all three required permissions.
+7. Open the app, reload the automation editor, and save the desired mode and message text.
+8. Run the manual acceptance cases in the Milestone 9 plan.
 
 The migration preserves existing automations as **Public reply only** and preserves existing
 execution records as public deliveries. It also installs a compatibility trigger that snapshots the
@@ -42,13 +46,13 @@ also verified the previous production insert shape. Both database cases passed. 
 rolled the schema and test rows back. Production still requires the normal migration command before
 deployment.
 
-| Risk                                                                   | Expected detection                                                                  | Action                                                                                                             |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Token lacks permission accepted by Meta's private-reply endpoint       | Private channel becomes failed or retry pending with a safe provider classification | Capture the safe error code/status, then decide whether reconnecting with an additional reviewed scope is required |
-| Comment is too old or already used for a private reply                 | Meta rejects only the private channel                                               | Use a new top-level comment; do not retry the same private reply manually                                          |
-| Test comment is a reply or belongs to the connected owner              | No execution is created                                                             | Test with a new top-level comment from another account                                                             |
-| Provider accepts a request but the connection ends before confirmation | Channel becomes `Review needed`                                                     | Inspect Instagram before any manual resend to avoid a duplicate                                                    |
-| Database migration was not applied before deployment                   | API requests fail with sanitized storage errors                                     | Apply migration `0004`, then retry loading and saving                                                              |
+| Risk                                                                   | Expected detection                                                                  | Action                                                                                  |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Token lacks `instagram_business_manage_messages`                       | Private channel becomes failed or retry pending with a safe provider classification | Enable the permission in Meta, deploy the required OAuth scope, and reconnect Instagram |
+| Comment is too old or already used for a private reply                 | Meta rejects only the private channel                                               | Use a new top-level comment; do not retry the same private reply manually               |
+| Test comment is a reply or belongs to the connected owner              | No execution is created                                                             | Test with a new top-level comment from another account                                  |
+| Provider accepts a request but the connection ends before confirmation | Channel becomes `Review needed`                                                     | Inspect Instagram before any manual resend to avoid a duplicate                         |
+| Database migration was not applied before deployment                   | API requests fail with sanitized storage errors                                     | Apply migration `0004`, then retry loading and saving                                   |
 
 Do not paste access tokens, private message content, comment content, or raw Meta response bodies
 into issue reports. Record only the time, selected delivery mode, Activity status, safe application

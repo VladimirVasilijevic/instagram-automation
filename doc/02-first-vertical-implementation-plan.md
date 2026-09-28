@@ -757,8 +757,8 @@ comment-authorized private message, or both.
 - [ ] Deploy the reviewed application
 - [ ] Save and reload each delivery mode in production
 - [ ] Complete the real Meta acceptance tests below
-- [ ] Confirm the current token is accepted for private replies; reconnect or request an additional
-      permission only if Meta returns a permission-specific rejection
+- [ ] Enable `instagram_business_manage_messages` at the required Meta access level, reconnect, and
+      confirm the new token is accepted for private replies
 
 ## Manual acceptance tests
 
