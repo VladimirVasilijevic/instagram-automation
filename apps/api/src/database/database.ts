@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 
 import type { OAuthStateRepository } from '../security/oauth-state.js';
+import { createAsyncOperationGate, serializeAsyncMethods } from './operation-gate.js';
 import { createPostgresOAuthStateRepository } from './postgres-oauth-states.js';
 
 import {
@@ -69,20 +70,35 @@ export const createDatabase = (connectionString: string): Database => {
     max: 1,
     prepare: false,
   });
+  const operationGate = createAsyncOperationGate();
 
   return {
-    oauthStateRepository: createPostgresOAuthStateRepository(sql),
-    accountRepository: createPostgresAccountRepository(sql),
-    automationRepository: createPostgresAutomationRepository(sql),
-    async checkHealth(): Promise<void> {
-      await sql`select 1`;
-    },
-    async close(): Promise<void> {
-      await sql.end({ timeout: 5 });
-    },
-    executionRepository: createPostgresExecutionRepository(sql),
-    maintenanceHealthRepository: createPostgresMaintenanceHealthRepository(sql),
-    sessionRepository: createPostgresSessionRepository(sql),
-    tokenRefreshRepository: createPostgresTokenRefreshRepository(sql),
+    oauthStateRepository: serializeAsyncMethods(
+      createPostgresOAuthStateRepository(sql),
+      operationGate,
+    ),
+    accountRepository: serializeAsyncMethods(createPostgresAccountRepository(sql), operationGate),
+    automationRepository: serializeAsyncMethods(
+      createPostgresAutomationRepository(sql),
+      operationGate,
+    ),
+    checkHealth: () =>
+      operationGate.run(async () => {
+        await sql`select 1`;
+      }),
+    close: () => operationGate.run(async () => sql.end({ timeout: 5 })),
+    executionRepository: serializeAsyncMethods(
+      createPostgresExecutionRepository(sql),
+      operationGate,
+    ),
+    maintenanceHealthRepository: serializeAsyncMethods(
+      createPostgresMaintenanceHealthRepository(sql),
+      operationGate,
+    ),
+    sessionRepository: serializeAsyncMethods(createPostgresSessionRepository(sql), operationGate),
+    tokenRefreshRepository: serializeAsyncMethods(
+      createPostgresTokenRefreshRepository(sql),
+      operationGate,
+    ),
   };
 };

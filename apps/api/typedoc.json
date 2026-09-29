@@ -9,6 +9,7 @@
     "src/runtime.ts",
     "src/config/environment.ts",
     "src/database/database.ts",
+    "src/database/operation-gate.ts",
     "src/database/postgres-oauth-states.ts",
     "src/database/postgres-repositories.ts",
     "src/database/repositories.ts",

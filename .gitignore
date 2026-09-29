@@ -6,4 +6,5 @@ dist/
 .vercel/
 .DS_Store
 coverage/
+load-tests/.generated/
 supabase/.temp/
