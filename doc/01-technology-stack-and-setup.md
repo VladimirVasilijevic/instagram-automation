@@ -703,7 +703,8 @@ migration database query succeeds
 
 Milestones 1–8 provide production connectivity, Instagram login, media selection, signed comment
 webhooks, public replies, activity, and scheduled reliability maintenance. Milestone 9 adds an
-editable exact hashtag trigger plus public-only, private-only, or combined delivery. See the
+editable exact hashtag trigger plus public-only, private-only, or combined delivery; production has
+verified a successful public reply and private DM from one matching comment. See the
 [milestone plan](02-first-vertical-implementation-plan.md) and the
 [private-reply activation guide](06-private-message-automation.md).
 

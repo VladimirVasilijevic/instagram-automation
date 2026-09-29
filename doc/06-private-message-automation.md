@@ -39,12 +39,12 @@ automation's public reply when the previous production version inserts an execut
 No code can prove Meta production acceptance without a real comment from a different Instagram
 account. During the first private test, review the Activity channel status and sanitized Vercel log.
 
-Verification finding on September 28, 2026: the configured Supabase database does not yet have
-migration `0004`. The integration test applied the exact migration inside a rollback-only
-transaction, exercised public/private persistence, grouped activity, and duplicate prevention, and
-also verified the previous production insert shape. Both database cases passed. The transaction
-rolled the schema and test rows back. Production still requires the normal migration command before
-deployment.
+Production verification on September 28–29, 2026 confirmed that migration `0004` was applied,
+messaging permission was granted through a fresh Instagram connection, and one matching comment
+created successful public and private deliveries. The public reply's nested webhook was deliberately
+ignored. A signed messaging webhook was acknowledged with `200` as an unsupported event, without a
+new `400 invalid_comment_event` response. The full manual acceptance suite remains tracked in the
+Milestone 9 plan.
 
 | Risk                                                                   | Expected detection                                                                  | Action                                                                                  |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |

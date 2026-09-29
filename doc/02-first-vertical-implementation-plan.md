@@ -753,12 +753,15 @@ comment-authorized private message, or both.
 
 ## Production activation
 
-- [ ] Apply `0004_multichannel_replies.sql` to production Supabase
-- [ ] Deploy the reviewed application
+- [x] Apply `0004_multichannel_replies.sql` to production Supabase
+- [x] Deploy the reviewed application
 - [ ] Save and reload each delivery mode in production
 - [ ] Complete the real Meta acceptance tests below
-- [ ] Enable `instagram_business_manage_messages` at the required Meta access level, reconnect, and
+- [x] Enable `instagram_business_manage_messages` at the required Meta access level, reconnect, and
       confirm the new token is accepted for private replies
+
+Production verification has confirmed one matching comment can send both the public reply and the
+private DM. The unchecked manual cases remain explicit coverage still to be completed.
 
 ## Manual acceptance tests
 
@@ -789,18 +792,18 @@ comment-authorized private message, or both.
 
 # Milestone summary
 
-| Milestone | Result                                         |
-| --------- | ---------------------------------------------- |
-| M0        | Repository and monorepo exist                  |
-| M1        | Frontend + API + Supabase work                 |
-| M2        | DB schema, sessions and encryption work        |
-| M3        | Real Instagram login shows `@username`         |
-| M4        | Real media loads and automation saves          |
-| M5        | Real comment webhook reaches backend           |
-| M6        | `#Hello` produces real public reply            |
-| M7        | Activity shows result; vertical slice complete |
-| M8        | Tokens and reply delivery recover safely       |
-| M9        | Configurable public and private replies        |
+| Milestone | Result                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------- |
+| M0        | Repository and monorepo exist                                                               |
+| M1        | Frontend + API + Supabase work                                                              |
+| M2        | DB schema, sessions and encryption work                                                     |
+| M3        | Real Instagram login shows `@username`                                                      |
+| M4        | Real media loads and automation saves                                                       |
+| M5        | Real comment webhook reaches backend                                                        |
+| M6        | `#Hello` produces real public reply                                                         |
+| M7        | Activity shows result; vertical slice complete                                              |
+| M8        | Tokens and reply delivery recover safely                                                    |
+| M9        | Public and private delivery verified in production; remaining manual coverage tracked above |
 
 ---
 
