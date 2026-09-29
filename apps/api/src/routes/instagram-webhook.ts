@@ -144,6 +144,7 @@ export const registerInstagramWebhookRoutes = (
       }
       if (result.outcome === COMMENT_PROCESS_OUTCOME.SUCCEEDED) outcomeCounts.succeededCount += 1;
     }
+    const unsupportedEventCounts = normalized.unsupportedEventCounts;
     dependencies.logger.info('Instagram webhook processed', {
       commentEventCount: normalized.events.length,
       ...outcomeCounts,
@@ -153,6 +154,9 @@ export const registerInstagramWebhookRoutes = (
       ignoredNoEnabledAutomationCount: ignoredReasonCounts.no_enabled_automation,
       ignoredOwnCommentCount: ignoredReasonCounts.own_comment,
       ignoredTriggerNotMatchedCount: ignoredReasonCounts.trigger_not_matched,
+      unsupportedMessagingEventCount: unsupportedEventCounts.messaging,
+      unsupportedOtherChangeEventCount: unsupportedEventCounts.other_change,
+      unsupportedOtherEntryEventCount: unsupportedEventCounts.other_entry,
     });
     return context.text('EVENT_RECEIVED', 200);
   });

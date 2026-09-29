@@ -42,6 +42,15 @@ const commentPayload = {
     },
   ],
 };
+const messagingPayload = {
+  object: 'instagram',
+  entry: [
+    {
+      id: account.instagramUserId,
+      messaging: [{ message: { text: 'private message body' } }],
+    },
+  ],
+};
 
 const signature = (body: string): string =>
   `sha256=${createHmac('sha256', appSecret).update(body).digest('hex')}`;
@@ -162,6 +171,9 @@ describe('Instagram webhook routes', () => {
       ignoredOwnCommentCount: 0,
       ignoredTriggerNotMatchedCount: 0,
       succeededCount: 0,
+      unsupportedMessagingEventCount: 0,
+      unsupportedOtherChangeEventCount: 0,
+      unsupportedOtherEntryEventCount: 0,
     });
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('#Hello');
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('commenter');
@@ -237,7 +249,42 @@ describe('Instagram webhook routes', () => {
       ignoredOwnCommentCount: 0,
       ignoredTriggerNotMatchedCount: 0,
       succeededCount: 1,
+      unsupportedMessagingEventCount: 0,
+      unsupportedOtherChangeEventCount: 0,
+      unsupportedOtherEntryEventCount: 0,
     });
+  });
+
+  it('acknowledges signed unsupported messaging events without logging message content', async () => {
+    const f = createFixture();
+    const body = JSON.stringify(messagingPayload);
+
+    const response = await f.app.request('/api/webhooks/instagram', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': signature(body) },
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('EVENT_RECEIVED');
+    expect(f.accountRepository.findByInstagramUserId).not.toHaveBeenCalled();
+    expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
+      commentEventCount: 0,
+      duplicateCount: 0,
+      failedCount: 0,
+      ignoredAccountNotConnectedCount: 0,
+      ignoredConnectionInactiveCount: 0,
+      ignoredCount: 0,
+      ignoredNestedCommentCount: 0,
+      ignoredNoEnabledAutomationCount: 0,
+      ignoredOwnCommentCount: 0,
+      ignoredTriggerNotMatchedCount: 0,
+      succeededCount: 0,
+      unsupportedMessagingEventCount: 1,
+      unsupportedOtherChangeEventCount: 0,
+      unsupportedOtherEntryEventCount: 0,
+    });
+    expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('private message body');
   });
 
   it('rejects unsigned, malformed, and invalid comment deliveries safely', async () => {

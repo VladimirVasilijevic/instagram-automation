@@ -34,20 +34,35 @@ const commentValueSchema = z.object({
   parent_id: identifier.optional(),
   text: z.string().max(2_200),
 });
+/** Safe categories for signed Instagram events this application does not process. */
+export type UnsupportedWebhookEventKind = 'messaging' | 'other_change' | 'other_entry';
 const envelopeSchema = z.object({
   entry: z.array(
     z.object({
-      changes: z.array(z.object({ field: z.string(), value: z.unknown() })),
+      changes: z.array(z.object({ field: z.string(), value: z.unknown() })).optional(),
       id: identifier,
+      messaging: z.array(z.unknown()).optional(),
     }),
   ),
   object: z.literal('instagram'),
+});
+
+/** Creates zeroed counts for signed Instagram events that this application does not process. */
+export const createUnsupportedWebhookEventCounts = (): Record<
+  UnsupportedWebhookEventKind,
+  number
+> => ({
+  messaging: 0,
+  other_change: 0,
+  other_entry: 0,
 });
 
 /** Successful comment-event normalization result. */
 export interface ValidCommentEventNormalization {
   /** Extracted comment events from the authenticated delivery. */
   events: CommentEvent[];
+  /** Aggregate unsupported-event categories without retaining any event payload values. */
+  unsupportedEventCounts: Record<UnsupportedWebhookEventKind, number>;
   /** Identifies a successful normalization. */
   success: true;
 }
@@ -62,7 +77,13 @@ export interface InvalidCommentEventNormalization {
 export type CommentEventNormalization =
   InvalidCommentEventNormalization | ValidCommentEventNormalization;
 
-/** Validates a signed Meta envelope and extracts only supported Instagram comment changes. */
+/**
+ * Validates a signed Meta envelope and extracts supported comment changes.
+ *
+ * Valid but unsupported Instagram events are counted for observability and deliberately omitted from
+ * processing. A malformed `comments` change remains invalid because it could otherwise hide a
+ * broken comment delivery contract.
+ */
 export const normalizeCommentEvents = (
   payload: unknown,
   receivedAt: Date = new Date(),
@@ -71,8 +92,10 @@ export const normalizeCommentEvents = (
   if (!envelope.success) return { success: false };
 
   const events: CommentEvent[] = [];
+  const unsupportedEventCounts = createUnsupportedWebhookEventCounts();
   for (const entry of envelope.data.entry) {
-    for (const change of entry.changes) {
+    const changes = entry.changes ?? [];
+    for (const change of changes) {
       if (change.field !== 'comments') continue;
       const comment = commentValueSchema.safeParse(change.value);
       if (!comment.success) return { success: false };
@@ -87,6 +110,12 @@ export const normalizeCommentEvents = (
         username: comment.data.from?.username ?? null,
       });
     }
+    unsupportedEventCounts.other_change += changes.filter(
+      (change) => change.field !== 'comments',
+    ).length;
+    unsupportedEventCounts.messaging += entry.messaging?.length ?? 0;
+    if (changes.length === 0 && entry.messaging === undefined)
+      unsupportedEventCounts.other_entry += 1;
   }
-  return { events, success: true };
+  return { events, success: true, unsupportedEventCounts };
 };

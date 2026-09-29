@@ -111,7 +111,9 @@ from `META_APP_SECRET`. A valid top-level comment is matched when its trimmed te
 owner-configured hashtag without regard to capitalization. The server atomically claims each
 selected delivery channel and records a dispatch boundary before calling Meta's public- or
 private-reply API. Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous
-outcomes are left for manual review to prevent duplicate messages. Do not use Swagger to submit
+outcomes are left for manual review to prevent duplicate messages. Signed Instagram deliveries that
+are valid but do not contain a comment event are acknowledged with `200` and counted by safe event
+category; malformed comment events still return sanitized `400`. Do not use Swagger to submit
 webhook deliveries.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
