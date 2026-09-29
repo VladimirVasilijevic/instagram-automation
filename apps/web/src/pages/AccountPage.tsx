@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { getCurrentAccount, logout, type CurrentAccount } from '../api/auth.js';
 import { AutomationEditor } from '../components/AutomationEditor.js';
+import { MaintenanceHealthCard } from '../components/MaintenanceHealthCard.js';
 import { RecentActivity } from '../components/RecentActivity.js';
 import { WebhookSubscription } from '../components/WebhookSubscription.js';
 
@@ -153,6 +154,7 @@ export const AccountPage = () => {
                   </a>
                 </div>
               )}
+              <MaintenanceHealthCard />
               <AutomationEditor />
               <WebhookSubscription />
               <RecentActivity />

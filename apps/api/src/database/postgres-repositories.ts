@@ -19,6 +19,9 @@ import type {
   ExecutionFailure,
   ExecutionRepository,
   InstagramAccount,
+  MaintenanceCounts,
+  MaintenanceHealth,
+  MaintenanceHealthRepository,
   SaveAutomationInput,
   Session,
   SessionRepository,
@@ -99,6 +102,22 @@ interface AuthenticatedSessionRow extends AccountRow {
   session_id: string;
 }
 
+interface MaintenanceHealthRow {
+  checked_at: Date;
+  expired_token_count: number;
+  last_failed_at: Date | null;
+  last_failure_code: string | null;
+  last_succeeded_at: Date | null;
+  reconnect_required_count: number;
+  reply_failed_count: number;
+  reply_retry_pending_count: number;
+  reply_succeeded_count: number;
+  reply_uncertain_count: number;
+  stale_execution_count: number;
+  token_refresh_failed_count: number;
+  token_refreshed_count: number;
+}
+
 const toInstagramAccount = (row: AccountRow): InstagramAccount => ({
   accessTokenCiphertext: row.access_token_ciphertext as ProtectedToken,
   createdAt: row.created_at,
@@ -154,6 +173,22 @@ const toExecution = (row: ExecutionRow): Execution => ({
   providerReplyId: row.provider_reply_id,
   status: row.status,
   updatedAt: row.updated_at,
+});
+
+const toMaintenanceHealth = (row: MaintenanceHealthRow): MaintenanceHealth => ({
+  checkedAt: row.checked_at,
+  expiredTokenCount: row.expired_token_count,
+  lastFailedAt: row.last_failed_at,
+  lastFailureCode: row.last_failure_code,
+  lastSucceededAt: row.last_succeeded_at,
+  reconnectRequiredCount: row.reconnect_required_count,
+  replyFailedCount: row.reply_failed_count,
+  replyRetryPendingCount: row.reply_retry_pending_count,
+  replySucceededCount: row.reply_succeeded_count,
+  replyUncertainCount: row.reply_uncertain_count,
+  staleExecutionCount: row.stale_execution_count,
+  tokenRefreshFailedCount: row.token_refresh_failed_count,
+  tokenRefreshedCount: row.token_refreshed_count,
 });
 
 /** Creates PostgreSQL-backed Instagram account persistence operations. */
@@ -328,6 +363,88 @@ export const createPostgresTokenRefreshRepository = (
       returning id
     `;
     return rows.length === 1;
+  },
+});
+
+/** Creates PostgreSQL-backed durable maintenance heartbeat persistence. */
+export const createPostgresMaintenanceHealthRepository = (
+  sql: PostgresQueryClient,
+): MaintenanceHealthRepository => ({
+  async getHealth() {
+    const rows = await sql<MaintenanceHealthRow[]>`
+      select
+        clock_timestamp() as checked_at,
+        last_succeeded_at,
+        last_failed_at,
+        last_failure_code,
+        expired_token_count,
+        reconnect_required_count,
+        reply_failed_count,
+        reply_retry_pending_count,
+        reply_succeeded_count,
+        reply_uncertain_count,
+        stale_execution_count,
+        token_refresh_failed_count,
+        token_refreshed_count
+      from app_private.maintenance_health
+      where singleton = true
+    `;
+    return rows[0] ? toMaintenanceHealth(rows[0]) : null;
+  },
+
+  async recordFailure(errorCode) {
+    if (errorCode.trim() === '') throw new TypeError('Maintenance failure code must be non-empty');
+    await sql`
+      insert into app_private.maintenance_health (
+        singleton,
+        last_failed_at,
+        last_failure_code
+      ) values (true, clock_timestamp(), ${errorCode})
+      on conflict (singleton) do update set
+        last_failed_at = excluded.last_failed_at,
+        last_failure_code = excluded.last_failure_code
+    `;
+  },
+
+  async recordSuccess(counts: MaintenanceCounts) {
+    await sql`
+      insert into app_private.maintenance_health (
+        singleton,
+        last_succeeded_at,
+        expired_token_count,
+        reconnect_required_count,
+        reply_failed_count,
+        reply_retry_pending_count,
+        reply_succeeded_count,
+        reply_uncertain_count,
+        stale_execution_count,
+        token_refresh_failed_count,
+        token_refreshed_count
+      ) values (
+        true,
+        clock_timestamp(),
+        ${counts.expiredTokenCount},
+        ${counts.reconnectRequiredCount},
+        ${counts.replyFailedCount},
+        ${counts.replyRetryPendingCount},
+        ${counts.replySucceededCount},
+        ${counts.replyUncertainCount},
+        ${counts.staleExecutionCount},
+        ${counts.tokenRefreshFailedCount},
+        ${counts.tokenRefreshedCount}
+      )
+      on conflict (singleton) do update set
+        last_succeeded_at = excluded.last_succeeded_at,
+        expired_token_count = excluded.expired_token_count,
+        reconnect_required_count = excluded.reconnect_required_count,
+        reply_failed_count = excluded.reply_failed_count,
+        reply_retry_pending_count = excluded.reply_retry_pending_count,
+        reply_succeeded_count = excluded.reply_succeeded_count,
+        reply_uncertain_count = excluded.reply_uncertain_count,
+        stale_execution_count = excluded.stale_execution_count,
+        token_refresh_failed_count = excluded.token_refresh_failed_count,
+        token_refreshed_count = excluded.token_refreshed_count
+    `;
   },
 });
 

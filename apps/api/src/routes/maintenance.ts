@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 
 import type { MaintenanceSummary } from '../maintenance/run-maintenance.js';
+import type { MaintenanceHealthRepository } from '../database/repositories.js';
 import type { Logger } from '../logging/logger.js';
 import { toSafeErrorContext } from '../logging/logger.js';
 
@@ -12,6 +13,8 @@ export interface MaintenanceRouteDependencies {
   cronSecret: string;
   /** Structured logger that receives only sanitized maintenance failures. */
   logger: Logger;
+  /** Persists durable success and failure timestamps for owner-visible monitoring. */
+  maintenanceHealthRepository: Pick<MaintenanceHealthRepository, 'recordFailure' | 'recordSuccess'>;
   /** Runs one bounded maintenance pass after authentication succeeds. */
   runMaintenance(): Promise<MaintenanceSummary>;
 }
@@ -33,9 +36,19 @@ export const registerMaintenanceRoute = (
     if (!authorization || !equal(authorization, `Bearer ${dependencies.cronSecret}`))
       return context.json({ error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } }, 401);
     try {
-      return context.json(await dependencies.runMaintenance(), 200);
+      const summary = await dependencies.runMaintenance();
+      await dependencies.maintenanceHealthRepository.recordSuccess(summary);
+      return context.json(summary, 200);
     } catch (error) {
       dependencies.logger.error('Instagram maintenance failed', toSafeErrorContext(error));
+      try {
+        await dependencies.maintenanceHealthRepository.recordFailure('MAINTENANCE_FAILED');
+      } catch (recordError) {
+        dependencies.logger.error(
+          'Maintenance failure heartbeat could not be recorded',
+          toSafeErrorContext(recordError),
+        );
+      }
       return context.json(
         { error: { code: 'MAINTENANCE_FAILED', message: 'Maintenance could not be completed' } },
         500,

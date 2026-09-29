@@ -11,6 +11,7 @@ import {
   createPostgresAccountRepository,
   createPostgresAutomationRepository,
   createPostgresExecutionRepository,
+  createPostgresMaintenanceHealthRepository,
   createPostgresSessionRepository,
 } from './postgres-repositories.js';
 
@@ -24,6 +25,10 @@ const describeDatabase = integrationTestsEnabled ? describe : describe.skip;
 const multichannelMigrationPath = resolve(
   import.meta.dirname,
   '../../../../db/migrations/0004_multichannel_replies.sql',
+);
+const operationalHealthMigrationPath = resolve(
+  import.meta.dirname,
+  '../../../../db/migrations/0005_operational_health.sql',
 );
 
 describeDatabase('PostgreSQL repositories', () => {
@@ -176,6 +181,52 @@ describeDatabase('PostgreSQL repositories', () => {
     `;
 
     expect(remainingRows[0]).toEqual({ account_count: 0, session_count: 0 });
+  });
+
+  it('persists a singleton maintenance heartbeat and preserves the latest success on failure', async () => {
+    try {
+      await sql.begin(async (transactionSql) => {
+        const [schemaState] = await transactionSql<{ migration_applied: boolean }[]>`
+          select to_regclass('app_private.maintenance_health') is not null as migration_applied
+        `;
+        if (!schemaState?.migration_applied) {
+          await transactionSql.unsafe(await readFile(operationalHealthMigrationPath, 'utf8'));
+        }
+        const repository = createPostgresMaintenanceHealthRepository(transactionSql);
+        const counts = {
+          expiredTokenCount: 0,
+          reconnectRequiredCount: 0,
+          replyFailedCount: 0,
+          replyRetryPendingCount: 1,
+          replySucceededCount: 2,
+          replyUncertainCount: 0,
+          staleExecutionCount: 1,
+          tokenRefreshFailedCount: 0,
+          tokenRefreshedCount: 1,
+        };
+
+        await repository.recordSuccess(counts);
+        const succeeded = await repository.getHealth();
+        expect(succeeded).toMatchObject({
+          ...counts,
+          lastFailureCode: null,
+        });
+        expect(succeeded?.lastSucceededAt).toBeInstanceOf(Date);
+
+        await repository.recordFailure('MAINTENANCE_FAILED');
+        const failed = await repository.getHealth();
+        expect(failed).toMatchObject({
+          ...counts,
+          lastFailureCode: 'MAINTENANCE_FAILED',
+          lastSucceededAt: succeeded?.lastSucceededAt,
+        });
+        expect(failed?.lastFailedAt).toBeInstanceOf(Date);
+
+        throw rollbackSignal;
+      });
+    } catch (error) {
+      if (error !== rollbackSignal) throw error;
+    }
   });
 
   it('persists automations, atomically claims executions, and isolates recent activity', async () => {

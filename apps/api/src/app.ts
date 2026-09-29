@@ -25,6 +25,10 @@ import {
   type MaintenanceRouteDependencies,
 } from './routes/maintenance.js';
 import {
+  registerMaintenanceHealthRoute,
+  type MaintenanceHealthRouteDependencies,
+} from './routes/maintenance-health.js';
+import {
   registerInstagramWebhookRoutes,
   type InstagramWebhookRouteDependencies,
 } from './routes/instagram-webhook.js';
@@ -81,6 +85,12 @@ export interface AppDependencies {
   /** Optional internal scheduled-maintenance endpoint. */
   maintenance?: Omit<MaintenanceRouteDependencies, 'logger'>;
 
+  /** Optional owner-visible durable maintenance status endpoint. */
+  maintenanceHealth?: Omit<
+    MaintenanceHealthRouteDependencies,
+    'logger' | 'sessionCookie' | 'sessionRepository'
+  >;
+
   /** Browser session-cookie settings shared by authentication handlers. */
   sessionCookie: SessionCookieConfig;
 
@@ -115,6 +125,10 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     await next();
   });
   app.use('/api/executions', async (context, next) => {
+    context.header('Cache-Control', 'no-store');
+    await next();
+  });
+  app.use('/api/maintenance-health', async (context, next) => {
     context.header('Cache-Control', 'no-store');
     await next();
   });
@@ -185,6 +199,14 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   }
   if (dependencies.maintenance) {
     registerMaintenanceRoute(app, { ...dependencies.maintenance, logger: dependencies.logger });
+  }
+  if (dependencies.maintenanceHealth) {
+    registerMaintenanceHealthRoute(app, {
+      ...dependencies.maintenanceHealth,
+      logger: dependencies.logger,
+      sessionCookie: dependencies.sessionCookie,
+      sessionRepository: dependencies.sessionRepository,
+    });
   }
 
   if (dependencies.docsEnabled ?? true) {

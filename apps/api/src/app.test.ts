@@ -129,7 +129,11 @@ describe('API application', () => {
   });
 
   it('serves an OpenAPI document for the registered endpoints', async () => {
-    const app = createApp(createAppDependencies());
+    const app = createApp(
+      createAppDependencies({
+        maintenanceHealth: { maintenanceHealthRepository: { getHealth: vi.fn() } },
+      }),
+    );
 
     const response = await app.request('/api/openapi.json');
     const document = (await response.json()) as {
@@ -168,6 +172,9 @@ describe('API application', () => {
     expect(document.paths['/api/executions']?.get?.responses).toHaveProperty('200');
     expect(document.paths['/api/executions']?.get?.responses).toHaveProperty('401');
     expect(document.paths['/api/executions']?.get?.responses).toHaveProperty('503');
+    expect(document.paths['/api/maintenance-health']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/api/maintenance-health']?.get?.responses).toHaveProperty('401');
+    expect(document.paths['/api/maintenance-health']?.get?.responses).toHaveProperty('503');
   });
 
   it('serves Swagger UI configured with the OpenAPI document', async () => {

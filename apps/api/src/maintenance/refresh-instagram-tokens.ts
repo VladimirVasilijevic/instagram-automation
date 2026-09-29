@@ -6,6 +6,7 @@ import {
 import type { Logger } from '../logging/logger.js';
 import { toSafeErrorContext } from '../logging/logger.js';
 import type { TokenProtector } from '../security/token-protector.js';
+import { MAINTENANCE_BATCH_SIZE } from './limits.js';
 
 const dayMilliseconds = 24 * 60 * 60 * 1000;
 
@@ -41,7 +42,7 @@ export const refreshInstagramTokens = async (
     now,
     new Date(now.getTime() + 7 * dayMilliseconds),
     new Date(now.getTime() + 2 * 60 * 1000),
-    25,
+    MAINTENANCE_BATCH_SIZE,
   );
   for (const claim of claims) {
     let accessToken: string;

@@ -6,8 +6,10 @@
     "src/api/auth.ts",
     "src/api/automation.ts",
     "src/api/executions.ts",
+    "src/api/maintenance-health.ts",
     "src/components/StatusCard.tsx",
     "src/components/RecentActivity.tsx",
+    "src/components/MaintenanceHealthCard.tsx",
     "src/pages/AccountPage.tsx",
     "src/pages/StatusPage.tsx"
   ],

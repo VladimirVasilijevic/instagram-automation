@@ -576,6 +576,19 @@ To remove or replace the schedule, first resolve its numeric `jobid`, then call
 `select cron.unschedule(<jobid>);`. Supabase Free projects can pause after inactivity; while a
 project is paused, Cron, token refresh, and reply recovery do not run.
 
+After applying `0005_operational_health.sql` and deploying the matching application, invoke the
+protected endpoint once or wait for the next scheduled call. The signed-in account page shows:
+
+- **Maintenance healthy** when a full pass completed within 45 minutes without actionable counts.
+- **Maintenance needs attention** after a newer failed invocation or a run that found failed,
+  uncertain, expired-token, reconnect-required, or token-refresh-failed work.
+- **Maintenance delayed** when no successful pass completed for more than 45 minutes.
+- **Maintenance not observed** before the first successful pass is recorded.
+
+Vercel logs remain useful for short-term diagnosis, but the database heartbeat is the durable
+signal. It contains no access tokens, Instagram identities, comment text, reply text, provider
+messages, or response bodies.
+
 ---
 
 # 9. Vercel setup
@@ -704,8 +717,9 @@ migration database query succeeds
 Milestones 1–8 provide production connectivity, Instagram login, media selection, signed comment
 webhooks, public replies, activity, and scheduled reliability maintenance. Milestone 9 adds an
 editable exact hashtag trigger plus public-only, private-only, or combined delivery; production has
-verified a successful public reply and private DM from one matching comment. See the
-[milestone plan](02-first-vertical-implementation-plan.md) and the
+verified a successful public reply and private DM from one matching comment. Milestone 10 adds a
+bounded maintenance workload, durable scheduler health, and stricter provider-error recovery. See
+the [milestone plan](02-first-vertical-implementation-plan.md) and the
 [private-reply activation guide](06-private-message-automation.md).
 
 ---

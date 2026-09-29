@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { RECOVERY_KIND, type RecoveryKind } from '../automation/recovery.js';
+import type { RecoveryKind } from '../automation/recovery.js';
+import {
+  classifyInstagramReplyFailure,
+  type InstagramReplyFailureDiagnostics,
+} from './reply-recovery.js';
 
 /** Server-side input for publishing one public reply to an Instagram comment. */
 export interface ReplyToCommentInput {
@@ -27,7 +31,7 @@ export interface InstagramCommentReplyClient {
 }
 
 /** Safe provider-failure metadata suitable for server logs. */
-export interface InstagramCommentReplyDiagnostics {
+export interface InstagramCommentReplyDiagnostics extends InstagramReplyFailureDiagnostics {
   /** HTTP response status when Meta responded. */
   httpStatus?: number;
 
@@ -36,9 +40,6 @@ export interface InstagramCommentReplyDiagnostics {
 
   /** Numeric Meta error subcode when supplied. */
   metaErrorSubcode?: number;
-
-  /** Application-owned failure category. */
-  reason: 'http_error' | 'invalid_json' | 'invalid_response' | 'network_error' | 'timeout';
 }
 
 /** Sanitized failure from the Instagram public comment-reply endpoint. */
@@ -53,21 +54,7 @@ export class InstagramCommentReplyError extends Error {
 
   /** Returns the conservative recovery decision without exposing provider content. */
   recoveryKind(): RecoveryKind {
-    if (this.diagnostics.reason !== 'http_error') return RECOVERY_KIND.UNCERTAIN;
-    if (
-      this.diagnostics.httpStatus === 401 ||
-      this.diagnostics.httpStatus === 403 ||
-      this.diagnostics.metaErrorCode === 190
-    )
-      return RECOVERY_KIND.AUTHENTICATION;
-    if (this.diagnostics.httpStatus === 429) return RECOVERY_KIND.RETRYABLE;
-    if (
-      this.diagnostics.httpStatus &&
-      this.diagnostics.httpStatus >= 400 &&
-      this.diagnostics.httpStatus < 500
-    )
-      return RECOVERY_KIND.PERMANENT;
-    return RECOVERY_KIND.UNCERTAIN;
+    return classifyInstagramReplyFailure(this.diagnostics);
   }
 
   /** Returns only application-selected diagnostic values. */

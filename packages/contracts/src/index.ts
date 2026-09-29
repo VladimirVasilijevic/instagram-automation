@@ -39,6 +39,21 @@ export const EXECUTION_STATUS = {
 /** Current lifecycle state of one delivery execution. */
 export type ExecutionStatus = (typeof EXECUTION_STATUS)[keyof typeof EXECUTION_STATUS];
 
+/** Serialized owner-visible states for scheduled maintenance. */
+export const MAINTENANCE_STATUS = {
+  /** The latest pass completed recently but reported actionable work. */
+  ATTENTION: 'attention',
+  /** No successful pass completed within the expected scheduler window. */
+  DELAYED: 'delayed',
+  /** A recent pass completed without actionable results. */
+  HEALTHY: 'healthy',
+  /** No successful pass has been recorded. */
+  NEVER_RUN: 'never_run',
+} as const;
+
+/** Current owner-visible scheduled-maintenance state. */
+export type MaintenanceStatus = (typeof MAINTENANCE_STATUS)[keyof typeof MAINTENANCE_STATUS];
+
 /** Returns whether an unknown value is a supported delivery channel. */
 export const isDeliveryChannel = (value: unknown): value is DeliveryChannel =>
   typeof value === 'string' && Object.values(DELIVERY_CHANNEL).includes(value as DeliveryChannel);
@@ -50,3 +65,8 @@ export const isDeliveryMode = (value: unknown): value is DeliveryMode =>
 /** Returns whether an unknown value is a supported execution status. */
 export const isExecutionStatus = (value: unknown): value is ExecutionStatus =>
   typeof value === 'string' && Object.values(EXECUTION_STATUS).includes(value as ExecutionStatus);
+
+/** Returns whether an unknown value is a supported maintenance state. */
+export const isMaintenanceStatus = (value: unknown): value is MaintenanceStatus =>
+  typeof value === 'string' &&
+  Object.values(MAINTENANCE_STATUS).includes(value as MaintenanceStatus);

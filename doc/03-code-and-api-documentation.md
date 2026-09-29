@@ -94,11 +94,19 @@ Current documented operations:
 | GET    | `/api/automation`                      | Session cookie                              | `200`, `401`, sanitized `503`           |
 | PUT    | `/api/automation`                      | Session cookie and automation JSON          | `200`, `400`, `401`, sanitized errors   |
 | GET    | `/api/executions?limit=50`             | Session cookie                              | `200`, `400`, `401`, sanitized `503`    |
+| GET    | `/api/maintenance-health`              | Session cookie                              | `200`, `401`, sanitized `503`           |
 
 `POST /api/internal/maintenance` is deliberately excluded from Swagger/OpenAPI. It is a private
 machine endpoint authenticated by the separate `CRON_SECRET`, called only by Supabase Cron, and
 returns safe aggregate counts. It must not be invoked from a browser or exposed as an interactive
 operation.
+
+`GET /api/maintenance-health` is owner-authenticated and returns only durable timestamps, a safe
+application-owned failure code, and numeric aggregate counters. `healthy` means a full pass
+completed within 45 minutes with no actionable latest-run count. `attention` means the latest
+failure is newer than the latest success or the latest completed pass found work requiring review.
+`delayed` means the last successful pass is older than 45 minutes. `never_run` means no successful
+pass has been recorded since migration `0005_operational_health.sql` was applied.
 
 Start OAuth through **Continue with Instagram** in the browser. Swagger request execution is not a
 replacement for the provider's browser consent flow. Authentication responses and `/api/me` use

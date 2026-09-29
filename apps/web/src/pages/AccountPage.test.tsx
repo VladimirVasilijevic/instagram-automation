@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCurrentAccount, logout } from '../api/auth.js';
 import { getAutomation } from '../api/automation.js';
 import { getRecentExecutions } from '../api/executions.js';
+import { getMaintenanceHealth } from '../api/maintenance-health.js';
 import { getRecentMedia } from '../api/media.js';
 import { AccountPage } from './AccountPage.js';
 
 vi.mock('../api/auth.js', () => ({ getCurrentAccount: vi.fn(), logout: vi.fn() }));
 vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
 vi.mock('../api/executions.js', () => ({ getRecentExecutions: vi.fn() }));
+vi.mock('../api/maintenance-health.js', () => ({ getMaintenanceHealth: vi.fn() }));
 vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
 const account = {
   connectionStatus: 'active' as const,
@@ -22,6 +24,24 @@ beforeEach(() => {
   vi.mocked(getRecentMedia).mockResolvedValue([]);
   vi.mocked(getAutomation).mockResolvedValue(null);
   vi.mocked(getRecentExecutions).mockResolvedValue([]);
+  vi.mocked(getMaintenanceHealth).mockResolvedValue({
+    checkedAt: '2026-09-29T10:00:00.000Z',
+    counts: {
+      expiredTokenCount: 0,
+      reconnectRequiredCount: 0,
+      replyFailedCount: 0,
+      replyRetryPendingCount: 0,
+      replySucceededCount: 0,
+      replyUncertainCount: 0,
+      staleExecutionCount: 0,
+      tokenRefreshFailedCount: 0,
+      tokenRefreshedCount: 0,
+    },
+    lastFailedAt: null,
+    lastFailureCode: null,
+    lastSucceededAt: '2026-09-29T09:45:00.000Z',
+    status: 'healthy',
+  });
   window.history.replaceState(null, '', '/');
 });
 afterEach(() => window.history.replaceState(null, '', '/'));

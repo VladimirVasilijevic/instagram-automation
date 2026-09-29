@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { RECOVERY_KIND, type RecoveryKind } from '../automation/recovery.js';
+import type { RecoveryKind } from '../automation/recovery.js';
+import {
+  classifyInstagramReplyFailure,
+  type InstagramReplyFailureDiagnostics,
+} from './reply-recovery.js';
 
 /** Server-side input for sending one private reply to an Instagram commenter. */
 export interface SendPrivateReplyInput {
@@ -29,15 +33,13 @@ export interface InstagramPrivateReplyClient {
 }
 
 /** Safe private-reply failure metadata suitable for server logs. */
-export interface InstagramPrivateReplyDiagnostics {
+export interface InstagramPrivateReplyDiagnostics extends InstagramReplyFailureDiagnostics {
   /** HTTP response status when Meta responded. */
   httpStatus?: number;
   /** Numeric Meta error code when supplied. */
   metaErrorCode?: number;
   /** Numeric Meta error subcode when supplied. */
   metaErrorSubcode?: number;
-  /** Application-owned failure category. */
-  reason: 'http_error' | 'invalid_json' | 'invalid_response' | 'network_error' | 'timeout';
 }
 
 /** Sanitized provider error for a private-reply request. */
@@ -52,21 +54,7 @@ export class InstagramPrivateReplyError extends Error {
 
   /** Returns the conservative automatic-recovery decision. */
   recoveryKind(): RecoveryKind {
-    if (this.diagnostics.reason !== 'http_error') return RECOVERY_KIND.UNCERTAIN;
-    if (
-      this.diagnostics.httpStatus === 401 ||
-      this.diagnostics.httpStatus === 403 ||
-      this.diagnostics.metaErrorCode === 190
-    )
-      return RECOVERY_KIND.AUTHENTICATION;
-    if (this.diagnostics.httpStatus === 429) return RECOVERY_KIND.RETRYABLE;
-    if (
-      this.diagnostics.httpStatus &&
-      this.diagnostics.httpStatus >= 400 &&
-      this.diagnostics.httpStatus < 500
-    )
-      return RECOVERY_KIND.PERMANENT;
-    return RECOVERY_KIND.UNCERTAIN;
+    return classifyInstagramReplyFailure(this.diagnostics);
   }
 
   /** Returns only selected diagnostic values, never response content. */

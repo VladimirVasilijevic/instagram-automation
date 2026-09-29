@@ -20,13 +20,18 @@ const summary: MaintenanceSummary = {
 const fixture = () => {
   const app = new OpenAPIHono();
   const logger: Logger = { error: vi.fn(), info: vi.fn() };
+  const maintenanceHealthRepository = {
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+    recordSuccess: vi.fn().mockResolvedValue(undefined),
+  };
   const runMaintenance = vi.fn().mockResolvedValue(summary);
   registerMaintenanceRoute(app, {
     cronSecret: 'c'.repeat(32),
     logger,
+    maintenanceHealthRepository,
     runMaintenance,
   });
-  return { app, logger, runMaintenance };
+  return { app, logger, maintenanceHealthRepository, runMaintenance };
 };
 
 describe('scheduled maintenance route', () => {
@@ -56,6 +61,7 @@ describe('scheduled maintenance route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     await expect(response.json()).resolves.toEqual(summary);
     expect(f.runMaintenance).toHaveBeenCalledOnce();
+    expect(f.maintenanceHealthRepository.recordSuccess).toHaveBeenCalledWith(summary);
   });
 
   it('sanitizes maintenance failures', async () => {
@@ -72,5 +78,23 @@ describe('scheduled maintenance route', () => {
     expect(f.logger.error).toHaveBeenCalledWith('Instagram maintenance failed', {
       errorName: 'Error',
     });
+    expect(f.maintenanceHealthRepository.recordFailure).toHaveBeenCalledWith('MAINTENANCE_FAILED');
+  });
+
+  it('still returns a sanitized failure when the failure heartbeat cannot be stored', async () => {
+    const f = fixture();
+    f.runMaintenance.mockRejectedValue(new Error('private provider detail'));
+    f.maintenanceHealthRepository.recordFailure.mockRejectedValue(
+      new Error('private database detail'),
+    );
+
+    const response = await f.app.request('/api/internal/maintenance', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${'c'.repeat(32)}` },
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain('private');
+    expect(f.logger.error).toHaveBeenCalledTimes(2);
   });
 });

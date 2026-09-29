@@ -75,6 +75,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
     },
     maintenance: {
       cronSecret: environment.CRON_SECRET,
+      maintenanceHealthRepository: database.maintenanceHealthRepository,
       runMaintenance: () =>
         runMaintenance({
           executionRepository: database.executionRepository,
@@ -89,6 +90,9 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
           tokenProtector,
           tokenRefreshRepository: database.tokenRefreshRepository,
         }),
+    },
+    maintenanceHealth: {
+      maintenanceHealthRepository: database.maintenanceHealthRepository,
     },
     database,
     docsEnabled: true,

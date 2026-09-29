@@ -1,16 +1,21 @@
 import { EXECUTION_STATUS } from '@instagram-automation/contracts';
 
 import { deliverReply, type ReplyDeliveryOutcome } from '../automation/deliver-reply.js';
-import type { ExecutionRepository, TokenRefreshRepository } from '../database/repositories.js';
+import type {
+  ExecutionRepository,
+  MaintenanceCounts,
+  TokenRefreshRepository,
+} from '../database/repositories.js';
 import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
 import type { InstagramPrivateReplyClient } from '../instagram/private-reply-client.js';
 import type { InstagramTokenRefreshClient } from '../instagram/token-refresh-client.js';
 import type { Logger } from '../logging/logger.js';
 import type { TokenProtector } from '../security/token-protector.js';
 import { refreshInstagramTokens } from './refresh-instagram-tokens.js';
+import { MAINTENANCE_BATCH_SIZE } from './limits.js';
 
 /** Safe aggregate maintenance result returned to the authenticated scheduler. */
-export interface MaintenanceSummary {
+export interface MaintenanceSummary extends MaintenanceCounts {
   /** Accounts marked reconnect-required because their tokens were already expired. */
   expiredTokenCount: number;
   /** Refresh attempts that require a new owner login. */
@@ -57,7 +62,7 @@ export const runMaintenance = async (
   const claims = await dependencies.executionRepository.claimDueRetries(
     now,
     new Date(now.getTime() + 2 * 60 * 1000),
-    25,
+    MAINTENANCE_BATCH_SIZE,
   );
   const replyCounts: Record<ReplyDeliveryOutcome, number> = {
     [EXECUTION_STATUS.FAILED]: 0,

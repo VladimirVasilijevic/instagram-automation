@@ -58,7 +58,7 @@ describe('Instagram token maintenance', () => {
       now,
       new Date('2026-10-05T12:00:00.000Z'),
       new Date('2026-09-28T12:02:00.000Z'),
-      25,
+      10,
     );
     expect(f.repository.completeTokenRefresh).toHaveBeenCalledWith(
       'account-id',

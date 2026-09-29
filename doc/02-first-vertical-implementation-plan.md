@@ -790,6 +790,44 @@ private DM. The unchecked manual cases remain explicit coverage still to be comp
 
 ---
 
+# Milestone 10 — Operational stability
+
+## Goal
+
+Detect scheduler failures durably, keep maintenance within Hobby execution limits, and avoid pausing
+healthy Instagram connections for non-authentication rejections. This milestone adds no automation
+features, queue, paid scheduler, or email integration.
+
+## Application and database
+
+- [x] Limit each maintenance pass to ten token refreshes and ten reply retries
+- [x] Treat only definite credential rejection as an authentication failure
+- [x] Preserve ambiguous provider outcomes as `uncertain` without automatic retry
+- [x] Persist a singleton maintenance heartbeat with safe timestamps and aggregate counters
+- [x] Expose authenticated `GET /api/maintenance-health`
+- [x] Show healthy, attention, delayed, and not-yet-observed states to the account owner
+- [x] Add unit, route, browser-client, component, and opt-in PostgreSQL integration coverage
+
+## Production activation
+
+- [ ] Apply `0005_operational_health.sql`
+- [ ] Deploy the updated API and web application
+- [ ] Invoke protected maintenance once and confirm `Maintenance healthy`
+- [ ] Wait for a scheduled run and confirm the completion timestamp advances
+- [ ] Confirm a normal matching comment still delivers and appears as `Succeeded`
+
+## Done when
+
+```text
+✓ maintenance has bounded provider-call work per invocation
+✓ scheduler health survives short Vercel log retention
+✓ generic permission rejection does not invalidate a valid token
+✓ the owner can see a delayed or failed maintenance state
+✓ existing duplicate-prevention behavior remains unchanged
+```
+
+---
+
 # Milestone summary
 
 | Milestone | Result                                                                                      |
@@ -804,6 +842,7 @@ private DM. The unchecked manual cases remain explicit coverage still to be comp
 | M7        | Activity shows result; vertical slice complete                                              |
 | M8        | Tokens and reply delivery recover safely                                                    |
 | M9        | Public and private delivery verified in production; remaining manual coverage tracked above |
+| M10       | Operational stability implemented; migration and production acceptance remain               |
 
 ---
 

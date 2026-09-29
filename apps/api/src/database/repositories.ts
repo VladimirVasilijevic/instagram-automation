@@ -112,6 +112,50 @@ export interface TokenRefreshRepository {
   markAccountReconnectRequired(accountId: string, errorCode: string): Promise<boolean>;
 }
 
+/** Safe aggregate counters produced by one completed maintenance pass. */
+export interface MaintenanceCounts {
+  /** Accounts found after credential expiry. */
+  expiredTokenCount: number;
+  /** Connections requiring owner reconnection. */
+  reconnectRequiredCount: number;
+  /** Reply attempts that reached terminal failure. */
+  replyFailedCount: number;
+  /** Reply attempts scheduled for controlled retry. */
+  replyRetryPendingCount: number;
+  /** Reply attempts confirmed successful. */
+  replySucceededCount: number;
+  /** Ambiguous reply attempts stopped for review. */
+  replyUncertainCount: number;
+  /** Expired processing leases resolved. */
+  staleExecutionCount: number;
+  /** Token refresh attempts deferred after temporary failure. */
+  tokenRefreshFailedCount: number;
+  /** Tokens successfully refreshed. */
+  tokenRefreshedCount: number;
+}
+
+/** Durable scheduler state safe to expose to an authenticated owner. */
+export interface MaintenanceHealth extends MaintenanceCounts {
+  /** Database time used to calculate freshness without trusting the browser clock. */
+  checkedAt: Date;
+  /** Safe application-owned code for the latest failed invocation. */
+  lastFailureCode: string | null;
+  /** Latest time a maintenance invocation failed. */
+  lastFailedAt: Date | null;
+  /** Latest time a full maintenance pass completed. */
+  lastSucceededAt: Date | null;
+}
+
+/** Persistence for the singleton scheduled-maintenance heartbeat. */
+export interface MaintenanceHealthRepository {
+  /** Loads the heartbeat with current database time, or `null` before the first recorded run. */
+  getHealth(): Promise<MaintenanceHealth | null>;
+  /** Records a sanitized invocation failure without erasing the previous successful heartbeat. */
+  recordFailure(errorCode: string): Promise<void>;
+  /** Records completion time and safe aggregate results for one full pass. */
+  recordSuccess(counts: MaintenanceCounts): Promise<void>;
+}
+
 /** Persistence operations required by Instagram account connection and webhook processing. */
 export interface AccountRepository {
   /**

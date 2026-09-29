@@ -175,4 +175,27 @@ describe('reply delivery recovery policy', () => {
       'TOKEN_REJECTED',
     );
   });
+
+  it('fails a permission rejection without invalidating a valid connection', async () => {
+    const f = fixture();
+    f.instagramCommentReplyClient.replyToComment.mockRejectedValue(
+      new InstagramCommentReplyError({
+        reason: 'http_error',
+        httpStatus: 403,
+        metaErrorCode: 10,
+      }),
+    );
+
+    await expect(deliverReply(input(execution()), f.dependencies, now)).resolves.toBe('failed');
+
+    expect(f.tokenRefreshRepository.markAccountReconnectRequired).not.toHaveBeenCalled();
+    expect(f.executionRepository.markFailed).toHaveBeenCalledWith(
+      'execution-id',
+      'lease-id',
+      expect.objectContaining({
+        errorCode: 'INSTAGRAM_REPLY_REJECTED',
+        failureKind: 'permanent',
+      }),
+    );
+  });
 });

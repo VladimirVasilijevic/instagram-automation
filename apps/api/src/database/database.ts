@@ -7,6 +7,7 @@ import {
   createPostgresAccountRepository,
   createPostgresAutomationRepository,
   createPostgresExecutionRepository,
+  createPostgresMaintenanceHealthRepository,
   createPostgresSessionRepository,
   createPostgresTokenRefreshRepository,
 } from './postgres-repositories.js';
@@ -14,6 +15,7 @@ import type {
   AccountRepository,
   AutomationRepository,
   ExecutionRepository,
+  MaintenanceHealthRepository,
   SessionRepository,
   TokenRefreshRepository,
 } from './repositories.js';
@@ -49,6 +51,9 @@ export interface Database extends DatabaseHealthChecker {
 
   /** PostgreSQL-backed expiring-token maintenance persistence. */
   tokenRefreshRepository: TokenRefreshRepository;
+
+  /** Durable scheduled-maintenance heartbeat persistence. */
+  maintenanceHealthRepository: MaintenanceHealthRepository;
 }
 
 /**
@@ -76,6 +81,7 @@ export const createDatabase = (connectionString: string): Database => {
       await sql.end({ timeout: 5 });
     },
     executionRepository: createPostgresExecutionRepository(sql),
+    maintenanceHealthRepository: createPostgresMaintenanceHealthRepository(sql),
     sessionRepository: createPostgresSessionRepository(sql),
     tokenRefreshRepository: createPostgresTokenRefreshRepository(sql),
   };
