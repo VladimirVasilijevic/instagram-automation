@@ -9,7 +9,7 @@ support logout, retry, and safe OAuth error messages. The dashboard keeps only a
 connection status above automation and recent activity. The status page still shows independent
 API/database states and links to Swagger UI.
 
-The login UI is implemented locally and awaits deployment. See the
+The login UI is deployed and production-accepted. See the
 [Instagram login guide](05-instagram-login.md) for configuration and acceptance checks.
 
 The browser calls only same-origin paths:

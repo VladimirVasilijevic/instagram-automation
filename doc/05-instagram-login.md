@@ -3,9 +3,11 @@
 ## Current status
 
 OAuth start/callback, encrypted account persistence, application sessions, `/api/me`, and the
-connect/account UI are implemented. On 2026-09-22, the five required login settings were added to
-Vercel Production, with `META_APP_SECRET` stored as a Secret, and `0002_oauth_states.sql` was
-applied to the existing production Supabase database. Real Instagram login is not verified yet.
+connect/account UI are implemented and deployed. On 2026-09-22, the five required login settings
+were added to Vercel Production, with `META_APP_SECRET` stored as a Secret, and
+`0002_oauth_states.sql` was applied to the existing production Supabase database. The project owner
+confirmed production Instagram login, reconnect behavior, webhook delivery, and reply acceptance on
+2026-09-30.
 
 Automated route tests use an injected Instagram client and in-memory repository doubles. Adapter
 tests validate requests and responses against the documented Meta shapes using mocked HTTP. Live
@@ -122,7 +124,8 @@ not load `.env.local` or fall back to `DATABASE_URL`. Its create operation remov
 rows, so the database must be dedicated to testing.
 
 The existing `test:integration` command still loads `.env.local`; do not run that suite against the
-shared production database during this work. Both integration files remain skipped by `pnpm test`.
+shared production database. Both integration files remain skipped by `pnpm test`; this is the only
+remaining verification limitation and is separate from the completed production acceptance.
 
 ## Release and real-login acceptance — complete
 

@@ -1,5 +1,10 @@
 # Pre-Coding Setup & Environment Readiness Checklist
 
+> This document records the original pre-coding readiness process. Its unchecked template items are
+> historical prompts, not current production blockers. For the current implementation and acceptance
+> state, use [the technology and setup guide](01-technology-stack-and-setup.md) and
+> [the milestone plan](02-first-vertical-implementation-plan.md).
+
 ## Instagram Comment Automation MVP
 
 **Date:** 2026-09-01  

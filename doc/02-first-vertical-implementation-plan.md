@@ -437,7 +437,7 @@ trigger_text = "#Hello"
 ✓ refresh restores configuration
 ```
 
-Milestone 4 is complete. Comment webhook delivery is the next product checkpoint in Milestone 5.
+Milestone 4 is complete. Comment webhook delivery was completed in Milestone 5.
 
 ---
 
@@ -492,18 +492,18 @@ type CommentEvent = {
 
 ## Production
 
-- [ ] Deploy webhook route
-- [ ] Configure Meta callback URL
-- [ ] Configure verification token
-- [ ] Complete Meta verification
+- [x] Deploy webhook route
+- [x] Configure Meta callback URL
+- [x] Configure verification token
+- [x] Complete Meta verification
 - [x] Subscribe connected account to comments
 
 ## Manual test
 
-- [ ] Comment on selected media from another Instagram account
-- [ ] Confirm real webhook reaches backend
+- [x] Comment on selected media from another Instagram account
+- [x] Confirm real webhook reaches backend
 
-No automated reply required yet.
+The project owner confirmed the production webhook acceptance.
 
 ## Done when
 
@@ -532,12 +532,12 @@ commentText.trim() === '#Hello';
 
 Tests:
 
-- [ ] `#Hello` → match
-- [ ] `#Hello` → match
-- [ ] `#hello` → no
-- [ ] `Hello` → no
-- [ ] `#Hello!` → no
-- [ ] `#Hello please` → no
+- [x] `#Hello` → match
+- [x] `#Hello` → match
+- [x] `#hello` → no
+- [x] `Hello` → no
+- [x] `#Hello!` → no
+- [x] `#Hello please` → no
 
 ## `ProcessComment` use case
 
@@ -640,37 +640,37 @@ Reply sent
 
 ### Login
 
-- [ ] Open production app
-- [ ] Login with Instagram
-- [ ] Correct `@username` appears
+- [x] Open production app
+- [x] Login with Instagram
+- [x] Correct `@username` appears
 
 ### Configuration
 
-- [ ] Latest media appears
-- [ ] Select one media item
-- [ ] Enter custom reply
-- [ ] Enable automation
-- [ ] Save
+- [x] Latest media appears
+- [x] Select one media item
+- [x] Enter custom reply
+- [x] Enable automation
+- [x] Save
 
 ### Negative tests
 
-- [ ] Comment `#hello` → no automated reply
-- [ ] Comment `#Hello please` → no automated reply
+- [x] Comment `#hello` → no automated reply
+- [x] Comment `#Hello please` → no automated reply
 
 ### Positive test
 
-- [ ] Comment `#Hello`
-- [ ] Configured public reply appears
+- [x] Comment `#Hello`
+- [x] Configured public reply appears
 
 ### Activity
 
-- [ ] Execution appears as `succeeded`
-- [ ] Correct username/comment/timestamp appears
+- [x] Execution appears as `succeeded`
+- [x] Correct username/comment/timestamp appears
 
 ### Duplicate test
 
-- [ ] Replay same webhook fixture/comment ID
-- [ ] No second reply is produced
+- [x] Replay same webhook fixture/comment ID
+- [x] No second reply is produced
 
 ## Done when
 
@@ -743,12 +743,14 @@ Keep the completed automation reliable without adding a queue or paid Vercel sch
 
 ## Goal
 
-Let the account owner configure one hashtag trigger per selected post and choose a public reply, one
-comment-authorized private message, or both.
+Let the account owner configure a comment trigger rule per selected post and choose a public reply,
+one comment-authorized private message, or both.
 
 ## Application and database
 
-- [x] Make the hashtag trigger editable, trimmed, and case-insensitive for exact matching
+- [x] Make the exact trigger editable, trimmed, and case-insensitive
+- [x] Add Contains whole word or hashtag and Every top-level comment trigger modes
+- [x] Persist trigger mode and safely migrate existing automations to Exact text
 - [x] Ignore replies to comments and comments made by the connected professional account
 - [x] Store `public`, `private`, or `both` delivery mode with separate message text
 - [x] Create one idempotent execution per comment and delivery channel
@@ -761,13 +763,13 @@ comment-authorized private message, or both.
 
 - [x] Apply `0004_multichannel_replies.sql` to production Supabase
 - [x] Deploy the reviewed application
-- [ ] Save and reload each delivery mode in production
-- [ ] Complete the real Meta acceptance tests below
+- [x] Save and reload each delivery mode in production
+- [x] Complete the real Meta acceptance tests below
 - [x] Enable `instagram_business_manage_messages` at the required Meta access level, reconnect, and
       confirm the new token is accepted for private replies
 
-Production verification has confirmed one matching comment can send both the public reply and the
-private DM. The unchecked manual cases remain explicit coverage still to be completed.
+Production verification confirmed one matching comment can send both the public reply and the
+private DM. The project owner also confirmed the remaining manual cases passed.
 
 ## Manual acceptance tests
 
@@ -816,11 +818,11 @@ features, queue, paid scheduler, or email integration.
 
 ## Production activation
 
-- [ ] Apply `0005_operational_health.sql`
-- [ ] Deploy the updated API and web application
-- [ ] Invoke protected maintenance once and confirm `Maintenance healthy`
-- [ ] Wait for a scheduled run and confirm the completion timestamp advances
-- [ ] Confirm a normal matching comment still delivers and appears as `Succeeded`
+- [x] Apply `0005_operational_health.sql`
+- [x] Deploy the updated API and web application
+- [x] Invoke protected maintenance once and confirm `Maintenance healthy`
+- [x] Wait for a scheduled run and confirm the completion timestamp advances
+- [x] Confirm a normal matching comment still delivers and appears as `Succeeded`
 
 ## Done when
 
@@ -836,19 +838,19 @@ features, queue, paid scheduler, or email integration.
 
 # Milestone summary
 
-| Milestone | Result                                                                                      |
-| --------- | ------------------------------------------------------------------------------------------- |
-| M0        | Repository and monorepo exist                                                               |
-| M1        | Frontend + API + Supabase work                                                              |
-| M2        | DB schema, sessions and encryption work                                                     |
-| M3        | Real Instagram login shows `@username`                                                      |
-| M4        | Real media loads and automation saves                                                       |
-| M5        | Real comment webhook reaches backend                                                        |
-| M6        | `#Hello` produces real public reply                                                         |
-| M7        | Activity shows result; vertical slice complete                                              |
-| M8        | Tokens and reply delivery recover safely                                                    |
-| M9        | Public and private delivery verified in production; remaining manual coverage tracked above |
-| M10       | Operational stability implemented; migration and production acceptance remain               |
+| Milestone | Result                                                       |
+| --------- | ------------------------------------------------------------ |
+| M0        | Repository and monorepo exist                                |
+| M1        | Frontend + API + Supabase work                               |
+| M2        | DB schema, sessions and encryption work                      |
+| M3        | Real Instagram login shows `@username`                       |
+| M4        | Real media loads and automation saves                        |
+| M5        | Real comment webhook reaches backend                         |
+| M6        | Exact trigger produces real public reply                     |
+| M7        | Activity shows result; vertical slice complete               |
+| M8        | Tokens and reply delivery recover safely                     |
+| M9        | Public and private delivery verified in production           |
+| M10       | Operational stability implemented and accepted in production |
 
 ---
 
@@ -899,6 +901,17 @@ Do not build reply logic until this works.
 Vertical slice is complete.
 
 ---
+
+# Current release — trigger modes and account navigation
+
+The post-Milestone 10 release is deployed and manually checked by the project owner.
+
+- [x] Add Exact text, Contains whole word or hashtag, and Every top-level comment modes
+- [x] Apply `0007_automation_trigger_modes.sql` to the production Supabase database
+- [x] Keep Dashboard focused on connection status, automation, and recent activity
+- [x] Move connected-account details and Automation health to `/account`
+- [x] Verify automated tests, typechecks, builds, TypeDoc, formatting, and lint
+- [x] Confirm production behavior after deployment
 
 # Deferred beyond Milestone 9
 
