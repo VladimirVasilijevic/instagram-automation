@@ -59,7 +59,7 @@ export const MaintenanceHealthCard = () => {
     return (
       <section className="ui-card p-5 sm:p-6" aria-labelledby="maintenance-heading">
         <h2 id="maintenance-heading" className="text-xl font-semibold text-[#292638]">
-          Scheduled maintenance
+          Automation health
         </h2>
         <p role="status" className="mt-3 text-sm text-[#625b6e]">
           Checking scheduled maintenance…
@@ -70,7 +70,7 @@ export const MaintenanceHealthCard = () => {
     return (
       <section className="ui-card p-5 sm:p-6" aria-labelledby="maintenance-heading">
         <h2 id="maintenance-heading" className="text-xl font-semibold text-[#292638]">
-          Scheduled maintenance
+          Automation health
         </h2>
         <p role="alert" className="ui-alert ui-alert-error mt-3">
           Maintenance health could not be loaded.
@@ -95,10 +95,10 @@ export const MaintenanceHealthCard = () => {
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">
-            Service health
+            Account monitoring
           </p>
           <h2 id="maintenance-heading" className="mt-1 text-xl font-semibold text-[#292638]">
-            Scheduled maintenance
+            Automation health
           </h2>
           <div className={`mt-4 rounded-xl border p-4 ${view.style}`}>
             <h3 className="font-semibold">{view.label}</h3>

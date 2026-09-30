@@ -37,7 +37,8 @@ export const AccountPage = () => {
       .then((account) => {
         if (controller.signal.aborted) return;
         setState(account ? { status: 'connected', account } : { status: 'signed-out' });
-        window.history.replaceState(null, '', account ? '/app' : '/');
+        const signedInPath = window.location.pathname === '/account' ? '/account' : '/app';
+        window.history.replaceState(null, '', account ? signedInPath : '/');
       })
       .catch(() => {
         if (!controller.signal.aborted) setState({ status: 'error' });
@@ -60,6 +61,8 @@ export const AccountPage = () => {
     }
   };
 
+  const showingAccountDetails = window.location.pathname === '/account';
+
   return (
     <PageShell
       accountMenu={
@@ -74,14 +77,24 @@ export const AccountPage = () => {
     >
       <header className="max-w-2xl">
         <p className="text-sm font-semibold tracking-wide text-[#5632a8] uppercase">
-          {state.status === 'connected' ? 'Your workspace' : 'Instagram comment automation'}
+          {state.status === 'connected'
+            ? showingAccountDetails
+              ? 'Account settings'
+              : 'Your workspace'
+            : 'Instagram comment automation'}
         </p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-[#292638] sm:text-4xl">
-          {state.status === 'connected' ? 'Dashboard' : 'Reply to comments with confidence'}
+          {state.status === 'connected'
+            ? showingAccountDetails
+              ? 'Account'
+              : 'Dashboard'
+            : 'Reply to comments with confidence'}
         </h1>
         <p className="mt-3 text-base leading-7 text-[#625b6e]">
           {state.status === 'connected'
-            ? 'Manage your connected account, automation, and recent replies.'
+            ? showingAccountDetails
+              ? 'Review your Instagram connection and automation health.'
+              : 'Manage your automation and review recent replies.'
             : 'Connect your professional account, choose a post, and set up your replies.'}
         </p>
       </header>
@@ -132,56 +145,86 @@ export const AccountPage = () => {
         )}
         {state.status === 'connected' && (
           <div className="mt-6 grid gap-5">
-            <section className="ui-card p-5 sm:p-6" aria-labelledby="account-heading">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold tracking-wide text-[#625b6e] uppercase">
-                    Connected account
-                  </p>
-                  <h2
-                    id="account-heading"
-                    className="mt-1 text-xl font-semibold break-words text-[#292638]"
+            {logoutError && (
+              <p role="alert" className="ui-alert ui-alert-error">
+                Logout could not be completed. Please try again.
+              </p>
+            )}
+            {showingAccountDetails ? (
+              <section className="ui-card p-5 sm:p-6" aria-labelledby="account-heading">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold tracking-wide text-[#625b6e] uppercase">
+                      Connected account
+                    </p>
+                    <h2
+                      id="account-heading"
+                      className="mt-1 text-xl font-semibold break-words text-[#292638]"
+                    >
+                      Connected as @{state.account.username}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-[#625b6e]">
+                      This Instagram Professional account owns the automation and receives its
+                      comment events.
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex w-fit shrink-0 items-center rounded-full border px-3 py-1 text-sm font-semibold ${
+                      state.account.connectionStatus === 'active'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-amber-200 bg-amber-50 text-amber-900'
+                    }`}
                   >
-                    Connected as @{state.account.username}
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-[#625b6e]">
-                    Choose a post and configure its reply. Saving an enabled automation turns on
-                    comment delivery automatically.
-                  </p>
+                    {state.account.connectionStatus === 'active'
+                      ? 'Connected'
+                      : 'Reconnect required'}
+                  </span>
                 </div>
-                <span
-                  className={`inline-flex w-fit shrink-0 items-center rounded-full border px-3 py-1 text-sm font-semibold ${
-                    state.account.connectionStatus === 'active'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                      : 'border-amber-200 bg-amber-50 text-amber-900'
-                  }`}
-                >
-                  {state.account.connectionStatus === 'active' ? 'Connected' : 'Reconnect required'}
-                </span>
-              </div>
-              {state.account.connectionStatus === 'reconnect_required' && (
-                <div className="ui-alert ui-alert-warning mt-5">
-                  <p role="alert" className="font-semibold">
-                    Reconnect Instagram
-                  </p>
-                  <p className="mt-1">
-                    Instagram rejected or expired this connection. Automation is paused until you
-                    reconnect.
-                  </p>
-                  <a className="ui-button mt-3 w-full sm:w-auto" href="/api/auth/instagram/start">
-                    Reconnect Instagram
+                {state.account.connectionStatus === 'reconnect_required' && (
+                  <div className="ui-alert ui-alert-warning mt-5">
+                    <p role="alert" className="font-semibold">
+                      Reconnect Instagram
+                    </p>
+                    <p className="mt-1">
+                      Instagram rejected or expired this connection. Automation is paused until you
+                      reconnect.
+                    </p>
+                    <a className="ui-button mt-3 w-full sm:w-auto" href="/api/auth/instagram/start">
+                      Reconnect Instagram
+                    </a>
+                  </div>
+                )}
+              </section>
+            ) : (
+              <section className="ui-card p-5 sm:p-6" aria-labelledby="connection-heading">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-[#625b6e] uppercase">
+                      Instagram connection
+                    </p>
+                    <h2
+                      id="connection-heading"
+                      className="mt-1 text-xl font-semibold text-[#292638]"
+                    >
+                      {state.account.connectionStatus === 'active'
+                        ? 'Connected'
+                        : 'Reconnect required'}
+                    </h2>
+                  </div>
+                  <a className="ui-button-secondary w-full sm:w-auto" href="/account">
+                    View account
                   </a>
                 </div>
-              )}
-              {logoutError && (
-                <p role="alert" className="ui-alert ui-alert-error mt-4">
-                  Logout could not be completed. Please try again.
-                </p>
-              )}
-            </section>
-            <AutomationEditor onSelectedMediaChange={setSelectedMediaId} />
-            <RecentActivity selectedMediaId={selectedMediaId} />
-            <MaintenanceHealthCard />
+              </section>
+            )}
+            {showingAccountDetails ? (
+              <MaintenanceHealthCard />
+            ) : (
+              <>
+                <AutomationEditor onSelectedMediaChange={setSelectedMediaId} />
+                <RecentActivity selectedMediaId={selectedMediaId} />
+              </>
+            )}
           </div>
         )}
       </div>

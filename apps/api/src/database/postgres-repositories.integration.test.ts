@@ -34,6 +34,10 @@ const executionMediaMigrationPath = resolve(
   import.meta.dirname,
   '../../../../db/migrations/0006_execution_media_attribution.sql',
 );
+const triggerModesMigrationPath = resolve(
+  import.meta.dirname,
+  '../../../../db/migrations/0007_automation_trigger_modes.sql',
+);
 
 describeDatabase('PostgreSQL repositories', () => {
   const rollbackSignal = new Error('rollback integration transaction');
@@ -269,6 +273,18 @@ describeDatabase('PostgreSQL repositories', () => {
         if (!executionMediaSchema?.migration_applied) {
           await transactionSql.unsafe(await readFile(executionMediaMigrationPath, 'utf8'));
         }
+        const [triggerModeSchema] = await transactionSql<{ migration_applied: boolean }[]>`
+          select exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'app_private'
+              and table_name = 'automations'
+              and column_name = 'trigger_mode'
+          ) as migration_applied
+        `;
+        if (!triggerModeSchema?.migration_applied) {
+          await transactionSql.unsafe(await readFile(triggerModesMigrationPath, 'utf8'));
+        }
 
         const accountRepository = createPostgresAccountRepository(transactionSql);
         const automationRepository = createPostgresAutomationRepository(transactionSql);
@@ -292,6 +308,7 @@ describeDatabase('PostgreSQL repositories', () => {
           mediaId: 'first-media',
           privateReplyText: null,
           replyText: 'First reply',
+          triggerMode: 'exact',
           triggerText: '#Hello',
         });
         const updatedAutomation = await automationRepository.saveAutomation({
@@ -301,6 +318,7 @@ describeDatabase('PostgreSQL repositories', () => {
           mediaId: 'selected-media',
           privateReplyText: null,
           replyText: 'Updated reply',
+          triggerMode: 'contains',
           triggerText: '#Hello',
         });
 
@@ -312,6 +330,7 @@ describeDatabase('PostgreSQL repositories', () => {
           mediaId: 'selected-media',
           privateReplyText: null,
           replyText: 'Updated reply',
+          triggerMode: 'contains',
           triggerText: '#Hello',
         });
         expect(updatedAutomation.createdAt).toEqual(firstAutomation.createdAt);
@@ -371,6 +390,7 @@ describeDatabase('PostgreSQL repositories', () => {
           mediaId: 'selected-media',
           privateReplyText: null,
           replyText: 'Updated reply',
+          triggerMode: 'contains',
           triggerText: '#Hello',
         });
 
@@ -385,7 +405,8 @@ describeDatabase('PostgreSQL repositories', () => {
           mediaId: disabledAutomation.mediaId,
           privateReplyText: null,
           replyText: disabledAutomation.replyText,
-          triggerText: '#Hello',
+          triggerMode: 'all',
+          triggerText: null,
         });
         const otherAutomation = await automationRepository.saveAutomation({
           accountId: otherAccount.id,
@@ -394,6 +415,7 @@ describeDatabase('PostgreSQL repositories', () => {
           mediaId: 'other-media',
           privateReplyText: null,
           replyText: 'Other reply',
+          triggerMode: 'exact',
           triggerText: '#Hello',
         });
         const firstExecution = await executionRepository.claimExecution({

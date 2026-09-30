@@ -20,6 +20,16 @@ const navigation = [
     ),
   },
   {
+    href: '/account',
+    label: 'Account',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.5 21a7.5 7.5 0 0 1 15 0" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: '/status',
     label: 'Status',
     icon: (
@@ -98,6 +108,12 @@ export const PageShell = ({
                     </p>
                     <p className="mt-0.5 text-xs text-[#625b6e]">Instagram account</p>
                   </div>
+                  <a
+                    className="ui-focus flex min-h-11 items-center px-4 text-sm text-[#403a49] hover:bg-[#f5f2ed]"
+                    href="/account"
+                  >
+                    Account details
+                  </a>
                   <a
                     className="ui-focus flex min-h-11 items-center px-4 text-sm text-[#403a49] hover:bg-[#f5f2ed]"
                     href="/privacy"

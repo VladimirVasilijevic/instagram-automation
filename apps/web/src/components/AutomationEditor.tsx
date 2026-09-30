@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 
-import { DELIVERY_MODE } from '@instagram-automation/contracts';
+import { DELIVERY_MODE, TRIGGER_MODE } from '@instagram-automation/contracts';
 
 import {
   AutomationSaveError,
   getAutomation,
   saveAutomation,
   type DeliveryMode,
+  type TriggerMode,
 } from '../api/automation.js';
 import { getRecentMedia, type RecentMedia } from '../api/media.js';
 
@@ -32,6 +33,7 @@ export const AutomationEditor = ({
   const [attempt, setAttempt] = useState(0);
   const [selectedMediaId, setSelectedMediaId] = useState('');
   const [triggerText, setTriggerText] = useState('#Hello');
+  const [triggerMode, setTriggerMode] = useState<TriggerMode>(TRIGGER_MODE.EXACT);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(DELIVERY_MODE.PUBLIC);
   const [replyText, setReplyText] = useState('');
   const [privateReplyText, setPrivateReplyText] = useState('');
@@ -57,6 +59,7 @@ export const AutomationEditor = ({
         setSelectedMediaId(initialMediaId ?? '');
         onSelectedMediaChange?.(initialMediaId);
         setTriggerText(automation?.triggerText ?? '#Hello');
+        setTriggerMode(automation?.triggerMode ?? TRIGGER_MODE.EXACT);
         setDeliveryMode(automation?.deliveryMode ?? DELIVERY_MODE.PUBLIC);
         setReplyText(automation?.replyText ?? 'Hello! Thanks for commenting.');
         setPrivateReplyText(automation?.privateReplyText ?? 'Thanks for commenting!');
@@ -73,11 +76,17 @@ export const AutomationEditor = ({
 
   const save = async () => {
     const trimmedTrigger = triggerText.trim();
+    const triggerValid =
+      triggerMode === TRIGGER_MODE.ALL ||
+      (triggerMode === TRIGGER_MODE.EXACT &&
+        trimmedTrigger.length >= 1 &&
+        trimmedTrigger.length <= 100) ||
+      (triggerMode === TRIGGER_MODE.CONTAINS && /^#?[\p{L}\p{N}_]+$/u.test(trimmedTrigger));
     const publicRequired = deliveryMode !== DELIVERY_MODE.PRIVATE;
     const privateRequired = deliveryMode !== DELIVERY_MODE.PUBLIC;
     if (
       !selectedMediaId ||
-      !/^#\S{1,99}$/.test(trimmedTrigger) ||
+      !triggerValid ||
       (publicRequired && replyText.trim() === '') ||
       (privateRequired && privateReplyText.trim() === '')
     )
@@ -92,13 +101,15 @@ export const AutomationEditor = ({
         mediaId: selectedMediaId,
         privateReplyText: privateRequired ? privateReplyText.trim() : null,
         replyText: publicRequired ? replyText.trim() : '',
-        triggerText: trimmedTrigger,
+        triggerMode,
+        triggerText: triggerMode === TRIGGER_MODE.ALL ? null : trimmedTrigger,
       });
       setDeliveryMode(automation.deliveryMode);
       setSelectedMediaId(automation.mediaId);
       setPrivateReplyText(automation.privateReplyText ?? '');
       setReplyText(automation.replyText);
-      setTriggerText(automation.triggerText);
+      setTriggerMode(automation.triggerMode);
+      setTriggerText(automation.triggerText ?? '#Hello');
       setEnabled(automation.enabled);
       setSaved(true);
     } catch (error) {
@@ -139,7 +150,13 @@ export const AutomationEditor = ({
 
   const publicRequired = deliveryMode !== DELIVERY_MODE.PRIVATE;
   const privateRequired = deliveryMode !== DELIVERY_MODE.PUBLIC;
-  const triggerValid = /^#\S{1,99}$/.test(triggerText.trim());
+  const trimmedTrigger = triggerText.trim();
+  const triggerValid =
+    triggerMode === TRIGGER_MODE.ALL ||
+    (triggerMode === TRIGGER_MODE.EXACT &&
+      trimmedTrigger.length >= 1 &&
+      trimmedTrigger.length <= 100) ||
+    (triggerMode === TRIGGER_MODE.CONTAINS && /^#?[\p{L}\p{N}_]+$/u.test(trimmedTrigger));
   const canSave =
     Boolean(selectedMediaId) &&
     triggerValid &&
@@ -156,7 +173,7 @@ export const AutomationEditor = ({
           Create your automation
         </h2>
         <p className="mt-2 leading-6 text-[#625b6e]">
-          Choose one recent post, a hashtag trigger, and where matching replies should be sent.
+          Choose one recent post, which comments qualify, and where replies should be sent.
         </p>
       </div>
 
@@ -231,21 +248,56 @@ export const AutomationEditor = ({
       )}
 
       <div className="mt-8 grid gap-6 border-t border-[var(--app-border)] pt-6 lg:grid-cols-2">
-        <label className="block">
-          <span className="text-sm font-semibold text-[#292638]">2. Comment trigger</span>
-          <input
-            aria-label="Comment trigger"
-            className="ui-input mt-2 block"
-            value={triggerText}
-            onChange={(event) => {
-              setTriggerText(event.target.value);
-              setSaved(false);
-            }}
-          />
-          <span className="mt-2 block text-sm text-[#625b6e]">
-            Use one hashtag without spaces. Matching ignores capitalization and surrounding spaces.
-          </span>
-        </label>
+        <fieldset>
+          <legend className="text-sm font-semibold text-[#292638]">2. Comment trigger</legend>
+          <div className="mt-2 grid gap-2">
+            {(
+              [
+                [TRIGGER_MODE.EXACT, 'Exact text'],
+                [TRIGGER_MODE.CONTAINS, 'Contains whole word or hashtag'],
+                [TRIGGER_MODE.ALL, 'Every top-level comment'],
+              ] as const
+            ).map(([value, label]) => (
+              <label
+                key={value}
+                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--app-border)] bg-white p-3 text-sm text-[#292638] has-[:checked]:border-[#5632a8] has-[:checked]:bg-[#f4effb]"
+              >
+                <input
+                  type="radio"
+                  name="trigger-mode"
+                  value={value}
+                  checked={triggerMode === value}
+                  onChange={() => {
+                    setTriggerMode(value);
+                    setSaved(false);
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          {triggerMode !== TRIGGER_MODE.ALL && (
+            <label className="mt-3 block">
+              <span className="text-sm font-medium text-[#292638]">
+                {triggerMode === TRIGGER_MODE.EXACT ? 'Text to match' : 'Word or hashtag'}
+              </span>
+              <input
+                aria-label="Comment trigger text"
+                className="ui-input mt-2 block"
+                value={triggerText}
+                onChange={(event) => {
+                  setTriggerText(event.target.value);
+                  setSaved(false);
+                }}
+              />
+              <span className="mt-2 block text-sm text-[#625b6e]">
+                {triggerMode === TRIGGER_MODE.EXACT
+                  ? 'The complete comment must match. Capitalization and surrounding spaces are ignored.'
+                  : 'Enter one complete word or hashtag. Capitalization is ignored.'}
+              </span>
+            </label>
+          )}
+        </fieldset>
         <fieldset>
           <legend className="text-sm font-semibold text-[#292638]">3. Reply delivery</legend>
           <div className="mt-2 grid gap-2">

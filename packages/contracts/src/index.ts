@@ -22,6 +22,19 @@ export const DELIVERY_MODE = {
 /** Selected delivery behavior for one automation. */
 export type DeliveryMode = (typeof DELIVERY_MODE)[keyof typeof DELIVERY_MODE];
 
+/** Owner-selectable rules for deciding whether a top-level comment qualifies. */
+export const TRIGGER_MODE = {
+  /** Match every top-level comment after the standard safety exclusions. */
+  ALL: 'all',
+  /** Match a complete word or hashtag anywhere in the comment. */
+  CONTAINS: 'contains',
+  /** Match the complete trimmed comment text. */
+  EXACT: 'exact',
+} as const;
+
+/** Selected comment-matching behavior for one automation. */
+export type TriggerMode = (typeof TRIGGER_MODE)[keyof typeof TRIGGER_MODE];
+
 /** Serialized execution states persisted for each delivery channel. */
 export const EXECUTION_STATUS = {
   /** Delivery reached a terminal failure. */
@@ -61,6 +74,10 @@ export const isDeliveryChannel = (value: unknown): value is DeliveryChannel =>
 /** Returns whether an unknown value is a supported delivery mode. */
 export const isDeliveryMode = (value: unknown): value is DeliveryMode =>
   typeof value === 'string' && Object.values(DELIVERY_MODE).includes(value as DeliveryMode);
+
+/** Returns whether an unknown value is a supported comment trigger mode. */
+export const isTriggerMode = (value: unknown): value is TriggerMode =>
+  typeof value === 'string' && Object.values(TRIGGER_MODE).includes(value as TriggerMode);
 
 /** Returns whether an unknown value is a supported execution status. */
 export const isExecutionStatus = (value: unknown): value is ExecutionStatus =>

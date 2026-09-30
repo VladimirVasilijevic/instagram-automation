@@ -1,4 +1,9 @@
-import { DELIVERY_CHANNEL, DELIVERY_MODE, EXECUTION_STATUS } from '@instagram-automation/contracts';
+import {
+  DELIVERY_CHANNEL,
+  DELIVERY_MODE,
+  EXECUTION_STATUS,
+  TRIGGER_MODE,
+} from '@instagram-automation/contracts';
 
 import type {
   AccountRepository,
@@ -101,7 +106,7 @@ export interface ProcessCommentDependencies {
 }
 
 /**
- * Processes one authenticated comment event using the configured exact-match automation rule.
+ * Processes one authenticated comment event using the configured automation trigger rule.
  *
  * @param event - Normalized signed Instagram comment delivery.
  * @param dependencies - Persistence, provider, logging, and token-protection dependencies.
@@ -137,7 +142,16 @@ export const processComment = async (
   if (!automation) {
     return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'no_enabled_automation' };
   }
-  if (event.text.trim().toLowerCase() !== automation.triggerText.trim().toLowerCase()) {
+  const normalizedText = event.text.trim().toLowerCase();
+  const normalizedTrigger = automation.triggerText?.toLowerCase() ?? null;
+  const commentTokens: string[] = normalizedText.match(/#[\p{L}\p{N}_]+|[\p{L}\p{N}_]+/gu) ?? [];
+  const triggerMatched =
+    automation.triggerMode === TRIGGER_MODE.ALL ||
+    (automation.triggerMode === TRIGGER_MODE.EXACT && normalizedText === normalizedTrigger) ||
+    (automation.triggerMode === TRIGGER_MODE.CONTAINS &&
+      normalizedTrigger !== null &&
+      commentTokens.includes(normalizedTrigger));
+  if (!triggerMatched) {
     return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'trigger_not_matched' };
   }
 

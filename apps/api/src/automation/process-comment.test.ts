@@ -67,6 +67,7 @@ const createFixture = () => {
         mediaId: event.mediaId,
         privateReplyText: null,
         replyText: publicExecution.messageText,
+        triggerMode: 'exact' as const,
         triggerText: '#Hello',
       }),
     },
@@ -113,6 +114,73 @@ describe('processComment', () => {
     });
   });
 
+  it.each([
+    ['sale', 'A big SALE, today'],
+    ['#sale', 'A big #SALE! today'],
+    ['привет', 'Она сказала: ПРИВЕТ!'],
+  ])('matches the complete contains token %s', async (triggerText, text) => {
+    const f = createFixture();
+    f.dependencies.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+      accountId: account.id,
+      deliveryMode: 'public',
+      enabled: true,
+      id: 'automation-id',
+      mediaId: event.mediaId,
+      privateReplyText: null,
+      replyText: 'Public response',
+      triggerMode: 'contains',
+      triggerText,
+    });
+
+    await expect(processComment({ ...event, text }, f.dependencies)).resolves.toEqual({
+      outcome: 'succeeded',
+    });
+  });
+
+  it('does not treat a substring or an untagged word as a contains match', async () => {
+    for (const [triggerText, text] of [
+      ['sale', 'wholesale'],
+      ['#sale', 'sale'],
+    ]) {
+      const f = createFixture();
+      f.dependencies.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+        accountId: account.id,
+        deliveryMode: 'public',
+        enabled: true,
+        id: 'automation-id',
+        mediaId: event.mediaId,
+        privateReplyText: null,
+        replyText: 'Public response',
+        triggerMode: 'contains',
+        triggerText,
+      });
+
+      await expect(processComment({ ...event, text }, f.dependencies)).resolves.toEqual({
+        outcome: 'ignored',
+        reason: 'trigger_not_matched',
+      });
+    }
+  });
+
+  it('matches any top-level comment in every-comment mode', async () => {
+    const f = createFixture();
+    f.dependencies.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+      accountId: account.id,
+      deliveryMode: 'public',
+      enabled: true,
+      id: 'automation-id',
+      mediaId: event.mediaId,
+      privateReplyText: null,
+      replyText: 'Public response',
+      triggerMode: 'all',
+      triggerText: null,
+    });
+
+    await expect(
+      processComment({ ...event, text: 'Anything at all' }, f.dependencies),
+    ).resolves.toEqual({ outcome: 'succeeded' });
+  });
+
   it('claims and sends public and private deliveries independently in both mode', async () => {
     const f = createFixture();
     f.dependencies.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
@@ -123,6 +191,7 @@ describe('processComment', () => {
       mediaId: event.mediaId,
       privateReplyText: 'Private response',
       replyText: 'Public response',
+      triggerMode: 'exact',
       triggerText: '#Hello',
     });
     f.dependencies.executionRepository.claimExecutions.mockResolvedValue([

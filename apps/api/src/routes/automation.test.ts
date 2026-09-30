@@ -27,6 +27,7 @@ const automation: Automation = {
   deliveryMode: 'public',
   mediaId: '17841400000000002',
   privateReplyText: null,
+  triggerMode: 'exact',
   triggerText: '#Hello',
   replyText: 'Hello! Thanks for commenting.',
   enabled: true,
@@ -40,6 +41,7 @@ const responseAutomation = {
   mediaId: automation.mediaId,
   privateReplyText: automation.privateReplyText,
   replyText: automation.replyText,
+  triggerMode: automation.triggerMode,
   triggerText: automation.triggerText,
 };
 
@@ -173,6 +175,7 @@ describe('automation configuration routes', () => {
         mediaId: ` ${automation.mediaId} `,
         privateReplyText: null,
         replyText: ` ${automation.replyText} `,
+        triggerMode: 'exact',
         triggerText: ' #Hello ',
         enabled: true,
       }),
@@ -186,6 +189,7 @@ describe('automation configuration routes', () => {
       mediaId: automation.mediaId,
       privateReplyText: null,
       replyText: automation.replyText,
+      triggerMode: 'exact',
       triggerText: '#Hello',
       enabled: true,
     });
@@ -213,6 +217,7 @@ describe('automation configuration routes', () => {
       deliveryMode: 'both' as const,
       privateReplyText: 'Private response',
       replyText: 'Public response',
+      triggerMode: 'contains' as const,
       triggerText: '#test',
     };
     f.automationRepository.saveAutomation.mockResolvedValue(bothAutomation);
@@ -226,6 +231,7 @@ describe('automation configuration routes', () => {
         mediaId: automation.mediaId,
         privateReplyText: ' Private response ',
         replyText: ' Public response ',
+        triggerMode: 'contains',
         triggerText: ' #test ',
       }),
     });
@@ -238,8 +244,70 @@ describe('automation configuration routes', () => {
       mediaId: automation.mediaId,
       privateReplyText: 'Private response',
       replyText: 'Public response',
+      triggerMode: 'contains',
       triggerText: '#test',
     });
+  });
+
+  it('saves every-comment mode without trigger text', async () => {
+    const f = createFixture();
+    f.automationRepository.saveAutomation.mockResolvedValue({
+      ...automation,
+      triggerMode: 'all',
+      triggerText: null,
+    });
+
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: { ...f.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deliveryMode: 'public',
+        enabled: false,
+        mediaId: automation.mediaId,
+        privateReplyText: null,
+        replyText: 'Public response',
+        triggerMode: 'all',
+        triggerText: null,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith({
+      accountId: account.id,
+      deliveryMode: 'public',
+      enabled: false,
+      mediaId: automation.mediaId,
+      privateReplyText: null,
+      replyText: 'Public response',
+      triggerMode: 'all',
+      triggerText: null,
+    });
+  });
+
+  it.each([
+    ['exact', null],
+    ['all', '#Hello'],
+    ['contains', 'two words'],
+    ['contains', '#'],
+  ])('rejects invalid %s trigger configuration', async (triggerMode, triggerText) => {
+    const f = createFixture();
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: { ...f.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deliveryMode: 'public',
+        enabled: false,
+        mediaId: automation.mediaId,
+        privateReplyText: null,
+        replyText: 'Reply',
+        triggerMode,
+        triggerText,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
+    expect(f.instagramMediaClient.listRecentMedia).not.toHaveBeenCalled();
   });
 
   it('rejects a selected media ID outside the connected account recent-media list', async () => {
@@ -254,6 +322,7 @@ describe('automation configuration routes', () => {
         mediaId: automation.mediaId,
         privateReplyText: null,
         replyText: 'Reply',
+        triggerMode: 'exact',
         triggerText: '#Hello',
       }),
     });
@@ -284,6 +353,7 @@ describe('automation configuration routes', () => {
         mediaId: automation.mediaId,
         privateReplyText: null,
         replyText: 'Reply',
+        triggerMode: 'exact',
         triggerText: '#Hello',
       }),
     });
@@ -363,6 +433,7 @@ describe('automation configuration routes', () => {
         mediaId: automation.mediaId,
         privateReplyText: null,
         replyText: 'Reply',
+        triggerMode: 'exact',
         triggerText: '#Hello',
       }),
     });
@@ -399,6 +470,7 @@ describe('automation configuration routes', () => {
         mediaId: automation.mediaId,
         privateReplyText: null,
         replyText: 'Updated reply',
+        triggerMode: 'exact',
         triggerText: '#Hello',
       }),
     });
@@ -444,6 +516,7 @@ describe('automation configuration routes', () => {
           mediaId: automation.mediaId,
           privateReplyText: null,
           replyText: 'Updated reply',
+          triggerMode: 'exact',
           triggerText: '#Hello',
         }),
       });

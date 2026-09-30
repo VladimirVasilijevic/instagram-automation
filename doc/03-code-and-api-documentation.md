@@ -115,14 +115,15 @@ replacement for the provider's browser consent flow. Authentication responses an
 
 The webhook delivery endpoint is public only to Meta. It verifies the one-time challenge with
 `META_WEBHOOK_VERIFY_TOKEN` and validates every delivery with the `X-Hub-Signature-256` HMAC made
-from `META_APP_SECRET`. A valid top-level comment is matched when its trimmed text equals the
-owner-configured hashtag without regard to capitalization. The server atomically claims each
-selected delivery channel and records a dispatch boundary before calling Meta's public- or
-private-reply API. Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous
-outcomes are left for manual review to prevent duplicate messages. Signed Instagram deliveries that
-are valid but do not contain a comment event are acknowledged with `200` and counted by safe event
-category; malformed comment events still return sanitized `400`. Do not use Swagger to submit
-webhook deliveries.
+from `META_APP_SECRET`. A valid top-level comment is evaluated using the owner's selected trigger
+mode: exact trimmed text, a complete word or hashtag contained anywhere in the comment, or every
+top-level comment. Text matching ignores capitalization. The server atomically claims each selected
+delivery channel and records a dispatch boundary before calling Meta's public- or private-reply API.
+Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous outcomes are left
+for manual review to prevent duplicate messages. Signed Instagram deliveries that are valid but do
+not contain a comment event are acknowledged with `200` and counted by safe event category;
+malformed comment events still return sanitized `400`. Do not use Swagger to submit webhook
+deliveries.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.

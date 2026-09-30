@@ -5,6 +5,7 @@ import {
   type DeliveryChannel,
   type DeliveryMode,
   type ExecutionStatus,
+  type TriggerMode,
 } from '@instagram-automation/contracts';
 import { RECOVERY_KIND, type RecoveryKind } from '../automation/recovery.js';
 import type { ProtectedToken } from '../security/token-protector.js';
@@ -62,7 +63,8 @@ interface AutomationRow {
   media_id: string;
   private_reply_text: string | null;
   reply_text: string;
-  trigger_text: string;
+  trigger_mode: TriggerMode;
+  trigger_text: string | null;
   updated_at: Date;
 }
 
@@ -149,6 +151,7 @@ const toAutomation = (row: AutomationRow): Automation => ({
   mediaId: row.media_id,
   privateReplyText: row.private_reply_text,
   replyText: row.reply_text,
+  triggerMode: row.trigger_mode,
   triggerText: row.trigger_text,
   updatedAt: row.updated_at,
 });
@@ -525,7 +528,7 @@ export const createPostgresAutomationRepository = (
 ): AutomationRepository => ({
   async findByAccountId(accountId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, account_id, media_id, trigger_text, delivery_mode, reply_text,
+      select id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, enabled, created_at, updated_at
       from app_private.automations
       where account_id = ${accountId}
@@ -537,7 +540,7 @@ export const createPostgresAutomationRepository = (
 
   async findEnabledByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, account_id, media_id, trigger_text, delivery_mode, reply_text,
+      select id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, enabled, created_at, updated_at
       from app_private.automations
       where account_id = ${accountId}
@@ -552,20 +555,22 @@ export const createPostgresAutomationRepository = (
   async saveAutomation(input: SaveAutomationInput): Promise<Automation> {
     const rows = await sql<AutomationRow[]>`
       insert into app_private.automations (
-        account_id, media_id, trigger_text, delivery_mode, reply_text, private_reply_text, enabled
+        account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+        private_reply_text, enabled
       ) values (
-        ${input.accountId}, ${input.mediaId}, ${input.triggerText}, ${input.deliveryMode},
-        ${input.replyText}, ${input.privateReplyText}, ${input.enabled}
+        ${input.accountId}, ${input.mediaId}, ${input.triggerMode}, ${input.triggerText},
+        ${input.deliveryMode}, ${input.replyText}, ${input.privateReplyText}, ${input.enabled}
       )
       on conflict (account_id) do update
       set
         media_id = excluded.media_id,
+        trigger_mode = excluded.trigger_mode,
         trigger_text = excluded.trigger_text,
         delivery_mode = excluded.delivery_mode,
         reply_text = excluded.reply_text,
         private_reply_text = excluded.private_reply_text,
         enabled = excluded.enabled
-      returning id, account_id, media_id, trigger_text, delivery_mode, reply_text,
+      returning id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, enabled, created_at, updated_at
     `;
     const automation = rows[0];

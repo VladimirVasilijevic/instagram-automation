@@ -3,9 +3,11 @@
 ## Current result
 
 `apps/web` is a React and TypeScript application with a connect screen at `/`, an authenticated
-account screen at `/app`, and the original infrastructure status page at `/status`. The account
-screens restore identity through `/api/me` and support logout, retry, and safe OAuth error messages.
-The status page still shows independent API/database states and links to Swagger UI.
+dashboard at `/app`, private account and automation-health details at `/account`, and the original
+infrastructure status page at `/status`. The account screens restore identity through `/api/me` and
+support logout, retry, and safe OAuth error messages. The dashboard keeps only a compact Instagram
+connection status above automation and recent activity. The status page still shows independent
+API/database states and links to Swagger UI.
 
 The login UI is implemented locally and awaits deployment. See the
 [Instagram login guide](05-instagram-login.md) for configuration and acceptance checks.

@@ -1,6 +1,13 @@
-import { DELIVERY_MODE, isDeliveryMode, type DeliveryMode } from '@instagram-automation/contracts';
+import {
+  DELIVERY_MODE,
+  TRIGGER_MODE,
+  isDeliveryMode,
+  isTriggerMode,
+  type DeliveryMode,
+  type TriggerMode,
+} from '@instagram-automation/contracts';
 
-export type { DeliveryMode } from '@instagram-automation/contracts';
+export type { DeliveryMode, TriggerMode } from '@instagram-automation/contracts';
 
 /** The single comment automation configured by the signed-in account. */
 export interface Automation {
@@ -14,8 +21,10 @@ export interface Automation {
   privateReplyText: string | null;
   /** Public reply text when public delivery is enabled. */
   replyText: string;
-  /** Configured hashtag matched case-insensitively. */
-  triggerText: string;
+  /** Comment-matching rule. */
+  triggerMode: TriggerMode;
+  /** Configured text for exact and contains rules, or null for every comment. */
+  triggerText: string | null;
 }
 
 /** Owner-controlled values submitted when saving the automation. */
@@ -30,8 +39,10 @@ export interface SaveAutomationInput {
   privateReplyText: string | null;
   /** Public reply text, or an empty string when public delivery is disabled. */
   replyText: string;
-  /** Exact hashtag trigger after trimming. */
-  triggerText: string;
+  /** Comment-matching rule. */
+  triggerMode: TriggerMode;
+  /** Configured text for exact and contains rules, or null for every comment. */
+  triggerText: string | null;
 }
 
 /** Safe save-failure categories the browser may render with specific recovery guidance. */
@@ -76,16 +87,25 @@ const request = async (
 
 const readAutomation = (value: unknown): Automation => {
   const deliveryMode = isRecord(value) ? value.deliveryMode : undefined;
+  const triggerMode = isRecord(value) ? value.triggerMode : undefined;
   if (
     !isRecord(value) ||
     !isDeliveryMode(deliveryMode) ||
+    !isTriggerMode(triggerMode) ||
     typeof value.enabled !== 'boolean' ||
     typeof value.mediaId !== 'string' ||
     value.mediaId.trim() === '' ||
     !isNullableString(value.privateReplyText) ||
     typeof value.replyText !== 'string' ||
-    typeof value.triggerText !== 'string' ||
-    !/^#\S{1,99}$/.test(value.triggerText) ||
+    !isNullableString(value.triggerText) ||
+    (triggerMode === TRIGGER_MODE.ALL && value.triggerText !== null) ||
+    (triggerMode !== TRIGGER_MODE.ALL &&
+      (value.triggerText === null ||
+        value.triggerText !== value.triggerText.trim() ||
+        value.triggerText.length < 1 ||
+        value.triggerText.length > 100)) ||
+    (triggerMode === TRIGGER_MODE.CONTAINS &&
+      (value.triggerText === null || !/^#?[\p{L}\p{N}_]+$/u.test(value.triggerText))) ||
     (deliveryMode !== DELIVERY_MODE.PRIVATE && value.replyText.trim() === '') ||
     (deliveryMode !== DELIVERY_MODE.PUBLIC &&
       (value.privateReplyText === null || value.privateReplyText.trim() === '')) ||
@@ -99,6 +119,7 @@ const readAutomation = (value: unknown): Automation => {
     mediaId: value.mediaId,
     privateReplyText: value.privateReplyText,
     replyText: value.replyText,
+    triggerMode,
     triggerText: value.triggerText,
   };
 };

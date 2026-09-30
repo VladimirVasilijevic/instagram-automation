@@ -10,7 +10,7 @@ vi.mock('./pages/StatusPage.js', () => ({ StatusPage: () => <p>Status page</p> }
 afterEach(() => window.history.replaceState(null, '', '/'));
 
 describe('App routing', () => {
-  it.each(['/', '/app'])('renders account screens at %s', (path) => {
+  it.each(['/', '/app', '/account'])('renders account screens at %s', (path) => {
     window.history.replaceState(null, '', path);
     render(<App />);
     expect(screen.getByText('Account page')).toBeInTheDocument();

@@ -2,9 +2,10 @@
 
 ## Implemented behavior
 
-One automation is configured for one recent Instagram post. Its trigger must be a hashtag without
-spaces. Matching trims surrounding spaces and ignores capitalization, but otherwise requires the
-whole comment to equal the trigger. Only top-level comments from another account are eligible.
+One automation is configured for one recent Instagram post. Its trigger can match the complete
+trimmed comment, a complete word or hashtag contained in the comment, or every eligible top-level
+comment. Text matching ignores capitalization. Replies to comments and comments from the connected
+account remain ineligible in every mode.
 
 The owner chooses one delivery mode:
 
@@ -19,7 +20,8 @@ automatically because doing so could duplicate a message.
 ## Deployment order
 
 1. Review the code and verification results.
-2. Apply `db/migrations/0004_multichannel_replies.sql` in Supabase SQL Editor.
+2. Apply `db/migrations/0004_multichannel_replies.sql` and then
+   `db/migrations/0007_automation_trigger_modes.sql` in Supabase SQL Editor if they are pending.
 3. Commit and push only after explicit approval.
 4. Wait for the Vercel production deployment to become ready.
 5. In Meta's Instagram use-case settings, enable `instagram_business_manage_messages` at an access
@@ -29,10 +31,12 @@ automatically because doing so could duplicate a message.
 7. Open the app, reload the automation editor, and save the desired mode and message text.
 8. Run the manual acceptance cases in the Milestone 9 plan.
 
-The migration preserves existing automations as **Public reply only** and preserves existing
+Migration `0004` preserves existing automations as **Public reply only** and preserves existing
 execution records as public deliveries. It also installs a compatibility trigger that snapshots the
 automation's public reply when the previous production version inserts an execution without the new
-`message_text` column. This makes applying the migration before deploying the application safe.
+`message_text` column. Migration `0007` preserves every existing trigger as **Exact text** and adds
+the **Contains whole word or hashtag** and **Every top-level comment** modes. Apply migrations
+before deploying the application.
 
 ## Review log and known external risks
 

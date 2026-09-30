@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from '@hono/zod-openapi';
-import { DELIVERY_MODE } from '@instagram-automation/contracts';
+import { DELIVERY_MODE, TRIGGER_MODE } from '@instagram-automation/contracts';
 
 import { errorResponseSchema } from '../contracts/http.js';
 import type {
@@ -25,7 +25,8 @@ const automationSchema = z.object({
   mediaId: z.string(),
   privateReplyText: z.string().nullable(),
   replyText: z.string(),
-  triggerText: z.string(),
+  triggerMode: z.enum(TRIGGER_MODE),
+  triggerText: z.string().nullable(),
 });
 const automationResponseSchema = z.object({ automation: automationSchema.nullable() });
 const saveAutomationSchema = z
@@ -35,13 +36,36 @@ const saveAutomationSchema = z
     mediaId: z.string().trim().min(1),
     privateReplyText: z.string().trim().max(1000).nullable(),
     replyText: z.string().trim().max(2200),
-    triggerText: z
-      .string()
-      .trim()
-      .regex(/^#\S{1,99}$/),
+    triggerMode: z.enum(TRIGGER_MODE),
+    triggerText: z.string().trim().max(100).nullable(),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.triggerMode === TRIGGER_MODE.ALL && value.triggerText !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['triggerText'],
+        message: 'Trigger text must be null',
+      });
+    }
+    if (value.triggerMode !== TRIGGER_MODE.ALL && !value.triggerText) {
+      context.addIssue({
+        code: 'custom',
+        path: ['triggerText'],
+        message: 'Trigger text is required',
+      });
+    }
+    if (
+      value.triggerMode === TRIGGER_MODE.CONTAINS &&
+      value.triggerText &&
+      !/^#?[\p{L}\p{N}_]+$/u.test(value.triggerText)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['triggerText'],
+        message: 'Contains trigger must be one word or hashtag',
+      });
+    }
     if (value.deliveryMode !== DELIVERY_MODE.PRIVATE && value.replyText === '') {
       context.addIssue({
         code: 'custom',
@@ -141,6 +165,7 @@ const toAutomationResponse = (automation: Automation) => ({
   mediaId: automation.mediaId,
   privateReplyText: automation.privateReplyText,
   replyText: automation.replyText,
+  triggerMode: automation.triggerMode,
   triggerText: automation.triggerText,
 });
 

@@ -2,6 +2,7 @@ import type {
   DeliveryChannel,
   DeliveryMode,
   ExecutionStatus,
+  TriggerMode,
 } from '@instagram-automation/contracts';
 
 import type { SessionTokenHash } from '../security/session-token.js';
@@ -12,6 +13,7 @@ export type {
   DeliveryChannel,
   DeliveryMode,
   ExecutionStatus,
+  TriggerMode,
 } from '@instagram-automation/contracts';
 
 /** Persisted Instagram Professional account owned by an application user. */
@@ -264,8 +266,11 @@ export interface Automation {
   /** Configured public reply sent for a matching comment. */
   replyText: string;
 
-  /** Owner-configured hashtag matched case-insensitively after trimming. */
-  triggerText: string;
+  /** Owner-configured text used by exact and contains rules, or null for every comment. */
+  triggerText: string | null;
+
+  /** Rule used to decide whether a top-level comment qualifies. */
+  triggerMode: TriggerMode;
 
   /** Time at which the automation row was last changed. */
   updatedAt: Date;
@@ -291,8 +296,11 @@ export interface SaveAutomationInput {
   /** Configured private reply sent for a matching comment. */
   privateReplyText: string | null;
 
-  /** Owner-configured hashtag trigger. */
-  triggerText: string;
+  /** Owner-configured text used by exact and contains rules, or null for every comment. */
+  triggerText: string | null;
+
+  /** Rule used to decide whether a top-level comment qualifies. */
+  triggerMode: TriggerMode;
 }
 
 /** Persistence operations required by automation configuration and comment processing. */

@@ -9,6 +9,7 @@ const automation = {
   mediaId: '17841400000000002',
   privateReplyText: null,
   replyText: 'Hello! Thanks for commenting.',
+  triggerMode: 'exact',
   triggerText: '#Hello',
 } as const;
 
@@ -39,6 +40,7 @@ describe('automation API client', () => {
         mediaId: automation.mediaId,
         privateReplyText: null,
         replyText: automation.replyText,
+        triggerMode: automation.triggerMode,
         triggerText: automation.triggerText,
       }),
     ).resolves.toEqual(automation);
@@ -53,6 +55,7 @@ describe('automation API client', () => {
           mediaId: automation.mediaId,
           privateReplyText: null,
           replyText: automation.replyText,
+          triggerMode: automation.triggerMode,
           triggerText: automation.triggerText,
         }),
       }),
@@ -61,7 +64,8 @@ describe('automation API client', () => {
 
   it.each([
     {},
-    { automation: { ...automation, triggerText: 'Other' } },
+    { automation: { ...automation, triggerMode: 'all', triggerText: '#Hello' } },
+    { automation: { ...automation, triggerMode: 'contains', triggerText: 'two words' } },
     { automation: { ...automation, replyText: '' } },
   ])('rejects invalid responses: %j', async (payload) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
@@ -80,6 +84,7 @@ describe('automation API client', () => {
         mediaId: 'media',
         privateReplyText: null,
         replyText: 'Reply',
+        triggerMode: 'exact',
         triggerText: '#Hello',
       }),
     ).rejects.toThrow('could not be saved');
@@ -107,6 +112,7 @@ describe('automation API client', () => {
           mediaId: 'media',
           privateReplyText: null,
           replyText: 'Reply',
+          triggerMode: 'exact',
           triggerText: '#Hello',
         }),
       ).rejects.toEqual(new AutomationSaveError(code));

@@ -62,6 +62,7 @@ describe('automation editor', () => {
       mediaId: media[1]!.id,
       privateReplyText: null,
       replyText: 'Existing reply',
+      triggerMode: 'exact',
       triggerText: '#Hello',
     });
     vi.mocked(saveAutomation).mockResolvedValue({
@@ -70,6 +71,7 @@ describe('automation editor', () => {
       mediaId: media[0]!.id,
       privateReplyText: null,
       replyText: 'Updated reply',
+      triggerMode: 'exact',
       triggerText: '#Hello',
     });
     render(<AutomationEditor onSelectedMediaChange={onSelectedMediaChange} />);
@@ -94,6 +96,7 @@ describe('automation editor', () => {
         mediaId: media[0]!.id,
         privateReplyText: null,
         replyText: 'Updated reply',
+        triggerMode: 'exact',
         triggerText: '#Hello',
       }),
     );
@@ -154,12 +157,16 @@ describe('automation editor', () => {
       mediaId: media[0]!.id,
       privateReplyText: 'Private message',
       replyText: 'Public message',
+      triggerMode: 'contains',
       triggerText: '#test',
     });
     render(<AutomationEditor />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
-    fireEvent.change(screen.getByLabelText('Comment trigger'), { target: { value: ' #test ' } });
+    fireEvent.click(screen.getByLabelText('Contains whole word or hashtag'));
+    fireEvent.change(screen.getByLabelText('Comment trigger text'), {
+      target: { value: ' #test ' },
+    });
     fireEvent.click(screen.getByLabelText('Public reply and private DM'));
     fireEvent.change(screen.getByLabelText('Public reply'), {
       target: { value: ' Public message ' },
@@ -176,7 +183,38 @@ describe('automation editor', () => {
         mediaId: media[0]!.id,
         privateReplyText: 'Private message',
         replyText: 'Public message',
+        triggerMode: 'contains',
         triggerText: '#test',
+      }),
+    );
+  });
+
+  it('saves every top-level comment mode without trigger text', async () => {
+    vi.mocked(saveAutomation).mockResolvedValue({
+      deliveryMode: 'public',
+      enabled: true,
+      mediaId: media[0]!.id,
+      privateReplyText: null,
+      replyText: 'Hello! Thanks for commenting.',
+      triggerMode: 'all',
+      triggerText: null,
+    });
+    render(<AutomationEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
+    fireEvent.click(screen.getByLabelText('Every top-level comment'));
+    expect(screen.queryByLabelText('Comment trigger text')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    await waitFor(() =>
+      expect(saveAutomation).toHaveBeenCalledWith({
+        deliveryMode: 'public',
+        enabled: true,
+        mediaId: media[0]!.id,
+        privateReplyText: null,
+        replyText: 'Hello! Thanks for commenting.',
+        triggerMode: 'all',
+        triggerText: null,
       }),
     );
   });
@@ -188,6 +226,7 @@ describe('automation editor', () => {
       mediaId: 'older-media',
       privateReplyText: null,
       replyText: 'Existing reply',
+      triggerMode: 'exact',
       triggerText: '#Hello',
     });
     render(<AutomationEditor />);

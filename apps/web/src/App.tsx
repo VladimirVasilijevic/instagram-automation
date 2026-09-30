@@ -7,7 +7,7 @@ export const App = () => {
   const path = window.location.pathname;
   if (path === '/privacy') return <PrivacyPage />;
   if (path === '/status') return <StatusPage />;
-  if (path === '/' || path === '/app') return <AccountPage />;
+  if (path === '/' || path === '/app' || path === '/account') return <AccountPage />;
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-slate-950">
       <h1 className="text-2xl font-semibold">Page not found</h1>

@@ -151,7 +151,8 @@ shared production database during this work. Both integration files remain skipp
 9. Cancel a new Instagram authorization and verify the safe cancellation message. Reopening a used
    callback must not create another session; begin a fresh login instead.
 
-Milestones 3 through 8 are implemented. The current automation matches a configurable hashtag after
-trimming and without regard to capitalization. Each selected public or private delivery channel is
-atomically claimed before Meta is called, preventing a duplicate webhook from creating a second
-message. Periodic maintenance refreshes tokens and safely recovers eligible reply attempts.
+Milestones 3 through 8 are implemented. The current automation can match exact trimmed text, a
+complete word or hashtag within the comment, or every eligible top-level comment. Text matching
+ignores capitalization. Each selected public or private delivery channel is atomically claimed
+before Meta is called, preventing a duplicate webhook from creating a second message. Periodic
+maintenance refreshes tokens and safely recovers eligible reply attempts.

@@ -81,6 +81,7 @@ const setup = async (): Promise<void> => {
       mediaId,
       privateReplyText: 'Synthetic private reply',
       replyText: 'Synthetic public reply',
+      triggerMode: 'exact',
       triggerText: '#LoadTest',
     });
     const session = createSessionToken();
