@@ -74,6 +74,10 @@ const createFixture = () => {
       tokenProtector,
     },
     instagramMedia: { instagramMediaClient, tokenProtector },
+    instagramSubscription: {
+      instagramWebhookClient: { subscribeToComments: vi.fn() },
+      tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
+    },
     logger,
     sessionCookie: { name: 'igauto_session', secure: true, ttlSeconds: 3600 },
     sessionRepository,

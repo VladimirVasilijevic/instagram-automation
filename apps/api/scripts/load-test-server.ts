@@ -85,13 +85,15 @@ const main = (): void => {
       },
       tokenProtector,
     },
+    instagramSubscription: {
+      instagramWebhookClient: { subscribeToComments: async () => undefined },
+      tokenRefreshRepository: database.tokenRefreshRepository,
+    },
     instagramWebhook: {
       accountRepository: database.accountRepository,
       appSecret: loadTestAppSecret,
       ...replyClients,
-      instagramWebhookClient: { subscribeToComments: async () => undefined },
       tokenProtector,
-      tokenRefreshRepository: database.tokenRefreshRepository,
       verifyToken: 'load-test-verify-token',
     },
     logger,

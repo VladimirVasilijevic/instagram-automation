@@ -35,6 +35,9 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
   const environment = parseEnvironment(input);
   const database = createDatabase(environment.DATABASE_URL);
   const tokenProtector = new AesGcmTokenProtector(environment.TOKEN_ENCRYPTION_KEY);
+  const instagramWebhookClient = createInstagramWebhookClient({
+    apiVersion: environment.META_API_VERSION,
+  });
   const app = createApp({
     automationRepository: database.automationRepository,
     executionRepository: database.executionRepository,
@@ -57,6 +60,10 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
       }),
       tokenProtector,
     },
+    instagramSubscription: {
+      instagramWebhookClient,
+      tokenRefreshRepository: database.tokenRefreshRepository,
+    },
     instagramWebhook: {
       accountRepository: database.accountRepository,
       appSecret: environment.META_APP_SECRET,
@@ -66,11 +73,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
       instagramPrivateReplyClient: createInstagramPrivateReplyClient({
         apiVersion: environment.META_API_VERSION,
       }),
-      instagramWebhookClient: createInstagramWebhookClient({
-        apiVersion: environment.META_API_VERSION,
-      }),
       tokenProtector,
-      tokenRefreshRepository: database.tokenRefreshRepository,
       verifyToken: environment.META_WEBHOOK_VERIFY_TOKEN,
     },
     maintenance: {

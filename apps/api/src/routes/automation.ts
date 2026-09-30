@@ -2,9 +2,15 @@ import { createRoute, type OpenAPIHono, z } from '@hono/zod-openapi';
 import { DELIVERY_MODE } from '@instagram-automation/contracts';
 
 import { errorResponseSchema } from '../contracts/http.js';
-import type { Automation, AutomationRepository } from '../database/repositories.js';
+import type {
+  Automation,
+  AutomationRepository,
+  TokenRefreshRepository,
+} from '../database/repositories.js';
 import type { InstagramMediaClient } from '../instagram/media-client.js';
 import { InstagramMediaError } from '../instagram/media-client.js';
+import type { InstagramWebhookClient } from '../instagram/webhook-client.js';
+import { InstagramWebhookError } from '../instagram/webhook-client.js';
 import type { Logger } from '../logging/logger.js';
 import { toSafeErrorContext } from '../logging/logger.js';
 import {
@@ -102,7 +108,7 @@ const saveAutomationRoute = createRoute({
       content: { 'application/json': { schema: errorResponseSchema } },
     },
     502: {
-      description: 'Instagram media cannot be checked before saving.',
+      description: 'Instagram media or comment delivery cannot be checked before saving.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
   },
@@ -119,8 +125,14 @@ export interface AutomationRouteDependencies extends SessionMiddlewareDependenci
   /** Server-side adapter used to confirm selected media belongs to the connected account. */
   instagramMediaClient: InstagramMediaClient;
 
+  /** Provider client that ensures Meta sends comments for enabled automations. */
+  instagramWebhookClient: InstagramWebhookClient;
+
   /** Decrypts the connected account token immediately before media ownership validation. */
   tokenProtector: TokenProtector;
+
+  /** Records definite provider credential rejection without exposing provider details. */
+  tokenRefreshRepository: Pick<TokenRefreshRepository, 'markAccountReconnectRequired'>;
 }
 
 const toAutomationResponse = (automation: Automation) => ({
@@ -188,9 +200,11 @@ export const registerAutomationRoutes = (
     }
 
     const { account } = context.get('authenticatedSession');
+    let accessToken: string;
     try {
+      accessToken = dependencies.tokenProtector.decrypt(account.accessTokenCiphertext);
       const media = await dependencies.instagramMediaClient.listRecentMedia({
-        accessToken: dependencies.tokenProtector.decrypt(account.accessTokenCiphertext),
+        accessToken,
         instagramUserId: account.instagramUserId,
         limit: 12,
       });
@@ -219,6 +233,53 @@ export const registerAutomationRoutes = (
         },
         502,
       );
+    }
+
+    if (parsedInput.data.enabled) {
+      try {
+        await dependencies.instagramWebhookClient.subscribeToComments({
+          accessToken,
+          instagramUserId: account.instagramUserId,
+        });
+      } catch (error) {
+        const authenticationRejected =
+          error instanceof InstagramWebhookError && error.authenticationRejected;
+        dependencies.logger.error(
+          'Instagram comment subscription failed while saving automation',
+          error instanceof InstagramWebhookError ? error.toLogContext() : toSafeErrorContext(error),
+        );
+        if (authenticationRejected) {
+          try {
+            await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
+              account.id,
+              'TOKEN_REJECTED',
+            );
+          } catch (persistenceError) {
+            dependencies.logger.error(
+              'Instagram reconnect state update failed',
+              toSafeErrorContext(persistenceError),
+            );
+          }
+          return context.json(
+            {
+              error: {
+                code: 'INSTAGRAM_RECONNECT_REQUIRED',
+                message: 'Reconnect Instagram before enabling this automation.',
+              },
+            },
+            502,
+          );
+        }
+        return context.json(
+          {
+            error: {
+              code: 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE',
+              message: 'Comment delivery could not be enabled. Your changes were not saved.',
+            },
+          },
+          502,
+        );
+      }
     }
 
     try {

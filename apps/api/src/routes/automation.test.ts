@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.js';
 import type { Automation, InstagramAccount, Session } from '../database/repositories.js';
 import { InstagramMediaError } from '../instagram/media-client.js';
+import { InstagramWebhookError } from '../instagram/webhook-client.js';
 import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
 import { createSessionToken } from '../security/session-token.js';
 
@@ -75,6 +76,8 @@ const createFixture = () => {
       },
     ]),
   };
+  const instagramWebhookClient = { subscribeToComments: vi.fn().mockResolvedValue(undefined) };
+  const tokenRefreshRepository = { markAccountReconnectRequired: vi.fn().mockResolvedValue(true) };
   const logger = { error: vi.fn(), info: vi.fn() };
   const app = createApp({
     automationRepository,
@@ -97,6 +100,7 @@ const createFixture = () => {
       tokenProtector,
     },
     instagramMedia: { instagramMediaClient, tokenProtector },
+    instagramSubscription: { instagramWebhookClient, tokenRefreshRepository },
     logger,
     sessionCookie: { name: 'igauto_session', secure: true, ttlSeconds: 3600 },
     sessionRepository,
@@ -106,7 +110,9 @@ const createFixture = () => {
     automationRepository,
     headers: { Cookie: `igauto_session=${sessionToken.token}` },
     instagramMediaClient,
+    instagramWebhookClient,
     logger,
+    tokenRefreshRepository,
   };
 };
 
@@ -188,6 +194,16 @@ describe('automation configuration routes', () => {
       instagramUserId: account.instagramUserId,
       limit: 12,
     });
+    expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith({
+      accessToken: 'private-instagram-token',
+      instagramUserId: account.instagramUserId,
+    });
+    expect(f.instagramMediaClient.listRecentMedia.mock.invocationCallOrder[0]!).toBeLessThan(
+      f.instagramWebhookClient.subscribeToComments.mock.invocationCallOrder[0]!,
+    );
+    expect(f.instagramWebhookClient.subscribeToComments.mock.invocationCallOrder[0]!).toBeLessThan(
+      f.automationRepository.saveAutomation.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('saves distinct public and private text when both channels are selected', async () => {
@@ -360,6 +376,90 @@ describe('automation configuration routes', () => {
       },
     });
     expect(body).not.toContain('private database detail');
+    expect(f.instagramWebhookClient.subscribeToComments).not.toHaveBeenCalled();
     expect(f.logger.error).toHaveBeenCalledOnce();
   });
+
+  it('does not save enabled changes when comment delivery cannot be enabled', async () => {
+    const f = createFixture();
+    f.instagramWebhookClient.subscribeToComments.mockRejectedValue(
+      new InstagramWebhookError({
+        reason: 'http_error',
+        httpStatus: 500,
+        metaErrorCode: 2,
+      }),
+    );
+
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: { ...f.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deliveryMode: 'public',
+        enabled: true,
+        mediaId: automation.mediaId,
+        privateReplyText: null,
+        replyText: 'Updated reply',
+        triggerText: '#Hello',
+      }),
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(JSON.parse(body)).toEqual({
+      error: {
+        code: 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE',
+        message: 'Comment delivery could not be enabled. Your changes were not saved.',
+      },
+    });
+    expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
+    expect(f.tokenRefreshRepository.markAccountReconnectRequired).not.toHaveBeenCalled();
+    expect(body).not.toContain('private-instagram-token');
+    expect(f.logger.error).toHaveBeenCalledWith(
+      'Instagram comment subscription failed while saving automation',
+      expect.objectContaining({
+        reason: 'http_error',
+        httpStatus: '500',
+        metaErrorCode: '2',
+      }),
+    );
+  });
+
+  it.each([
+    { httpStatus: 401, metaErrorCode: 200 },
+    { httpStatus: 400, metaErrorCode: 190 },
+  ])(
+    'requires reconnection after definite subscription credential rejection: %j',
+    async (diagnostics) => {
+      const f = createFixture();
+      f.instagramWebhookClient.subscribeToComments.mockRejectedValue(
+        new InstagramWebhookError({ reason: 'http_error', ...diagnostics }),
+      );
+
+      const response = await f.app.request('/api/automation', {
+        method: 'PUT',
+        headers: { ...f.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deliveryMode: 'public',
+          enabled: true,
+          mediaId: automation.mediaId,
+          privateReplyText: null,
+          replyText: 'Updated reply',
+          triggerText: '#Hello',
+        }),
+      });
+
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: 'INSTAGRAM_RECONNECT_REQUIRED',
+          message: 'Reconnect Instagram before enabling this automation.',
+        },
+      });
+      expect(f.tokenRefreshRepository.markAccountReconnectRequired).toHaveBeenCalledWith(
+        account.id,
+        'TOKEN_REJECTED',
+      );
+      expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
+    },
+  );
 });

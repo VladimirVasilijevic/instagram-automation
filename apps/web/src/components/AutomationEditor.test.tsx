@@ -1,11 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAutomation, saveAutomation } from '../api/automation.js';
+import { AutomationSaveError, getAutomation, saveAutomation } from '../api/automation.js';
 import { getRecentMedia } from '../api/media.js';
 import { AutomationEditor } from './AutomationEditor.js';
 
-vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
+vi.mock('../api/automation.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/automation.js')>()),
+  getAutomation: vi.fn(),
+  saveAutomation: vi.fn(),
+}));
 vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
 
 const media = [
@@ -111,6 +115,36 @@ describe('automation editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('could not save');
     expect(screen.queryByText('private save detail')).not.toBeInTheDocument();
+  });
+
+  it('explains that previous settings remain active when comment delivery cannot be enabled', async () => {
+    vi.mocked(saveAutomation).mockRejectedValue(
+      new AutomationSaveError('INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE'),
+    );
+    render(<AutomationEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Previous automation settings, if any, remain active',
+    );
+  });
+
+  it('offers Instagram reconnection after definite credential rejection', async () => {
+    vi.mocked(saveAutomation).mockRejectedValue(
+      new AutomationSaveError('INSTAGRAM_RECONNECT_REQUIRED'),
+    );
+    render(<AutomationEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Reconnect Instagram');
+    expect(screen.getByRole('link', { name: 'Reconnect Instagram' })).toHaveAttribute(
+      'href',
+      '/api/auth/instagram/start',
+    );
   });
 
   it('saves separate public and private messages in both mode', async () => {

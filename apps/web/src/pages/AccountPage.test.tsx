@@ -71,6 +71,10 @@ describe('account and connect screens', () => {
     expect(await screen.findByText('Connected as @example')).toBeInTheDocument();
     expect(getCurrentAccount).toHaveBeenCalledTimes(2);
     expect(window.location.pathname).toBe('/app');
+    expect(screen.getByText(/turns on comment delivery automatically/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Enable comment delivery' }),
+    ).not.toBeInTheDocument();
   });
   it('shows the connected account menu and keeps the three navigation destinations', async () => {
     vi.mocked(getCurrentAccount).mockResolvedValue(account);

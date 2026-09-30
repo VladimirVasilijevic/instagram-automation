@@ -464,6 +464,12 @@ Make Meta send real comment events to the app.
 - [x] Add `InstagramClient.subscribeToComments(...)`
 - [x] Implement subscription to `comments`
 - [x] Make repeated subscription safe
+- [x] Ensure comment subscription automatically before saving an enabled automation
+
+Saving a disabled automation does not call Meta. If automatic subscription fails, the new settings
+are not persisted and any previously saved automation remains unchanged. HTTP 401 or Meta error 190
+marks the connection for reconnection; other failures return a sanitized retryable error. The
+authenticated subscription endpoint remains available for manual repair and diagnostics.
 
 ## Normalize webhook
 
@@ -490,7 +496,7 @@ type CommentEvent = {
 - [ ] Configure Meta callback URL
 - [ ] Configure verification token
 - [ ] Complete Meta verification
-- [ ] Subscribe connected account to comments
+- [x] Subscribe connected account to comments
 
 ## Manual test
 

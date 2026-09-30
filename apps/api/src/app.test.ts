@@ -44,6 +44,10 @@ const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDep
     instagramMediaClient: { listRecentMedia: vi.fn() },
     tokenProtector: new AesGcmTokenProtector(Buffer.alloc(32, 1).toString('base64')),
   },
+  instagramSubscription: {
+    instagramWebhookClient: { subscribeToComments: vi.fn() },
+    tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
+  },
   database: { checkHealth: vi.fn() },
   logger: createLogger(),
   sessionCookie: { name: 'igauto_session', secure: false, ttlSeconds: 604800 },

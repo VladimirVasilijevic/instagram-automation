@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 
 import { DELIVERY_MODE } from '@instagram-automation/contracts';
 
-import { getAutomation, saveAutomation, type DeliveryMode } from '../api/automation.js';
+import {
+  AutomationSaveError,
+  getAutomation,
+  saveAutomation,
+  type DeliveryMode,
+} from '../api/automation.js';
 import { getRecentMedia, type RecentMedia } from '../api/media.js';
 
 type EditorState =
@@ -32,14 +37,14 @@ export const AutomationEditor = ({
   const [privateReplyText, setPrivateReplyText] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState<'delivery' | 'generic' | 'reconnect' | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     onSelectedMediaChange?.(undefined);
     setState({ status: 'loading' });
-    setSaveError(false);
+    setSaveError(null);
     setSaved(false);
     void Promise.all([getRecentMedia(controller.signal), getAutomation(controller.signal)])
       .then(([media, automation]) => {
@@ -78,7 +83,7 @@ export const AutomationEditor = ({
     )
       return;
     setSaving(true);
-    setSaveError(false);
+    setSaveError(null);
     setSaved(false);
     try {
       const automation = await saveAutomation({
@@ -96,8 +101,14 @@ export const AutomationEditor = ({
       setTriggerText(automation.triggerText);
       setEnabled(automation.enabled);
       setSaved(true);
-    } catch {
-      setSaveError(true);
+    } catch (error) {
+      setSaveError(
+        error instanceof AutomationSaveError
+          ? error.code === 'INSTAGRAM_RECONNECT_REQUIRED'
+            ? 'reconnect'
+            : 'delivery'
+          : 'generic',
+      );
     } finally {
       setSaving(false);
     }
@@ -315,10 +326,24 @@ export const AutomationEditor = ({
         Enable automatic reply
       </label>
 
-      {saveError && (
+      {saveError === 'generic' && (
         <p role="alert" className="ui-alert ui-alert-error mt-4">
           We could not save your automation. Please try again.
         </p>
+      )}
+      {saveError === 'delivery' && (
+        <p role="alert" className="ui-alert ui-alert-error mt-4">
+          Comment delivery could not be enabled. Your changes were not saved. Previous automation
+          settings, if any, remain active.
+        </p>
+      )}
+      {saveError === 'reconnect' && (
+        <div role="alert" className="ui-alert ui-alert-warning mt-4">
+          <p>Reconnect Instagram before enabling this automation. Your changes were not saved.</p>
+          <a className="ui-button mt-3 w-full sm:w-auto" href="/api/auth/instagram/start">
+            Reconnect Instagram
+          </a>
+        </div>
       )}
       {saved && (
         <p role="status" className="ui-alert ui-alert-success mt-4">

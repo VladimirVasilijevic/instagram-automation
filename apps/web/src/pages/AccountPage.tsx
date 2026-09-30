@@ -4,7 +4,6 @@ import { getCurrentAccount, logout, type CurrentAccount } from '../api/auth.js';
 import { AutomationEditor } from '../components/AutomationEditor.js';
 import { MaintenanceHealthCard } from '../components/MaintenanceHealthCard.js';
 import { RecentActivity } from '../components/RecentActivity.js';
-import { WebhookSubscription } from '../components/WebhookSubscription.js';
 import { PageShell } from '../components/ui/PageShell.js';
 
 type AccountState =
@@ -146,7 +145,8 @@ export const AccountPage = () => {
                     Connected as @{state.account.username}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-[#625b6e]">
-                    Choose a post and configure its reply, then enable comment delivery.
+                    Choose a post and configure its reply. Saving an enabled automation turns on
+                    comment delivery automatically.
                   </p>
                 </div>
                 <span
@@ -180,7 +180,6 @@ export const AccountPage = () => {
               )}
             </section>
             <AutomationEditor onSelectedMediaChange={setSelectedMediaId} />
-            <WebhookSubscription />
             <RecentActivity selectedMediaId={selectedMediaId} />
             <MaintenanceHealthCard />
           </div>

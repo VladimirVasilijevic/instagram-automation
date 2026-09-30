@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getAutomation, saveAutomation } from './automation.js';
+import { AutomationSaveError, getAutomation, saveAutomation } from './automation.js';
 
 afterEach(() => vi.unstubAllGlobals());
 const automation = {
@@ -84,4 +84,32 @@ describe('automation API client', () => {
       }),
     ).rejects.toThrow('could not be saved');
   });
+
+  it.each(['INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE', 'INSTAGRAM_RECONNECT_REQUIRED'] as const)(
+    'returns the safe %s save failure code',
+    async (code) => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            new Response(
+              JSON.stringify({ error: { code, message: 'application-owned message' } }),
+              { status: 502 },
+            ),
+          ),
+      );
+
+      await expect(
+        saveAutomation({
+          deliveryMode: 'public',
+          enabled: true,
+          mediaId: 'media',
+          privateReplyText: null,
+          replyText: 'Reply',
+          triggerText: '#Hello',
+        }),
+      ).rejects.toEqual(new AutomationSaveError(code));
+    },
+  );
 });

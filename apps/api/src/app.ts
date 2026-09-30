@@ -3,10 +3,12 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 
 import type { DatabaseHealthChecker } from './database/database.js';
 import type { InstagramMediaClient } from './instagram/media-client.js';
+import type { InstagramWebhookClient } from './instagram/webhook-client.js';
 import type {
   AutomationRepository,
   ExecutionRepository,
   SessionRepository,
+  TokenRefreshRepository,
 } from './database/repositories.js';
 import type { Logger } from './logging/logger.js';
 import { toSafeErrorContext } from './logging/logger.js';
@@ -44,6 +46,14 @@ export interface InstagramMediaDependencies {
   tokenProtector: TokenProtector;
 }
 
+/** Shared capabilities used to enable and repair Meta comment delivery. */
+export interface InstagramSubscriptionDependencies {
+  /** Provider client that manages the connected account's comments subscription. */
+  instagramWebhookClient: InstagramWebhookClient;
+  /** Records definite credential rejection discovered while subscribing. */
+  tokenRefreshRepository: Pick<TokenRefreshRepository, 'markAccountReconnectRequired'>;
+}
+
 /** Runtime dependencies and options used to construct the HTTP application. */
 export interface AppDependencies {
   /** Account-scoped automation persistence used by configuration routes. */
@@ -64,14 +74,18 @@ export interface AppDependencies {
   instagramAuth: Omit<InstagramAuthDependencies, 'logger' | 'sessionCookie' | 'sessionRepository'>;
   /** Server-side media adapter and token protection used by authenticated media requests. */
   instagramMedia: InstagramMediaDependencies;
+  /** Comment-subscription capabilities shared by automation saves and repair requests. */
+  instagramSubscription: InstagramSubscriptionDependencies;
   /** Public signed delivery and owner-authenticated comment-subscription capabilities. */
   instagramWebhook?: Omit<
     InstagramWebhookRouteDependencies,
     | 'automationRepository'
     | 'executionRepository'
+    | 'instagramWebhookClient'
     | 'logger'
     | 'sessionCookie'
     | 'sessionRepository'
+    | 'tokenRefreshRepository'
   >;
   /** Database capability injected into routes that verify connectivity. */
   database: DatabaseHealthChecker;
@@ -164,6 +178,7 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   registerAutomationRoutes(app, {
     automationRepository: dependencies.automationRepository,
     ...dependencies.instagramMedia,
+    ...dependencies.instagramSubscription,
     logger: dependencies.logger,
     sessionCookie: dependencies.sessionCookie,
     sessionRepository: dependencies.sessionRepository,
@@ -190,6 +205,7 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   if (dependencies.instagramWebhook) {
     registerInstagramWebhookRoutes(app, {
       ...dependencies.instagramWebhook,
+      ...dependencies.instagramSubscription,
       automationRepository: dependencies.automationRepository,
       executionRepository: dependencies.executionRepository,
       logger: dependencies.logger,

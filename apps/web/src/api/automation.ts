@@ -34,6 +34,22 @@ export interface SaveAutomationInput {
   triggerText: string;
 }
 
+/** Safe save-failure categories the browser may render with specific recovery guidance. */
+export type AutomationSaveErrorCode =
+  'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE' | 'INSTAGRAM_RECONNECT_REQUIRED';
+
+/** Safe application-owned failure returned while saving automation settings. */
+export class AutomationSaveError extends Error {
+  /** Stable application-owned category; never contains provider response details. */
+  readonly code: AutomationSaveErrorCode;
+
+  constructor(code: AutomationSaveErrorCode) {
+    super('Automation settings could not be saved. Please try again.');
+    this.name = 'AutomationSaveError';
+    this.code = code;
+  }
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 const isNullableString = (value: unknown): value is string | null =>
@@ -121,7 +137,21 @@ export const saveAutomation = async (input: SaveAutomationInput): Promise<Automa
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
   });
-  if (!response.ok) throw new Error('Automation settings could not be saved. Please try again.');
+  if (!response.ok) {
+    try {
+      const payload = await response.json();
+      const code = isRecord(payload) && isRecord(payload.error) ? payload.error.code : undefined;
+      if (
+        code === 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE' ||
+        code === 'INSTAGRAM_RECONNECT_REQUIRED'
+      ) {
+        throw new AutomationSaveError(code);
+      }
+    } catch (error) {
+      if (error instanceof AutomationSaveError) throw error;
+    }
+    throw new Error('Automation settings could not be saved. Please try again.');
+  }
   const payload = await readPayload(response);
   if (!isRecord(payload) || !('automation' in payload))
     throw new Error('Automation service returned an invalid response. Please try again.');

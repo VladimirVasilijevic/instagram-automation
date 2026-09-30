@@ -17,6 +17,16 @@ const failureContext = async (operation: Promise<unknown>) => {
   throw new Error('Expected subscription to fail');
 };
 
+const failure = async (operation: Promise<unknown>) => {
+  try {
+    await operation;
+  } catch (error) {
+    expect(error).toBeInstanceOf(InstagramWebhookError);
+    return error as InstagramWebhookError;
+  }
+  throw new Error('Expected subscription to fail');
+};
+
 describe('Instagram webhook subscription adapter', () => {
   it('subscribes to comments without placing the token in the URL', async () => {
     const fetcher = vi
@@ -60,4 +70,26 @@ describe('Instagram webhook subscription adapter', () => {
     });
     expect(JSON.stringify(context)).not.toContain('private');
   });
+
+  it.each([
+    [401, 200, true],
+    [400, 190, true],
+    [400, 200, false],
+    [500, 1900, false],
+  ])(
+    'classifies HTTP %i and Meta code %i authentication rejection as %s',
+    async (httpStatus, metaErrorCode, expected) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: metaErrorCode } }), {
+          status: httpStatus,
+        }),
+      );
+
+      const error = await failure(
+        createInstagramWebhookClient({ apiVersion: 'v24.0' }, fetcher).subscribeToComments(input),
+      );
+
+      expect(error.authenticationRejected).toBe(expected);
+    },
+  );
 });

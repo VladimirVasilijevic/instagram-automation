@@ -36,6 +36,11 @@ export class InstagramWebhookError extends Error {
     this.name = 'InstagramWebhookError';
   }
 
+  /** Whether Meta definitely rejected the connected account credential. */
+  get authenticationRejected(): boolean {
+    return this.diagnostics.httpStatus === 401 || this.diagnostics.metaErrorCode === 190;
+  }
+
   /** Returns only application-selected diagnostic values. */
   toLogContext(): Readonly<Record<string, string>> {
     const context: Record<string, string> = {

@@ -106,14 +106,16 @@ const createFixture = () => {
       tokenProtector,
     },
     instagramMedia: { instagramMediaClient: { listRecentMedia: vi.fn() }, tokenProtector },
+    instagramSubscription: {
+      instagramWebhookClient,
+      tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
+    },
     instagramWebhook: {
       accountRepository,
       appSecret,
       instagramCommentReplyClient,
       instagramPrivateReplyClient,
-      instagramWebhookClient,
       tokenProtector,
-      tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
       verifyToken,
     },
     logger,

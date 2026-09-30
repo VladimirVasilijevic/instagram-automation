@@ -106,6 +106,10 @@ const createFixture = () => {
       instagramMediaClient: { listRecentMedia: vi.fn() },
       tokenProtector,
     },
+    instagramSubscription: {
+      instagramWebhookClient: { subscribeToComments: vi.fn() },
+      tokenRefreshRepository: { markAccountReconnectRequired: vi.fn() },
+    },
   };
   const app = createApp(dependencies);
   const begin = async () => {
