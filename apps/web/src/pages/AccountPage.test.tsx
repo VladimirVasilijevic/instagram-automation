@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getCurrentAccount, logout } from '../api/auth.js';
@@ -55,6 +55,7 @@ describe('account and connect screens', () => {
       'href',
       '/api/auth/instagram/start',
     );
+    expect(screen.queryByLabelText('Account menu for @example')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Service status' })).toHaveAttribute('href', '/status');
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toContainElement(
       screen.getByRole('link', { name: 'Privacy' }),
@@ -70,6 +71,29 @@ describe('account and connect screens', () => {
     expect(await screen.findByText('Connected as @example')).toBeInTheDocument();
     expect(getCurrentAccount).toHaveBeenCalledTimes(2);
     expect(window.location.pathname).toBe('/app');
+  });
+  it('shows the connected account menu and keeps the three navigation destinations', async () => {
+    vi.mocked(getCurrentAccount).mockResolvedValue(account);
+    render(<AccountPage />);
+
+    expect(await screen.findByLabelText('Account menu for @example')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/app');
+    expect(screen.getByRole('link', { name: 'Status' })).toHaveAttribute('href', '/status');
+    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
+
+    fireEvent.click(screen.getByLabelText('Account menu for @example'));
+    const accountMenu = screen.getByText('Instagram account').closest('details');
+    expect(accountMenu).not.toBeNull();
+    if (!accountMenu) return;
+    expect(within(accountMenu).getByRole('link', { name: 'Privacy information' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
+    expect(within(accountMenu).getByRole('link', { name: 'Service status' })).toHaveAttribute(
+      'href',
+      '/status',
+    );
   });
   it('shows a reconnect warning when token maintenance pauses the account', async () => {
     vi.mocked(getCurrentAccount).mockResolvedValue({
@@ -127,6 +151,7 @@ describe('account and connect screens', () => {
     vi.mocked(getCurrentAccount).mockResolvedValue(account);
     vi.mocked(logout).mockResolvedValue(undefined);
     render(<AccountPage />);
+    fireEvent.click(await screen.findByLabelText('Account menu for @example'));
     fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
     expect(screen.getByRole('button', { name: 'Logging out…' })).toBeDisabled();
     await screen.findByRole('link', { name: 'Continue with Instagram' });
@@ -139,9 +164,11 @@ describe('account and connect screens', () => {
       .mockRejectedValueOnce(new Error('secret-detail'))
       .mockResolvedValueOnce(undefined);
     render(<AccountPage />);
+    fireEvent.click(await screen.findByLabelText('Account menu for @example'));
     fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Logout could not be completed');
     expect(screen.getByText('Connected as @example')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Account menu for @example'));
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Continue with Instagram' })).toBeInTheDocument(),

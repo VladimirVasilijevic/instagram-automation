@@ -61,7 +61,17 @@ export const AccountPage = () => {
   };
 
   return (
-    <PageShell>
+    <PageShell
+      accountMenu={
+        state.status === 'connected'
+          ? {
+              username: state.account.username,
+              loggingOut,
+              onLogout: () => void handleLogout(),
+            }
+          : undefined
+      }
+    >
       <header className="max-w-2xl">
         <p className="text-sm font-semibold tracking-wide text-[#5632a8] uppercase">
           {state.status === 'connected' ? 'Your workspace' : 'Instagram comment automation'}
@@ -167,13 +177,6 @@ export const AccountPage = () => {
                   Logout could not be completed. Please try again.
                 </p>
               )}
-              <button
-                className="ui-button-secondary mt-5 w-full sm:w-auto"
-                disabled={loggingOut}
-                onClick={() => void handleLogout()}
-              >
-                {loggingOut ? 'Logging out…' : 'Log out'}
-              </button>
             </section>
             <AutomationEditor />
             <WebhookSubscription />
