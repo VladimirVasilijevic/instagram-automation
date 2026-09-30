@@ -13,22 +13,22 @@ const presentation: Record<
   [MAINTENANCE_STATUS.HEALTHY]: {
     label: 'Maintenance healthy',
     description: 'Scheduled token and reply recovery is completing normally.',
-    style: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+    style: 'ui-alert-success',
   },
   [MAINTENANCE_STATUS.ATTENTION]: {
     label: 'Maintenance needs attention',
     description: 'The latest run detected a failure or work that needs review.',
-    style: 'border-amber-200 bg-amber-50 text-amber-950',
+    style: 'ui-alert-warning',
   },
   [MAINTENANCE_STATUS.DELAYED]: {
     label: 'Maintenance delayed',
     description: 'No successful run was recorded during the last 45 minutes.',
-    style: 'border-red-200 bg-red-50 text-red-950',
+    style: 'ui-alert-error',
   },
   [MAINTENANCE_STATUS.NEVER_RUN]: {
     label: 'Maintenance not observed',
     description: 'No completed scheduled-maintenance run has been recorded yet.',
-    style: 'border-slate-200 bg-slate-50 text-slate-800',
+    style: 'border-[var(--app-border)] bg-[#f5f2ed] text-[#433d50]',
   },
 };
 
@@ -57,41 +57,61 @@ export const MaintenanceHealthCard = () => {
 
   if (state.status === 'loading')
     return (
-      <p role="status" className="mt-6 text-sm text-slate-600">
-        Checking scheduled maintenance…
-      </p>
+      <section className="ui-card p-5 sm:p-6" aria-labelledby="maintenance-heading">
+        <h2 id="maintenance-heading" className="text-xl font-semibold text-[#292638]">
+          Scheduled maintenance
+        </h2>
+        <p role="status" className="mt-3 text-sm text-[#625b6e]">
+          Checking scheduled maintenance…
+        </p>
+      </section>
     );
   if (state.status === 'error')
     return (
-      <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p role="alert" className="text-sm text-slate-700">
+      <section className="ui-card p-5 sm:p-6" aria-labelledby="maintenance-heading">
+        <h2 id="maintenance-heading" className="text-xl font-semibold text-[#292638]">
+          Scheduled maintenance
+        </h2>
+        <p role="alert" className="ui-alert ui-alert-error mt-3">
           Maintenance health could not be loaded.
         </p>
         <button
-          className="mt-3 text-sm font-semibold underline underline-offset-4"
+          className="ui-button-secondary mt-3"
           type="button"
           onClick={() => setAttempt((value) => value + 1)}
         >
           Try again
         </button>
-      </div>
+      </section>
     );
 
   const view = presentation[state.health.status];
   return (
-    <section className={`mt-6 rounded-xl border p-4 ${view.style}`} aria-live="polite">
+    <section
+      className="ui-card p-5 sm:p-6"
+      aria-live="polite"
+      aria-labelledby="maintenance-heading"
+    >
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
-          <h3 className="font-semibold">{view.label}</h3>
-          <p className="mt-1 text-sm leading-6">{view.description}</p>
-          {state.health.lastSucceededAt && (
-            <p className="mt-1 text-sm">
-              Last completed {formatTimestamp(state.health.lastSucceededAt)}
-            </p>
-          )}
+        <div className="min-w-0">
+          <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">
+            Service health
+          </p>
+          <h2 id="maintenance-heading" className="mt-1 text-xl font-semibold text-[#292638]">
+            Scheduled maintenance
+          </h2>
+          <div className={`mt-4 rounded-xl border p-4 ${view.style}`}>
+            <h3 className="font-semibold">{view.label}</h3>
+            <p className="mt-1 text-sm leading-6">{view.description}</p>
+            {state.health.lastSucceededAt && (
+              <p className="mt-1 text-sm">
+                Last completed {formatTimestamp(state.health.lastSucceededAt)}
+              </p>
+            )}
+          </div>
         </div>
         <button
-          className="text-sm font-semibold underline underline-offset-4"
+          className="ui-button-secondary shrink-0"
           type="button"
           onClick={() => setAttempt((value) => value + 1)}
         >

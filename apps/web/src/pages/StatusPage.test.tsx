@@ -25,7 +25,7 @@ describe('StatusPage', () => {
     render(<StatusPage />);
 
     expect(
-      screen.getByText('Infrastructure status for the frontend, API, and PostgreSQL connection.'),
+      screen.getByText('Live checks for the API and database connection.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Checking status…')).toBeDisabled();
     await waitFor(() => expect(screen.getAllByText('Connected')).toHaveLength(2));

@@ -26,7 +26,7 @@ describe('RecentActivity', () => {
         },
       ]);
     render(<RecentActivity />);
-    expect(await screen.findByText('No automation activity yet.')).toBeInTheDocument();
+    expect(await screen.findByText(/No automation activity yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh activity' }));
     expect(await screen.findByText('@commenter')).toBeInTheDocument();
     expect(screen.getByText('Public reply')).toBeInTheDocument();

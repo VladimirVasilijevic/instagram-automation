@@ -2,9 +2,6 @@ import { useState } from 'react';
 
 import { subscribeToCommentDelivery } from '../api/webhook.js';
 
-const buttonStyle =
-  'inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60';
-
 /** Lets an authenticated owner enable Meta comment delivery after webhook verification is configured. */
 export const WebhookSubscription = () => {
   const [status, setStatus] = useState<'idle' | 'enabled' | 'error' | 'subscribing'>('idle');
@@ -20,23 +17,26 @@ export const WebhookSubscription = () => {
   };
 
   return (
-    <section className="mt-8 border-t border-slate-200 pt-8" aria-live="polite">
-      <h3 className="text-xl font-semibold text-slate-950">Enable comment delivery</h3>
-      <p className="mt-2 leading-7 text-slate-600">
+    <section className="ui-card p-5 sm:p-6" aria-live="polite" aria-labelledby="delivery-heading">
+      <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">Delivery</p>
+      <h2 id="delivery-heading" className="mt-1 text-xl font-semibold text-[#292638]">
+        Enable comment delivery
+      </h2>
+      <p className="mt-2 leading-6 text-[#625b6e]">
         Enable Meta comment events after the webhook callback has been verified in Meta.
       </p>
       {status === 'enabled' && (
-        <p role="status" className="mt-4 text-sm text-emerald-800">
-          Comment delivery is enabled. Public replies are added in the next milestone.
+        <p role="status" className="ui-alert ui-alert-success mt-4">
+          Comment delivery is enabled. New comments can reach your automation.
         </p>
       )}
       {status === 'error' && (
-        <p role="alert" className="mt-4 text-sm text-red-800">
+        <p role="alert" className="ui-alert ui-alert-error mt-4">
           Comment delivery could not be enabled. Please try again.
         </p>
       )}
       <button
-        className={`${buttonStyle} mt-5`}
+        className="ui-button mt-5 w-full sm:w-auto"
         disabled={status === 'subscribing' || status === 'enabled'}
         onClick={() => void subscribe()}
       >

@@ -1,8 +1,8 @@
 @import 'tailwindcss';
 
 :root {
-  color: #172033;
-  background: #f6f7fb;
+  color: #292638;
+  background: #faf9f6;
   font-family:
     Inter,
     ui-sans-serif,
@@ -13,6 +13,10 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --app-primary: #5632a8;
+  --app-primary-hover: #432487;
+  --app-border: #e6e1db;
+  --app-surface: #f5f2ed;
 }
 
 body {
@@ -24,4 +28,107 @@ body {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .app-page {
+    min-height: 100vh;
+    background: radial-gradient(circle at top, #fff 0%, #faf9f6 48%, #f5f2ed 100%);
+  }
+
+  .ui-card {
+    border: 1px solid var(--app-border);
+    border-radius: 1rem;
+    background: #fff;
+    box-shadow:
+      0 1px 2px rgb(41 38 56 / 4%),
+      0 12px 28px -18px rgb(41 38 56 / 20%);
+  }
+
+  .ui-button,
+  .ui-button-secondary {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    padding: 0.625rem 1.125rem;
+    font-size: 0.875rem;
+    font-weight: 650;
+    line-height: 1.25rem;
+    text-align: center;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease;
+  }
+
+  .ui-button {
+    background: var(--app-primary);
+    color: #fff;
+  }
+
+  .ui-button:hover:not(:disabled) {
+    background: var(--app-primary-hover);
+  }
+
+  .ui-button-secondary {
+    border: 1px solid #d9d2e3;
+    background: #fff;
+    color: #332b48;
+  }
+
+  .ui-button-secondary:hover:not(:disabled) {
+    background: #f4effb;
+  }
+
+  .ui-button:disabled,
+  .ui-button-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .ui-button:focus-visible,
+  .ui-button-secondary:focus-visible,
+  .ui-focus:focus-visible,
+  .ui-input:focus-visible {
+    outline: 2px solid var(--app-primary);
+    outline-offset: 2px;
+  }
+
+  .ui-input {
+    min-height: 44px;
+    width: 100%;
+    border: 1px solid #cfc8d5;
+    border-radius: 0.75rem;
+    background: #fff;
+    padding: 0.625rem 0.75rem;
+    color: #292638;
+  }
+
+  .ui-alert {
+    border: 1px solid;
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+  }
+
+  .ui-alert-warning {
+    border-color: #e7cd89;
+    background: #fff8e7;
+    color: #65470a;
+  }
+
+  .ui-alert-error {
+    border-color: #e8bbbb;
+    background: #fff3f2;
+    color: #882e2c;
+  }
+
+  .ui-alert-success {
+    border-color: #a8d7c4;
+    background: #effaf4;
+    color: #176547;
+  }
 }

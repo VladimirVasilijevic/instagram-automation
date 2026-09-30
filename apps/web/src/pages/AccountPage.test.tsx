@@ -56,6 +56,9 @@ describe('account and connect screens', () => {
       '/api/auth/instagram/start',
     );
     expect(screen.getByRole('link', { name: 'Service status' })).toHaveAttribute('href', '/status');
+    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toContainElement(
+      screen.getByRole('link', { name: 'Privacy' }),
+    );
   });
   it('restores an authenticated account from the server on reload', async () => {
     window.history.replaceState(null, '', '/app');

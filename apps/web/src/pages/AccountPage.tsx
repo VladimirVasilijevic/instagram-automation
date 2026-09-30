@@ -5,6 +5,7 @@ import { AutomationEditor } from '../components/AutomationEditor.js';
 import { MaintenanceHealthCard } from '../components/MaintenanceHealthCard.js';
 import { RecentActivity } from '../components/RecentActivity.js';
 import { WebhookSubscription } from '../components/WebhookSubscription.js';
+import { PageShell } from '../components/ui/PageShell.js';
 
 type AccountState =
   | { status: 'loading' }
@@ -19,9 +20,6 @@ const loginErrors: Record<string, string> = {
   unavailable: 'We could not complete Instagram login. Please try again.',
   configuration: 'Instagram login is not configured for this website address yet.',
 };
-const buttonStyle =
-  'inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-60';
-
 /** Renders the connect and account screens using only safe, same-origin session responses. */
 export const AccountPage = () => {
   const [state, setState] = useState<AccountState>({ status: 'loading' });
@@ -63,122 +61,135 @@ export const AccountPage = () => {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#ffffff_0%,_#f6f7fb_45%,_#eef1f7_100%)] px-4 py-12 sm:px-6 sm:py-20">
-      <div className="mx-auto max-w-5xl">
-        <header>
-          <p className="text-sm font-semibold tracking-wide text-indigo-700 uppercase">
-            Instagram Automation
-          </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            Your Instagram connection
-          </h1>
-          <p className="mt-4 leading-7 text-slate-600">
-            Connect your professional account to get started.
-          </p>
-        </header>
-        <section
-          className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
-          aria-live="polite"
-          aria-busy={state.status === 'loading' || loggingOut}
-        >
-          {state.status === 'loading' && (
-            <p role="status" className="text-slate-600">
+    <PageShell>
+      <header className="max-w-2xl">
+        <p className="text-sm font-semibold tracking-wide text-[#5632a8] uppercase">
+          {state.status === 'connected' ? 'Your workspace' : 'Instagram comment automation'}
+        </p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-[#292638] sm:text-4xl">
+          {state.status === 'connected' ? 'Dashboard' : 'Reply to comments with confidence'}
+        </h1>
+        <p className="mt-3 text-base leading-7 text-[#625b6e]">
+          {state.status === 'connected'
+            ? 'Manage your connected account, automation, and recent replies.'
+            : 'Connect your professional account, choose a post, and set up your replies.'}
+        </p>
+      </header>
+
+      <div aria-live="polite" aria-busy={state.status === 'loading' || loggingOut}>
+        {state.status === 'loading' && (
+          <section className="ui-card mt-6 p-5 sm:p-6">
+            <p role="status" className="text-[#625b6e]">
               Checking your connection…
             </p>
-          )}
-          {state.status === 'error' && (
-            <>
-              <p role="alert" className="text-slate-700">
-                We could not check your account. Please try again.
+          </section>
+        )}
+        {state.status === 'error' && (
+          <section className="ui-card mt-6 p-5 sm:p-6">
+            <p role="alert" className="ui-alert ui-alert-error">
+              We could not check your account. Please try again.
+            </p>
+            <button
+              className="ui-button mt-5"
+              onClick={() => {
+                setState({ status: 'loading' });
+                setAttempt((value) => value + 1);
+              }}
+            >
+              Try again
+            </button>
+          </section>
+        )}
+        {state.status === 'signed-out' && (
+          <section className="ui-card mt-6 max-w-2xl p-5 sm:p-7">
+            <h2 className="text-xl font-semibold text-[#292638]">Connect with Instagram</h2>
+            <p className="mt-2 leading-7 text-[#625b6e]">
+              Use a Business or Creator account. Instagram will ask you to allow access to your
+              profile and comments.
+            </p>
+            {loginError && (
+              <p role="alert" className="ui-alert ui-alert-warning mt-4">
+                {loginError}
               </p>
-              <button
-                className={`${buttonStyle} mt-5`}
-                onClick={() => {
-                  setState({ status: 'loading' });
-                  setAttempt((value) => value + 1);
-                }}
-              >
-                Try again
-              </button>
-            </>
-          )}
-          {state.status === 'signed-out' && (
-            <>
-              <h2 className="text-xl font-semibold text-slate-950">Connect with Instagram</h2>
-              <p className="mt-3 leading-7 text-slate-600">
-                Use a Business or Creator account. Instagram will ask you to allow access to your
-                profile and comments.
-              </p>
-              {loginError && (
-                <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-                  {loginError}
-                </p>
-              )}
-              <a
-                className={`${buttonStyle} mt-6 w-full sm:w-auto`}
-                href="/api/auth/instagram/start"
-              >
-                Continue with Instagram
-              </a>
-            </>
-          )}
-          {state.status === 'connected' && (
-            <>
-              <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  state.account.connectionStatus === 'active'
-                    ? 'bg-emerald-50 text-emerald-800'
-                    : 'bg-amber-50 text-amber-900'
-                }`}
-              >
-                {state.account.connectionStatus === 'active' ? 'Connected' : 'Reconnect required'}
-              </span>
-              <h2 className="mt-5 text-xl font-semibold break-words text-slate-950">
-                Connected as @{state.account.username}
-              </h2>
-              <p className="mt-3 leading-7 text-slate-600">
-                Your Instagram account is connected. Choose a post and configure its reply, then
-                enable comment delivery.
-              </p>
+            )}
+            <a className="ui-button mt-6 w-full sm:w-auto" href="/api/auth/instagram/start">
+              Continue with Instagram
+            </a>
+            <p className="mt-4 text-sm text-[#625b6e]">
+              You will review the requested permissions on Instagram.
+            </p>
+          </section>
+        )}
+        {state.status === 'connected' && (
+          <div className="mt-6 grid gap-5">
+            <section className="ui-card p-5 sm:p-6" aria-labelledby="account-heading">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold tracking-wide text-[#625b6e] uppercase">
+                    Connected account
+                  </p>
+                  <h2
+                    id="account-heading"
+                    className="mt-1 text-xl font-semibold break-words text-[#292638]"
+                  >
+                    Connected as @{state.account.username}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-[#625b6e]">
+                    Choose a post and configure its reply, then enable comment delivery.
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex w-fit shrink-0 items-center rounded-full border px-3 py-1 text-sm font-semibold ${
+                    state.account.connectionStatus === 'active'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-amber-200 bg-amber-50 text-amber-900'
+                  }`}
+                >
+                  {state.account.connectionStatus === 'active' ? 'Connected' : 'Reconnect required'}
+                </span>
+              </div>
               {state.account.connectionStatus === 'reconnect_required' && (
-                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <div className="ui-alert ui-alert-warning mt-5">
                   <p role="alert" className="font-semibold">
                     Reconnect Instagram
                   </p>
-                  <p className="mt-2 text-sm leading-6">
+                  <p className="mt-1">
                     Instagram rejected or expired this connection. Automation is paused until you
                     reconnect.
                   </p>
-                  <a className={`${buttonStyle} mt-4`} href="/api/auth/instagram/start">
+                  <a className="ui-button mt-3 w-full sm:w-auto" href="/api/auth/instagram/start">
                     Reconnect Instagram
                   </a>
                 </div>
               )}
-              <MaintenanceHealthCard />
-              <AutomationEditor />
-              <WebhookSubscription />
-              <RecentActivity />
               {logoutError && (
-                <p role="alert" className="mt-4 text-sm text-red-800">
+                <p role="alert" className="ui-alert ui-alert-error mt-4">
                   Logout could not be completed. Please try again.
                 </p>
               )}
               <button
-                className={`${buttonStyle} mt-6`}
+                className="ui-button-secondary mt-5 w-full sm:w-auto"
                 disabled={loggingOut}
                 onClick={() => void handleLogout()}
               >
                 {loggingOut ? 'Logging out…' : 'Log out'}
               </button>
-            </>
-          )}
-        </section>
-        <footer className="mt-8 text-sm text-slate-500">
-          <a className="underline underline-offset-4 hover:text-slate-800" href="/status">
-            Service status
-          </a>
-        </footer>
+            </section>
+            <AutomationEditor />
+            <WebhookSubscription />
+            <RecentActivity />
+            <MaintenanceHealthCard />
+          </div>
+        )}
       </div>
-    </main>
+      <footer className="mt-8 text-sm text-[#625b6e]">
+        <a
+          className="ui-focus rounded underline underline-offset-4 hover:text-[#432487]"
+          href="/status"
+        >
+          Service status
+        </a>
+      </footer>
+    </PageShell>
   );
 };

@@ -44,14 +44,14 @@ export const StatusCard = ({ description, state, title }: StatusCardProps) => {
   const presentation = statePresentation[state];
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 sm:p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+    <section className="ui-card p-5 sm:p-6">
+      <div className="flex flex-col gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-[#292638]">{title}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#625b6e]">{description}</p>
         </div>
         <div
-          className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${presentation.badgeClassName}`}
+          className={`inline-flex w-fit shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${presentation.badgeClassName}`}
         >
           <span className={`size-2 rounded-full ${presentation.dotClassName}`} aria-hidden="true" />
           <span>{presentation.label}</span>

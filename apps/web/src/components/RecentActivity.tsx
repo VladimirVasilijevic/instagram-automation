@@ -13,8 +13,6 @@ type ActivityState =
   | { status: 'ready'; executions: ExecutionActivity[] }
   | { status: 'error' };
 
-const buttonStyle =
-  'inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60';
 const statusStyle: Record<ExecutionDeliveryActivity['status'], string> = {
   [EXECUTION_STATUS.FAILED]: 'bg-red-50 text-red-800',
   [EXECUTION_STATUS.PROCESSING]: 'bg-amber-50 text-amber-900',
@@ -73,13 +71,24 @@ export const RecentActivity = () => {
   };
 
   return (
-    <section className="mt-8 border-t border-slate-200 pt-8" aria-live="polite">
+    <section className="ui-card p-5 sm:p-6" aria-live="polite" aria-labelledby="activity-heading">
+      <span className="sr-only" role="status">
+        {copiedUsername ? `Copied ${copiedUsername}` : ''}
+      </span>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h3 className="text-xl font-semibold text-slate-950">Recent activity</h3>
-          <p className="mt-2 leading-7 text-slate-600">Your latest automated comment results.</p>
+          <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">Results</p>
+          <h2 id="activity-heading" className="mt-1 text-xl font-semibold text-[#292638]">
+            Recent activity
+          </h2>
+          <p className="mt-2 leading-6 text-[#625b6e]">Your latest automated comment results.</p>
         </div>
-        <button className={buttonStyle} type="button" disabled={refreshing} onClick={refresh}>
+        <button
+          className="ui-button-secondary w-full shrink-0 sm:w-auto"
+          type="button"
+          disabled={refreshing}
+          onClick={refresh}
+        >
           {refreshing ? 'Refreshing…' : 'Refresh activity'}
         </button>
       </div>
@@ -91,17 +100,21 @@ export const RecentActivity = () => {
       )}
       {state.status === 'error' && (
         <div className="mt-6">
-          <p role="alert" className="text-slate-700">
+          <p role="alert" className="ui-alert ui-alert-error">
             We could not load your activity. Please try again.
           </p>
-          <button className={`${buttonStyle} mt-4`} type="button" onClick={refresh}>
+          <button
+            className="ui-button-secondary mt-4 w-full sm:w-auto"
+            type="button"
+            onClick={refresh}
+          >
             Try again
           </button>
         </div>
       )}
       {state.status === 'ready' && state.executions.length === 0 && (
-        <p className="mt-6 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
-          No automation activity yet.
+        <p className="mt-6 rounded-xl border border-dashed border-[var(--app-border)] bg-[#f5f2ed] p-5 text-sm text-[#625b6e]">
+          No automation activity yet. Matching comments will appear here after delivery starts.
         </p>
       )}
       {state.status === 'ready' && state.executions.length > 0 && (
@@ -109,19 +122,19 @@ export const RecentActivity = () => {
           {state.executions.map((execution) => (
             <li
               key={`${execution.createdAt}-${execution.commentText}`}
-              className="rounded-xl border border-slate-200 bg-white p-4"
+              className="rounded-xl border border-[var(--app-border)] bg-[#faf9f6] p-4"
             >
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <div className="min-w-0">
-                  <p className="font-semibold break-words text-slate-950">
+                  <p className="font-semibold break-words text-[#292638]">
                     {execution.commenterUsername
                       ? `@${execution.commenterUsername}`
                       : 'Instagram user'}
                   </p>
                   {execution.commenterUsername && (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <button
-                        className={buttonStyle}
+                        className="ui-button-secondary w-full sm:w-auto"
                         type="button"
                         onClick={() => void copyUsername(execution.commenterUsername!)}
                       >
@@ -130,7 +143,7 @@ export const RecentActivity = () => {
                           : 'Copy username'}
                       </button>
                       <a
-                        className={buttonStyle}
+                        className="ui-button-secondary w-full sm:w-auto"
                         href={`https://www.instagram.com/${encodeURIComponent(execution.commenterUsername)}/`}
                         rel="noreferrer"
                         target="_blank"
@@ -140,16 +153,16 @@ export const RecentActivity = () => {
                     </div>
                   )}
                 </div>
-                <time className="text-sm text-slate-500" dateTime={execution.createdAt}>
+                <time className="text-sm text-[#625b6e]" dateTime={execution.createdAt}>
                   {formatTimestamp(execution.createdAt)}
                 </time>
               </div>
               <div className="mt-3 min-w-0">
-                <p className="mt-1 break-words text-slate-700">{execution.commentText}</p>
+                <p className="mt-1 break-words text-[#433d50]">{execution.commentText}</p>
                 <ul className="mt-3 grid gap-2" aria-label="Delivery results">
                   {execution.deliveries.map((delivery) => (
                     <li
-                      className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3 sm:flex-row sm:items-center"
+                      className="flex flex-col gap-2 rounded-lg bg-white p-3 sm:flex-row sm:flex-wrap sm:items-center"
                       key={delivery.channel}
                     >
                       <span className="font-medium text-slate-900">

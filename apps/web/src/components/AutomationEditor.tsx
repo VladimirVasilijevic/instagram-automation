@@ -14,9 +14,6 @@ type EditorState =
     }
   | { status: 'error' };
 
-const primaryButtonStyle =
-  'inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60';
-
 const mediaLabel = (item: RecentMedia): string =>
   item.caption?.trim() || `${item.mediaType.toLowerCase()} ${item.id}`;
 
@@ -98,7 +95,7 @@ export const AutomationEditor = () => {
 
   if (state.status === 'loading') {
     return (
-      <section className="mt-8" aria-busy="true" aria-live="polite">
+      <section className="ui-card p-5 sm:p-6" aria-busy="true" aria-live="polite">
         <p role="status" className="text-slate-600">
           Loading your recent posts and automation settings…
         </p>
@@ -108,14 +105,11 @@ export const AutomationEditor = () => {
 
   if (state.status === 'error') {
     return (
-      <section className="mt-8" aria-live="polite">
-        <p role="alert" className="text-slate-700">
+      <section className="ui-card p-5 sm:p-6" aria-live="polite">
+        <p role="alert" className="ui-alert ui-alert-error">
           We could not load your posts or automation settings. Please try again.
         </p>
-        <button
-          className={`${primaryButtonStyle} mt-5`}
-          onClick={() => setAttempt((value) => value + 1)}
-        >
+        <button className="ui-button mt-5" onClick={() => setAttempt((value) => value + 1)}>
           Try again
         </button>
       </section>
@@ -132,22 +126,30 @@ export const AutomationEditor = () => {
     (!privateRequired || privateReplyText.trim() !== '') &&
     !saving;
   return (
-    <section className="mt-8 border-t border-slate-200 pt-8" aria-live="polite">
+    <section className="ui-card p-5 sm:p-6" aria-live="polite" aria-labelledby="automation-heading">
       <div className="max-w-2xl">
-        <h3 className="text-xl font-semibold text-slate-950">Create your automation</h3>
-        <p className="mt-2 leading-7 text-slate-600">
+        <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">
+          Automation setup
+        </p>
+        <h2 id="automation-heading" className="mt-1 text-xl font-semibold text-[#292638]">
+          Create your automation
+        </h2>
+        <p className="mt-2 leading-6 text-[#625b6e]">
           Choose one recent post, a hashtag trigger, and where matching replies should be sent.
         </p>
       </div>
 
       {state.media.length === 0 ? (
-        <p className="mt-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="ui-alert ui-alert-warning mt-6">
           No recent Instagram posts are available yet. Create a post, then try again.
         </p>
       ) : (
         <fieldset className="mt-6">
-          <legend className="text-sm font-semibold text-slate-950">Select one post</legend>
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <legend className="text-sm font-semibold text-[#292638]">1. Select one post</legend>
+          <p className="mt-1 text-sm text-[#625b6e]">
+            Choose the post whose comments should trigger this automation.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
             {state.media.map((item) => {
               const selected = item.id === selectedMediaId;
               const previewUrl = item.thumbnailUrl ?? item.mediaUrl;
@@ -157,32 +159,38 @@ export const AutomationEditor = () => {
                   type="button"
                   aria-pressed={selected}
                   aria-label={`Select ${mediaLabel(item)}`}
-                  className={`overflow-hidden rounded-xl border text-left transition focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none ${
-                    selected
-                      ? 'border-indigo-600 ring-2 ring-indigo-600 ring-offset-2'
-                      : 'border-slate-200 hover:border-slate-400'
+                  className={`ui-focus relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-white text-left transition hover:border-[#977bc3] ${
+                    selected ? 'border-[#5632a8] ring-2 ring-[#5632a8]/30' : 'border-[#e6e1db]'
                   }`}
                   onClick={() => {
                     setSelectedMediaId(item.id);
                     setSaved(false);
                   }}
                 >
+                  {selected && (
+                    <span
+                      className="absolute top-2 right-2 z-10 rounded-full bg-[#5632a8] px-2 py-1 text-xs font-semibold text-white"
+                      aria-hidden="true"
+                    >
+                      Selected
+                    </span>
+                  )}
                   {previewUrl ? (
                     <img
-                      className="aspect-square w-full bg-slate-100 object-cover"
+                      className="h-40 w-full bg-[#f5f2ed] object-cover"
                       src={previewUrl}
                       alt={item.caption?.trim() || `${item.mediaType} preview`}
                     />
                   ) : (
-                    <div className="flex aspect-square items-center justify-center bg-slate-100 text-sm text-slate-500">
+                    <div className="flex h-40 w-full items-center justify-center bg-[#f5f2ed] text-sm text-[#625b6e]">
                       Preview unavailable
                     </div>
                   )}
-                  <div className="p-3">
-                    <p className="text-xs font-semibold tracking-wide text-indigo-700 uppercase">
+                  <div className="flex flex-1 flex-col p-3">
+                    <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">
                       {item.mediaType}
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-700">
+                    <p className="mt-1 line-clamp-2 text-sm text-[#433d50]">
                       {item.caption || 'No caption'}
                     </p>
                   </div>
@@ -194,30 +202,30 @@ export const AutomationEditor = () => {
       )}
 
       {state.savedMediaUnavailable && (
-        <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+        <p role="alert" className="ui-alert ui-alert-warning mt-4">
           Your saved post is no longer among the 12 most recent posts. Select a current post before
           saving changes.
         </p>
       )}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="mt-8 grid gap-6 border-t border-[var(--app-border)] pt-6 lg:grid-cols-2">
         <label className="block">
-          <span className="text-sm font-semibold text-slate-950">Comment trigger</span>
+          <span className="text-sm font-semibold text-[#292638]">2. Comment trigger</span>
           <input
             aria-label="Comment trigger"
-            className="mt-2 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+            className="ui-input mt-2 block"
             value={triggerText}
             onChange={(event) => {
               setTriggerText(event.target.value);
               setSaved(false);
             }}
           />
-          <span className="mt-2 block text-sm text-slate-600">
+          <span className="mt-2 block text-sm text-[#625b6e]">
             Use one hashtag without spaces. Matching ignores capitalization and surrounding spaces.
           </span>
         </label>
         <fieldset>
-          <legend className="text-sm font-semibold text-slate-950">Reply delivery</legend>
+          <legend className="text-sm font-semibold text-[#292638]">3. Reply delivery</legend>
           <div className="mt-2 grid gap-2">
             {(
               [
@@ -226,7 +234,10 @@ export const AutomationEditor = () => {
                 [DELIVERY_MODE.BOTH, 'Public reply and private DM'],
               ] as const
             ).map(([value, label]) => (
-              <label key={value} className="flex items-center gap-3 text-sm text-slate-800">
+              <label
+                key={value}
+                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--app-border)] bg-white p-3 text-sm text-[#292638] has-[:checked]:border-[#5632a8] has-[:checked]:bg-[#f4effb]"
+              >
                 <input
                   type="radio"
                   name="delivery-mode"
@@ -244,41 +255,44 @@ export const AutomationEditor = () => {
         </fieldset>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {publicRequired && (
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-950">Public reply</span>
-            <textarea
-              aria-label="Public reply"
-              className="mt-2 block min-h-28 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-              value={replyText}
-              onChange={(event) => {
-                setReplyText(event.target.value);
-                setSaved(false);
-              }}
-            />
-          </label>
-        )}
-        {privateRequired && (
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-950">Private message</span>
-            <textarea
-              aria-label="Private message"
-              className="mt-2 block min-h-28 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-950 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-              value={privateReplyText}
-              onChange={(event) => {
-                setPrivateReplyText(event.target.value);
-                setSaved(false);
-              }}
-            />
-            <span className="mt-2 block text-sm text-slate-600">
-              Instagram permits one private reply for each qualifying comment.
-            </span>
-          </label>
-        )}
+      <div className="mt-6 border-t border-[var(--app-border)] pt-6">
+        <p className="mb-3 text-sm font-semibold text-[#292638]">4. Write your message</p>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {publicRequired && (
+            <label className="block">
+              <span className="text-sm font-semibold text-[#292638]">Public reply</span>
+              <textarea
+                aria-label="Public reply"
+                className="ui-input mt-2 block min-h-28"
+                value={replyText}
+                onChange={(event) => {
+                  setReplyText(event.target.value);
+                  setSaved(false);
+                }}
+              />
+            </label>
+          )}
+          {privateRequired && (
+            <label className="block">
+              <span className="text-sm font-semibold text-[#292638]">Private message</span>
+              <textarea
+                aria-label="Private message"
+                className="ui-input mt-2 block min-h-28"
+                value={privateReplyText}
+                onChange={(event) => {
+                  setPrivateReplyText(event.target.value);
+                  setSaved(false);
+                }}
+              />
+              <span className="mt-2 block text-sm text-[#625b6e]">
+                Instagram permits one private reply for each qualifying comment.
+              </span>
+            </label>
+          )}
+        </div>
       </div>
 
-      <label className="mt-6 flex items-center gap-3 text-sm font-medium text-slate-950">
+      <label className="mt-6 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl bg-[#f5f2ed] p-3 text-sm font-medium text-[#292638]">
         <input
           type="checkbox"
           checked={enabled}
@@ -291,17 +305,17 @@ export const AutomationEditor = () => {
       </label>
 
       {saveError && (
-        <p role="alert" className="mt-4 text-sm text-red-800">
+        <p role="alert" className="ui-alert ui-alert-error mt-4">
           We could not save your automation. Please try again.
         </p>
       )}
       {saved && (
-        <p role="status" className="mt-4 text-sm text-emerald-800">
+        <p role="status" className="ui-alert ui-alert-success mt-4">
           Automation saved.
         </p>
       )}
       <button
-        className={`${primaryButtonStyle} mt-6`}
+        className="ui-button mt-6 w-full sm:w-auto"
         disabled={!canSave}
         onClick={() => void save()}
       >
