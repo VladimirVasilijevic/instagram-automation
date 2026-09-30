@@ -154,6 +154,7 @@ export const processComment = async (
   const executions = await dependencies.executionRepository.claimExecutions(
     deliveryRequests.map((delivery) => ({
       automationId: automation.id,
+      mediaId: automation.mediaId,
       commenterInstagramId: event.commenterId,
       commenterUsername: event.username,
       commentText: event.text,

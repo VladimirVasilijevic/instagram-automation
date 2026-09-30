@@ -23,6 +23,7 @@ const loginErrors: Record<string, string> = {
 /** Renders the connect and account screens using only safe, same-origin session responses. */
 export const AccountPage = () => {
   const [state, setState] = useState<AccountState>({ status: 'loading' });
+  const [selectedMediaId, setSelectedMediaId] = useState<string | null | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
@@ -178,9 +179,9 @@ export const AccountPage = () => {
                 </p>
               )}
             </section>
-            <AutomationEditor />
+            <AutomationEditor onSelectedMediaChange={setSelectedMediaId} />
             <WebhookSubscription />
-            <RecentActivity />
+            <RecentActivity selectedMediaId={selectedMediaId} />
             <MaintenanceHealthCard />
           </div>
         )}

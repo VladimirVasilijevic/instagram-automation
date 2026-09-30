@@ -21,8 +21,10 @@ const executionSchema = z.object({
   commentText: z.string(),
   createdAt: z.string().datetime(),
   deliveries: z.array(deliverySchema).min(1).max(2),
+  mediaId: z.string().nullable(),
 });
 const executionLimitSchema = z.coerce.number().int().min(1).max(50);
+const executionMediaIdSchema = z.string().trim().min(1);
 const executionsRoute = createRoute({
   method: 'get',
   path: '/api/executions',
@@ -34,6 +36,7 @@ const executionsRoute = createRoute({
         .union([z.string(), z.array(z.string())])
         .optional()
         .openapi({ example: '50' }),
+      mediaId: z.string().optional().openapi({ example: '17841400000000002' }),
     }),
   },
   responses: {
@@ -44,7 +47,7 @@ const executionsRoute = createRoute({
       },
     },
     400: {
-      description: 'The requested activity limit is invalid.',
+      description: 'The requested activity limit or post filter is invalid.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
     401: {
@@ -91,6 +94,7 @@ const createExecutionResponse = (execution: Execution) => ({
   commentText: execution.commentText,
   createdAt: execution.createdAt.toISOString(),
   deliveries: [toDeliveryResponse(execution)],
+  mediaId: execution.mediaId,
 });
 
 /** Registers the session-protected route that returns safe, account-owned automation activity. */
@@ -114,11 +118,30 @@ export const registerExecutionRoutes = (
         400,
       );
     }
+    const mediaIdValues = context.req.queries('mediaId') ?? [];
+    const parsedMediaId =
+      mediaIdValues.length === 0
+        ? undefined
+        : mediaIdValues.length === 1
+          ? executionMediaIdSchema.safeParse(mediaIdValues[0])
+          : undefined;
+    if (mediaIdValues.length > 1 || (mediaIdValues.length === 1 && !parsedMediaId?.success)) {
+      return context.json(
+        {
+          error: {
+            code: 'INVALID_EXECUTION_MEDIA_ID',
+            message: 'Activity post identifier must be a non-empty value',
+          },
+        },
+        400,
+      );
+    }
     try {
       const { account } = context.get('authenticatedSession');
       const executions = await dependencies.executionRepository.listRecentByAccountId(
         account.id,
         parsedLimit.data,
+        parsedMediaId?.success ? parsedMediaId.data : undefined,
       );
       return context.json({ executions: toExecutionResponses(executions) }, 200);
     } catch (error) {

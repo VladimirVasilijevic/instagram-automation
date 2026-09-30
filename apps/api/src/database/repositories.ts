@@ -328,6 +328,9 @@ export interface Execution {
   /** Internal automation identifier that processed the comment. */
   automationId: string;
 
+  /** Instagram media identifier captured when the comment was processed, or null for legacy rows. */
+  mediaId: string | null;
+
   /** Original comment text used for exact trigger matching. */
   commentText: string;
 
@@ -390,6 +393,9 @@ export interface Execution {
 export interface ClaimExecutionInput {
   /** Internal automation identifier selected for the comment. */
   automationId: string;
+
+  /** Instagram media identifier matched by the automation. */
+  mediaId: string;
 
   /** Original comment text used for exact trigger matching. */
   commentText: string;
@@ -455,9 +461,10 @@ export interface ExecutionRepository {
    *
    * @param accountId - Internal owner account identifier.
    * @param limit - Integer result limit from 1 through 50.
+   * @param mediaId - Optional Instagram media identifier to filter by.
    * @returns Account-owned executions ordered newest first.
    */
-  listRecentByAccountId(accountId: string, limit: number): Promise<Execution[]>;
+  listRecentByAccountId(accountId: string, limit: number, mediaId?: string): Promise<Execution[]>;
 
   /** Leases safe due retries for active accounts and increments their attempt number. */
   claimDueRetries(now: Date, leaseUntil: Date, limit: number): Promise<ExecutionRetryClaim[]>;

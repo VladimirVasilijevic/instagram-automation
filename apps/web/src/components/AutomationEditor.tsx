@@ -18,7 +18,11 @@ const mediaLabel = (item: RecentMedia): string =>
   item.caption?.trim() || `${item.mediaType.toLowerCase()} ${item.id}`;
 
 /** Renders the owner-facing media, trigger, and delivery-channel automation editor. */
-export const AutomationEditor = () => {
+export const AutomationEditor = ({
+  onSelectedMediaChange,
+}: {
+  onSelectedMediaChange?: (mediaId: string | null | undefined) => void;
+} = {}) => {
   const [state, setState] = useState<EditorState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [selectedMediaId, setSelectedMediaId] = useState('');
@@ -33,6 +37,7 @@ export const AutomationEditor = () => {
 
   useEffect(() => {
     const controller = new AbortController();
+    onSelectedMediaChange?.(undefined);
     setState({ status: 'loading' });
     setSaveError(false);
     setSaved(false);
@@ -43,7 +48,9 @@ export const AutomationEditor = () => {
           automation && !media.some((item) => item.id === automation.mediaId),
         );
         setState({ status: 'ready', media, savedMediaUnavailable });
-        setSelectedMediaId(savedMediaUnavailable ? '' : (automation?.mediaId ?? ''));
+        const initialMediaId = savedMediaUnavailable ? null : (automation?.mediaId ?? null);
+        setSelectedMediaId(initialMediaId ?? '');
+        onSelectedMediaChange?.(initialMediaId);
         setTriggerText(automation?.triggerText ?? '#Hello');
         setDeliveryMode(automation?.deliveryMode ?? DELIVERY_MODE.PUBLIC);
         setReplyText(automation?.replyText ?? 'Hello! Thanks for commenting.');
@@ -51,10 +58,13 @@ export const AutomationEditor = () => {
         setEnabled(automation?.enabled ?? true);
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState({ status: 'error' });
+        if (!controller.signal.aborted) {
+          onSelectedMediaChange?.(null);
+          setState({ status: 'error' });
+        }
       });
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, onSelectedMediaChange]);
 
   const save = async () => {
     const trimmedTrigger = triggerText.trim();
@@ -164,6 +174,7 @@ export const AutomationEditor = () => {
                   }`}
                   onClick={() => {
                     setSelectedMediaId(item.id);
+                    onSelectedMediaChange?.(item.id);
                     setSaved(false);
                   }}
                 >

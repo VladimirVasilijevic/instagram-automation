@@ -12,6 +12,7 @@ type ActivityState =
   | { status: 'loading' }
   | { status: 'ready'; executions: ExecutionActivity[] }
   | { status: 'error' };
+type ActivityView = 'selected-post' | 'all-activity';
 
 const statusStyle: Record<ExecutionDeliveryActivity['status'], string> = {
   [EXECUTION_STATUS.FAILED]: 'bg-red-50 text-red-800',
@@ -34,16 +35,33 @@ const formatTimestamp = (createdAt: string): string =>
   );
 
 /** Renders safe, account-owned automation results with a manual refresh control. */
-export const RecentActivity = () => {
+export const RecentActivity = ({
+  selectedMediaId,
+}: {
+  selectedMediaId: string | null | undefined;
+}) => {
   const [state, setState] = useState<ActivityState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [view, setView] = useState<ActivityView>('selected-post');
   const [refreshing, setRefreshing] = useState(false);
   const [copiedUsername, setCopiedUsername] = useState<string | null>(null);
+  const activityMediaId = view === 'selected-post' ? selectedMediaId : undefined;
 
   useEffect(() => {
+    if (view === 'selected-post' && activityMediaId === undefined) {
+      setState({ status: 'loading' });
+      setRefreshing(false);
+      return;
+    }
+    if (view === 'selected-post' && activityMediaId === null) {
+      setState({ status: 'ready', executions: [] });
+      setRefreshing(false);
+      return;
+    }
+
     const controller = new AbortController();
     setState({ status: 'loading' });
-    void getRecentExecutions(controller.signal)
+    void getRecentExecutions(controller.signal, activityMediaId ?? undefined)
       .then((executions) => {
         if (!controller.signal.aborted) setState({ status: 'ready', executions });
       })
@@ -54,9 +72,10 @@ export const RecentActivity = () => {
         if (!controller.signal.aborted) setRefreshing(false);
       });
     return () => controller.abort();
-  }, [attempt]);
+  }, [activityMediaId, attempt, view]);
 
   const refresh = () => {
+    if (view === 'selected-post' && !selectedMediaId) return;
     setRefreshing(true);
     setAttempt((value) => value + 1);
   };
@@ -83,19 +102,50 @@ export const RecentActivity = () => {
           </h2>
           <p className="mt-2 leading-6 text-[#625b6e]">Your latest automated comment results.</p>
         </div>
-        <button
-          className="ui-button-secondary w-full shrink-0 sm:w-auto"
-          type="button"
-          disabled={refreshing}
-          onClick={refresh}
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh activity'}
-        </button>
+        <div className="grid gap-2 sm:justify-items-end">
+          <div
+            aria-label="Activity view"
+            className="grid grid-cols-2 rounded-xl border border-[var(--app-border)] bg-[#f5f2ed] p-1"
+            role="group"
+          >
+            <button
+              aria-pressed={view === 'selected-post'}
+              className={`ui-focus min-h-11 rounded-lg px-3 text-sm font-medium ${
+                view === 'selected-post' ? 'bg-white text-[#432487] shadow-sm' : 'text-[#625b6e]'
+              }`}
+              type="button"
+              onClick={() => setView('selected-post')}
+            >
+              Selected post
+            </button>
+            <button
+              aria-pressed={view === 'all-activity'}
+              aria-label="All recent activity"
+              className={`ui-focus min-h-11 rounded-lg px-2 text-sm font-medium sm:px-3 ${
+                view === 'all-activity' ? 'bg-white text-[#432487] shadow-sm' : 'text-[#625b6e]'
+              }`}
+              type="button"
+              onClick={() => setView('all-activity')}
+            >
+              All activity
+            </button>
+          </div>
+          <button
+            className="ui-button-secondary w-full shrink-0 sm:w-auto"
+            type="button"
+            disabled={refreshing || (view === 'selected-post' && !selectedMediaId)}
+            onClick={refresh}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh activity'}
+          </button>
+        </div>
       </div>
 
       {state.status === 'loading' && (
         <p role="status" className="mt-6 text-slate-600">
-          Loading recent activity…
+          {view === 'selected-post' && selectedMediaId === undefined
+            ? 'Loading your selected post…'
+            : 'Loading recent activity…'}
         </p>
       )}
       {state.status === 'error' && (
@@ -114,9 +164,20 @@ export const RecentActivity = () => {
       )}
       {state.status === 'ready' && state.executions.length === 0 && (
         <p className="mt-6 rounded-xl border border-dashed border-[var(--app-border)] bg-[#f5f2ed] p-5 text-sm text-[#625b6e]">
-          No automation activity yet. Matching comments will appear here after delivery starts.
+          {view === 'selected-post' && selectedMediaId === null
+            ? 'Select a post in Automation setup to view its activity.'
+            : view === 'selected-post'
+              ? 'No activity for this post yet. Matching comments will appear here after delivery starts.'
+              : 'No automation activity yet. Matching comments will appear here after delivery starts.'}
         </p>
       )}
+      {state.status === 'ready' &&
+        view === 'all-activity' &&
+        state.executions.some((execution) => execution.mediaId === null) && (
+          <p className="mt-4 text-sm text-[#625b6e]">
+            Some older activity is not linked to a post and appears only in this view.
+          </p>
+        )}
       {state.status === 'ready' && state.executions.length > 0 && (
         <ul className="mt-6 grid gap-3" aria-label="Recent automation activity">
           {state.executions.map((execution) => (

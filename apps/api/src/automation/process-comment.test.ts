@@ -32,6 +32,7 @@ const event = {
 const execution = (deliveryChannel: DeliveryChannel, messageText: string): Execution => ({
   attemptCount: 1,
   automationId: 'automation-id',
+  mediaId: event.mediaId,
   commenterInstagramId: event.commenterId,
   commenterUsername: event.username,
   commentText: event.text,
@@ -101,6 +102,7 @@ describe('processComment', () => {
       expect.objectContaining({
         commenterInstagramId: event.commenterId,
         deliveryChannel: 'public',
+        mediaId: event.mediaId,
         messageText: 'Public response',
       }),
     ]);

@@ -51,6 +51,7 @@ describe('automation editor', () => {
   });
 
   it('restores saved settings, selects the matching post, and saves trimmed input', async () => {
+    const onSelectedMediaChange = vi.fn();
     vi.mocked(getAutomation).mockResolvedValue({
       deliveryMode: 'public',
       enabled: false,
@@ -67,13 +68,15 @@ describe('automation editor', () => {
       replyText: 'Updated reply',
       triggerText: '#Hello',
     });
-    render(<AutomationEditor />);
+    render(<AutomationEditor onSelectedMediaChange={onSelectedMediaChange} />);
 
     expect(await screen.findByRole('button', { name: 'Select Second post' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+    expect(onSelectedMediaChange).toHaveBeenLastCalledWith(media[1]!.id);
     fireEvent.click(screen.getByRole('button', { name: 'Select First post' }));
+    expect(onSelectedMediaChange).toHaveBeenLastCalledWith(media[0]!.id);
     fireEvent.change(screen.getByLabelText('Public reply'), {
       target: { value: ' Updated reply ' },
     });

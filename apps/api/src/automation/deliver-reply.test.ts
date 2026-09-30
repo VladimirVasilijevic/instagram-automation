@@ -10,6 +10,7 @@ const now = new Date('2026-09-28T12:00:00.000Z');
 const execution = (attemptCount = 1): Execution => ({
   attemptCount,
   automationId: 'automation-id',
+  mediaId: 'media-id',
   commenterInstagramId: 'commenter-id',
   commenterUsername: 'commenter',
   commentText: '#Hello',

@@ -196,6 +196,7 @@ describe('Instagram webhook routes', () => {
       {
         attemptCount: 1,
         automationId: 'automation-id',
+        mediaId: commentPayload.entry[0].changes[0].value.media.id,
         commenterInstagramId: commentPayload.entry[0].changes[0].value.from.id,
         commenterUsername: 'commenter',
         commentText: '#Hello',

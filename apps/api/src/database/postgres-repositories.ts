@@ -69,6 +69,7 @@ interface AutomationRow {
 interface ExecutionRow {
   attempt_count: number;
   automation_id: string;
+  media_id: string | null;
   comment_text: string;
   commenter_instagram_id: string | null;
   commenter_username: string | null;
@@ -155,6 +156,7 @@ const toAutomation = (row: AutomationRow): Automation => ({
 const toExecution = (row: ExecutionRow): Execution => ({
   attemptCount: row.attempt_count,
   automationId: row.automation_id,
+  mediaId: row.media_id,
   commentText: row.comment_text,
   commenterInstagramId: row.commenter_instagram_id,
   commenterUsername: row.commenter_username,
@@ -586,6 +588,7 @@ export const createPostgresExecutionRepository = (
     }
     const payload = inputs.map((input) => ({
       automation_id: input.automationId,
+      media_id: input.mediaId,
       comment_text: input.commentText,
       commenter_instagram_id: input.commenterInstagramId,
       commenter_username: input.commenterUsername,
@@ -597,6 +600,7 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       insert into app_private.executions (
         automation_id,
+        media_id,
         instagram_comment_id,
         delivery_channel,
         message_text,
@@ -609,6 +613,7 @@ export const createPostgresExecutionRepository = (
       )
       select
         requested.automation_id,
+        requested.media_id,
         requested.instagram_comment_id,
         requested.delivery_channel,
         requested.message_text,
@@ -620,6 +625,7 @@ export const createPostgresExecutionRepository = (
         requested.lease_expires_at
       from jsonb_to_recordset(${sql.json(payload)}::jsonb) as requested(
         automation_id uuid,
+        media_id text,
         instagram_comment_id text,
         delivery_channel text,
         message_text text,
@@ -638,6 +644,7 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       insert into app_private.executions (
         automation_id,
+        media_id,
         instagram_comment_id,
         delivery_channel,
         message_text,
@@ -649,6 +656,7 @@ export const createPostgresExecutionRepository = (
         lease_expires_at
       ) values (
         ${input.automationId},
+        ${input.mediaId},
         ${input.instagramCommentId},
         ${input.deliveryChannel},
         ${input.messageText},
@@ -666,7 +674,7 @@ export const createPostgresExecutionRepository = (
     return rows[0] ? toExecution(rows[0]) : null;
   },
 
-  async listRecentByAccountId(accountId, limit): Promise<Execution[]> {
+  async listRecentByAccountId(accountId, limit, mediaId): Promise<Execution[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
       throw new RangeError('Execution activity limit must be an integer from 1 through 50');
     }
@@ -677,6 +685,7 @@ export const createPostgresExecutionRepository = (
         from app_private.executions as execution
         inner join app_private.automations as automation on automation.id = execution.automation_id
         where automation.account_id = ${accountId}
+          and (${mediaId ?? null}::text is null or execution.media_id = ${mediaId ?? null})
         group by execution.instagram_comment_id
         order by created_at desc, execution.instagram_comment_id desc
         limit ${limit}
@@ -687,6 +696,7 @@ export const createPostgresExecutionRepository = (
       inner join app_private.automations as automation on automation.id = execution.automation_id
       inner join recent_comments on recent_comments.instagram_comment_id = execution.instagram_comment_id
       where automation.account_id = ${accountId}
+        and (${mediaId ?? null}::text is null or execution.media_id = ${mediaId ?? null})
       order by recent_comments.created_at desc, execution.instagram_comment_id desc,
         execution.delivery_channel desc
     `;

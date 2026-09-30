@@ -2,6 +2,8 @@
 export interface ExecutionActivity {
   /** Instagram username when available in the comment event. */
   commenterUsername: string | null;
+  /** Instagram media identifier when it was captured for the execution. */
+  mediaId: string | null;
   /** Original comment text. */
   commentText: string;
   /** ISO-8601 time when processing claimed the comment. */
@@ -48,6 +50,7 @@ const readExecution = (value: unknown): ExecutionActivity => {
   if (
     !isRecord(value) ||
     !isNullableString(value.commenterUsername) ||
+    (value.mediaId !== undefined && !isNullableString(value.mediaId)) ||
     typeof value.commentText !== 'string' ||
     typeof value.createdAt !== 'string' ||
     !Number.isFinite(Date.parse(value.createdAt)) ||
@@ -62,15 +65,21 @@ const readExecution = (value: unknown): ExecutionActivity => {
     commentText: value.commentText,
     createdAt: value.createdAt,
     deliveries: value.deliveries.map(readDelivery),
+    mediaId: value.mediaId ?? null,
   };
 };
 
 /** Loads up to fifty safe activity records using the existing same-origin application session. */
-export const getRecentExecutions = async (signal?: AbortSignal): Promise<ExecutionActivity[]> => {
+export const getRecentExecutions = async (
+  signal?: AbortSignal,
+  mediaId?: string,
+): Promise<ExecutionActivity[]> => {
   let response: Response;
   try {
     const deadline = AbortSignal.timeout(10_000);
-    response = await fetch('/api/executions?limit=50', {
+    const query = new URLSearchParams({ limit: '50' });
+    if (mediaId) query.set('mediaId', mediaId);
+    response = await fetch(`/api/executions?${query.toString()}`, {
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { accept: 'application/json' },

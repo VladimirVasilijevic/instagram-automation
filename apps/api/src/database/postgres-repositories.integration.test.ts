@@ -30,6 +30,10 @@ const operationalHealthMigrationPath = resolve(
   import.meta.dirname,
   '../../../../db/migrations/0005_operational_health.sql',
 );
+const executionMediaMigrationPath = resolve(
+  import.meta.dirname,
+  '../../../../db/migrations/0006_execution_media_attribution.sql',
+);
 
 describeDatabase('PostgreSQL repositories', () => {
   const rollbackSignal = new Error('rollback integration transaction');
@@ -253,6 +257,18 @@ describeDatabase('PostgreSQL repositories', () => {
         if (!schemaState?.migration_applied) {
           await transactionSql.unsafe(await readFile(multichannelMigrationPath, 'utf8'));
         }
+        const [executionMediaSchema] = await transactionSql<{ migration_applied: boolean }[]>`
+          select exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'app_private'
+              and table_name = 'executions'
+              and column_name = 'media_id'
+          ) as migration_applied
+        `;
+        if (!executionMediaSchema?.migration_applied) {
+          await transactionSql.unsafe(await readFile(executionMediaMigrationPath, 'utf8'));
+        }
 
         const accountRepository = createPostgresAccountRepository(transactionSql);
         const automationRepository = createPostgresAutomationRepository(transactionSql);
@@ -382,6 +398,7 @@ describeDatabase('PostgreSQL repositories', () => {
         });
         const firstExecution = await executionRepository.claimExecution({
           automationId: enabledAutomation.id,
+          mediaId: firstAutomation.mediaId,
           commenterInstagramId: 'first-commenter-id',
           commenterUsername: 'first_commenter',
           commentText: '#Hello',
@@ -398,11 +415,13 @@ describeDatabase('PostgreSQL repositories', () => {
           errorCode: null,
           errorMessage: null,
           instagramCommentId: firstCommentId,
+          mediaId: 'first-media',
           status: 'processing',
         });
         await expect(
           executionRepository.claimExecution({
             automationId: otherAutomation.id,
+            mediaId: otherAutomation.mediaId,
             commenterInstagramId: 'duplicate-commenter-id',
             commenterUsername: 'duplicate_commenter',
             commentText: '#Hello',
@@ -446,6 +465,7 @@ describeDatabase('PostgreSQL repositories', () => {
 
         const secondExecution = await executionRepository.claimExecution({
           automationId: enabledAutomation.id,
+          mediaId: enabledAutomation.mediaId,
           commenterInstagramId: null,
           commenterUsername: null,
           commentText: '#Hello',
@@ -493,6 +513,7 @@ describeDatabase('PostgreSQL repositories', () => {
 
         const otherExecution = await executionRepository.claimExecution({
           automationId: otherAutomation.id,
+          mediaId: otherAutomation.mediaId,
           commenterInstagramId: 'other-commenter-id',
           commenterUsername: 'other_commenter',
           commentText: '#Hello',
@@ -529,9 +550,16 @@ describeDatabase('PostgreSQL repositories', () => {
         expect(accountActivity).not.toEqual(
           expect.arrayContaining([expect.objectContaining({ id: otherExecution.id })]),
         );
+        await expect(
+          executionRepository.listRecentByAccountId(account.id, 50, 'selected-media'),
+        ).resolves.toEqual([expect.objectContaining({ id: secondExecution.id })]);
+        await expect(
+          executionRepository.listRecentByAccountId(account.id, 50, 'not-selected-media'),
+        ).resolves.toEqual([]);
         const [privateExecution] = await executionRepository.claimExecutions([
           {
             automationId: enabledAutomation.id,
+            mediaId: enabledAutomation.mediaId,
             commenterInstagramId: 'first-commenter-id',
             commenterUsername: 'first_commenter',
             commentText: '#Hello',
