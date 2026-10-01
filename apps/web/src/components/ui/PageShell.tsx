@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { APP_NAME } from '../../brand.js';
+
 type AccountMenu = {
   username: string;
   loggingOut: boolean;
@@ -76,7 +78,7 @@ export const PageShell = ({
               >
                 ✳
               </span>
-              <span className="truncate">Instagram Automation</span>
+              <span className="truncate">{APP_NAME}</span>
             </a>
             {accountMenu && (
               <details className="group relative z-30 shrink-0">

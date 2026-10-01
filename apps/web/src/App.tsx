@@ -1,3 +1,4 @@
+import { APP_NAME } from './brand.js';
 import { AccountPage } from './pages/AccountPage.js';
 import { PrivacyPage } from './pages/PrivacyPage.js';
 import { StatusPage } from './pages/StatusPage.js';
@@ -12,7 +13,7 @@ export const App = () => {
     <main className="mx-auto max-w-xl px-4 py-16 text-slate-950">
       <h1 className="text-2xl font-semibold">Page not found</h1>
       <a className="mt-4 inline-block underline" href="/">
-        Return to Instagram Automation
+        Return to {APP_NAME}
       </a>
     </main>
   );

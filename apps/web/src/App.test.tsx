@@ -28,9 +28,6 @@ describe('App routing', () => {
   it('offers a way back from an unknown route', () => {
     window.history.replaceState(null, '', '/unknown');
     render(<App />);
-    expect(screen.getByRole('link', { name: 'Return to Instagram Automation' })).toHaveAttribute(
-      'href',
-      '/',
-    );
+    expect(screen.getByRole('link', { name: 'Return to ReplyKit' })).toHaveAttribute('href', '/');
   });
 });

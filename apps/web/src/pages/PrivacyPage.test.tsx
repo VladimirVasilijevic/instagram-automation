@@ -7,6 +7,7 @@ describe('PrivacyPage', () => {
   it('publishes the required policy and deletion contact', () => {
     render(<PrivacyPage />);
 
+    expect(screen.getAllByText('ReplyKit')).toHaveLength(2);
     expect(screen.getByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument();
     expect(screen.getByText(/Instagram professional account ID and username/i)).toBeInTheDocument();
     expect(

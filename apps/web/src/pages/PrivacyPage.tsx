@@ -1,3 +1,6 @@
+import { APP_NAME } from '../brand.js';
+import { PageShell } from '../components/ui/PageShell.js';
+
 /**
  * Publishes the privacy information required for the Meta app configuration.
  *
@@ -7,20 +10,18 @@ export const PrivacyPage = () => (
   <PageShell>
     <article className="ui-card mx-auto max-w-3xl p-5 sm:p-10">
       <header>
-        <p className="text-sm font-semibold tracking-wide text-[#5632a8] uppercase">
-          Instagram Automation
-        </p>
+        <p className="text-sm font-semibold tracking-wide text-[#5632a8] uppercase">{APP_NAME}</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-[#292638]">Privacy Policy</h1>
-        <p className="mt-4 text-sm text-[#625b6e]">Last updated: September 28, 2026</p>
+        <p className="mt-4 text-sm text-[#625b6e]">Last updated: October 1, 2026</p>
       </header>
 
       <div className="mt-8 space-y-8 leading-7 text-[#433d50]">
         <section>
           <h2 className="text-xl font-semibold text-[#292638]">What this app does</h2>
           <p className="mt-3">
-            Instagram Automation connects an eligible Instagram professional account, lets the
-            account owner choose media and configure public comment replies, private replies, or
-            both, and receives Instagram comment events for that connected account.
+            {APP_NAME} connects an eligible Instagram professional account, lets the account owner
+            choose media and configure public comment replies, private replies, or both, and
+            receives Instagram comment events for that connected account.
           </p>
         </section>
 
@@ -101,10 +102,9 @@ export const PrivacyPage = () => (
 
       <footer className="mt-10 border-t border-[var(--app-border)] pt-5 text-sm text-[#625b6e]">
         <a className="ui-focus rounded underline underline-offset-4 hover:text-[#432487]" href="/">
-          Return to Instagram Automation
+          Return to {APP_NAME}
         </a>
       </footer>
     </article>
   </PageShell>
 );
-import { PageShell } from '../components/ui/PageShell.js';
