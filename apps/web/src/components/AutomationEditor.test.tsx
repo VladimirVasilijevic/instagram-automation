@@ -200,6 +200,8 @@ describe('automation editor', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
     fireEvent.click(screen.getByLabelText('Private DM only'));
+    fireEvent.click(screen.getByLabelText('Prompt with quick replies'));
+    expect(screen.getByRole('button', { name: 'Save automation' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Add quick reply' }));
     expect(screen.getByRole('button', { name: 'Save automation' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Quick reply 1'), { target: { value: ' Yes ' } });
@@ -221,6 +223,47 @@ describe('automation editor', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Automation saved');
     fireEvent.click(screen.getByRole('button', { name: 'Remove quick reply 1' }));
     expect(screen.queryByLabelText('Quick reply 1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save automation' })).toBeDisabled();
+  });
+
+  it('restores the quick-reply format and clears choices when saving a private message only', async () => {
+    const option = {
+      id: 'c2881688-51c5-4e9a-a30b-2b085a901949',
+      title: 'Yes',
+      followUpText: 'Here is more information.',
+    };
+    vi.mocked(getAutomation).mockResolvedValue({
+      deliveryMode: 'private',
+      enabled: true,
+      mediaId: media[0]!.id,
+      privateReplyText: 'Would you like more?',
+      quickReplyOptions: [option],
+      replyText: '',
+      triggerMode: 'exact',
+      triggerText: '#Hello',
+    });
+    vi.mocked(saveAutomation).mockImplementation(async (input) => ({
+      ...input,
+      quickReplyOptions: input.quickReplyOptions ?? [],
+    }));
+    render(<AutomationEditor />);
+
+    expect(await screen.findByLabelText('Prompt with quick replies')).toBeChecked();
+    expect(screen.getByLabelText('Quick reply 1')).toHaveValue('Yes');
+    fireEvent.click(screen.getByLabelText('Private message only'));
+    expect(screen.queryByLabelText('Quick reply 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    await waitFor(() =>
+      expect(saveAutomation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          privateReplyText: 'Would you like more?',
+          quickReplyOptions: [],
+        }),
+      ),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('Automation saved');
+    expect(screen.getByLabelText('Private message only')).toBeChecked();
   });
 
   it('saves every top-level comment mode without trigger text', async () => {

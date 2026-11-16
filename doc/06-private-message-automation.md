@@ -19,12 +19,14 @@ automatically because doing so could duplicate a message.
 
 ## Quick replies and one follow-up
 
-For **Private DM only** or **Public reply and private DM**, the owner can add up to 13 quick-reply
-choices to the initial private message. Each choice has a title of at most 20 characters and one
-configured follow-up message. Leaving the choices empty keeps the existing text-only DM. The public
-comment reply never contains quick replies. The choice configuration is saved with each private
-execution so a controlled retry uses the original question and choices if the owner edits the
-automation later.
+For **Private DM only** or **Public reply and private DM**, the owner chooses a private DM format:
+**Private message only** sends text without buttons, while **Prompt with quick replies** sends
+prompt text with 1 to 13 choices in the same DM. Each choice has a title of at most 20 characters
+and one configured follow-up message. Saving the text-only format clears previously saved choices.
+The editor restores the quick-reply format when a saved automation has choices. The public comment
+reply never contains quick replies. The choice configuration is saved with each private execution so
+a controlled retry uses the original question and choices if the owner edits the automation later.
+Check button rendering in the Instagram mobile app; the desktop browser may show only text.
 
 When the recipient taps a choice, Instagram sends an inbound message webhook. ReplyKit matches the
 choice to the original private execution, records the answer once, and sends the selected follow-up
@@ -52,8 +54,8 @@ sent promptly after that answer, subject to Meta accepting the request.
 4. Commit and push only after explicit approval.
 5. Wait for the Vercel production deployment to become ready.
 6. Reconnect Instagram if the stored token lacks profile, comment, or message access.
-7. Open the app, reload the automation editor, and save the desired delivery mode, message, and
-   optional quick replies.
+7. Open the app, reload the automation editor, and save the desired delivery mode and private DM
+   format. The quick-reply format requires prompt text and at least one completed choice.
 8. From a separate consenting test account, leave a fresh top-level comment, inspect the received DM
    on Instagram, tap a quick reply, and confirm exactly one matching follow-up and answer in
    ReplyKit. Use another fresh test comment to type a response; confirm it is saved without an
