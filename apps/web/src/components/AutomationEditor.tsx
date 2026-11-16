@@ -7,6 +7,7 @@ import {
   getAutomation,
   saveAutomation,
   type DeliveryMode,
+  type QuickReplyOption,
   type TriggerMode,
 } from '../api/automation.js';
 import { getRecentMedia, type RecentMedia } from '../api/media.js';
@@ -37,6 +38,7 @@ export const AutomationEditor = ({
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(DELIVERY_MODE.PUBLIC);
   const [replyText, setReplyText] = useState('');
   const [privateReplyText, setPrivateReplyText] = useState('');
+  const [quickReplyOptions, setQuickReplyOptions] = useState<QuickReplyOption[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<'delivery' | 'generic' | 'reconnect' | null>(null);
@@ -63,6 +65,7 @@ export const AutomationEditor = ({
         setDeliveryMode(automation?.deliveryMode ?? DELIVERY_MODE.PUBLIC);
         setReplyText(automation?.replyText ?? 'Hello! Thanks for commenting.');
         setPrivateReplyText(automation?.privateReplyText ?? 'Thanks for commenting!');
+        setQuickReplyOptions(automation?.quickReplyOptions ?? []);
         setEnabled(automation?.enabled ?? true);
       })
       .catch(() => {
@@ -84,11 +87,21 @@ export const AutomationEditor = ({
       (triggerMode === TRIGGER_MODE.CONTAINS && /^#?[\p{L}\p{N}_]+$/u.test(trimmedTrigger));
     const publicRequired = deliveryMode !== DELIVERY_MODE.PRIVATE;
     const privateRequired = deliveryMode !== DELIVERY_MODE.PUBLIC;
+    const quickRepliesValid =
+      !privateRequired ||
+      quickReplyOptions.every(
+        (option) =>
+          option.title.trim().length >= 1 &&
+          option.title.trim().length <= 20 &&
+          option.followUpText.trim().length >= 1 &&
+          option.followUpText.trim().length <= 1000,
+      );
     if (
       !selectedMediaId ||
       !triggerValid ||
       (publicRequired && replyText.trim() === '') ||
-      (privateRequired && privateReplyText.trim() === '')
+      (privateRequired && privateReplyText.trim() === '') ||
+      !quickRepliesValid
     )
       return;
     setSaving(true);
@@ -100,6 +113,13 @@ export const AutomationEditor = ({
         enabled,
         mediaId: selectedMediaId,
         privateReplyText: privateRequired ? privateReplyText.trim() : null,
+        quickReplyOptions: privateRequired
+          ? quickReplyOptions.map((option) => ({
+              ...option,
+              title: option.title.trim(),
+              followUpText: option.followUpText.trim(),
+            }))
+          : [],
         replyText: publicRequired ? replyText.trim() : '',
         triggerMode,
         triggerText: triggerMode === TRIGGER_MODE.ALL ? null : trimmedTrigger,
@@ -107,6 +127,7 @@ export const AutomationEditor = ({
       setDeliveryMode(automation.deliveryMode);
       setSelectedMediaId(automation.mediaId);
       setPrivateReplyText(automation.privateReplyText ?? '');
+      setQuickReplyOptions(automation.quickReplyOptions ?? []);
       setReplyText(automation.replyText);
       setTriggerMode(automation.triggerMode);
       setTriggerText(automation.triggerText ?? '#Hello');
@@ -162,6 +183,14 @@ export const AutomationEditor = ({
     triggerValid &&
     (!publicRequired || replyText.trim() !== '') &&
     (!privateRequired || privateReplyText.trim() !== '') &&
+    (!privateRequired ||
+      quickReplyOptions.every(
+        (option) =>
+          option.title.trim().length >= 1 &&
+          option.title.trim().length <= 20 &&
+          option.followUpText.trim().length >= 1 &&
+          option.followUpText.trim().length <= 1000,
+      )) &&
     !saving;
   return (
     <section className="ui-card p-5 sm:p-6" aria-live="polite" aria-labelledby="automation-heading">
@@ -347,21 +376,102 @@ export const AutomationEditor = ({
             </label>
           )}
           {privateRequired && (
-            <label className="block">
-              <span className="text-sm font-semibold text-[#292638]">Private message</span>
-              <textarea
-                aria-label="Private message"
-                className="ui-input mt-2 block min-h-28"
-                value={privateReplyText}
-                onChange={(event) => {
-                  setPrivateReplyText(event.target.value);
-                  setSaved(false);
-                }}
-              />
-              <span className="mt-2 block text-sm text-[#625b6e]">
-                Instagram permits one private reply for each qualifying comment.
-              </span>
-            </label>
+            <div className="block">
+              <label className="block">
+                <span className="text-sm font-semibold text-[#292638]">Private message</span>
+                <textarea
+                  aria-label="Private message"
+                  className="ui-input mt-2 block min-h-28"
+                  value={privateReplyText}
+                  onChange={(event) => {
+                    setPrivateReplyText(event.target.value);
+                    setSaved(false);
+                  }}
+                />
+                <span className="mt-2 block text-sm text-[#625b6e]">
+                  Instagram permits one private reply for each qualifying comment.
+                </span>
+              </label>
+              <div className="mt-5 border-t border-[var(--app-border)] pt-4">
+                <h3 className="text-sm font-semibold text-[#292638]">Quick replies</h3>
+                <p className="mt-1 text-sm text-[#625b6e]">
+                  Add choices to this DM. Each choice can send one follow-up message after the
+                  person taps it.
+                </p>
+                <div className="mt-3 grid gap-3">
+                  {quickReplyOptions.map((option, index) => (
+                    <div
+                      key={option.id}
+                      className="rounded-xl border border-[var(--app-border)] bg-white p-3"
+                    >
+                      <label className="block text-sm font-medium text-[#292638]">
+                        Quick reply {index + 1}
+                        <input
+                          className="ui-input mt-2 block"
+                          maxLength={20}
+                          value={option.title}
+                          onChange={(event) => {
+                            setQuickReplyOptions((current) =>
+                              current.map((item) =>
+                                item.id === option.id
+                                  ? { ...item, title: event.target.value }
+                                  : item,
+                              ),
+                            );
+                            setSaved(false);
+                          }}
+                        />
+                      </label>
+                      <label className="mt-3 block text-sm font-medium text-[#292638]">
+                        Follow-up for reply {index + 1}
+                        <textarea
+                          className="ui-input mt-2 block min-h-24"
+                          maxLength={1000}
+                          value={option.followUpText}
+                          onChange={(event) => {
+                            setQuickReplyOptions((current) =>
+                              current.map((item) =>
+                                item.id === option.id
+                                  ? { ...item, followUpText: event.target.value }
+                                  : item,
+                              ),
+                            );
+                            setSaved(false);
+                          }}
+                        />
+                      </label>
+                      <button
+                        className="ui-button-secondary mt-3"
+                        type="button"
+                        aria-label={`Remove quick reply ${index + 1}`}
+                        onClick={() => {
+                          setQuickReplyOptions((current) =>
+                            current.filter((item) => item.id !== option.id),
+                          );
+                          setSaved(false);
+                        }}
+                      >
+                        Remove choice
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="ui-button-secondary mt-3"
+                  type="button"
+                  disabled={quickReplyOptions.length >= 13}
+                  onClick={() => {
+                    setQuickReplyOptions((current) => [
+                      ...current,
+                      { id: crypto.randomUUID(), title: '', followUpText: '' },
+                    ]);
+                    setSaved(false);
+                  }}
+                >
+                  Add quick reply
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

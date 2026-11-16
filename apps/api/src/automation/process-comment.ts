@@ -158,11 +158,23 @@ export const processComment = async (
   const deliveryRequests = [
     ...(automation.deliveryMode === DELIVERY_MODE.PUBLIC ||
     automation.deliveryMode === DELIVERY_MODE.BOTH
-      ? [{ deliveryChannel: DELIVERY_CHANNEL.PUBLIC, messageText: automation.replyText }]
+      ? [
+          {
+            deliveryChannel: DELIVERY_CHANNEL.PUBLIC,
+            messageText: automation.replyText,
+            quickReplyOptions: [],
+          },
+        ]
       : []),
     ...(automation.deliveryMode === DELIVERY_MODE.PRIVATE ||
     automation.deliveryMode === DELIVERY_MODE.BOTH
-      ? [{ deliveryChannel: DELIVERY_CHANNEL.PRIVATE, messageText: automation.privateReplyText! }]
+      ? [
+          {
+            deliveryChannel: DELIVERY_CHANNEL.PRIVATE,
+            messageText: automation.privateReplyText!,
+            quickReplyOptions: automation.quickReplyOptions ?? [],
+          },
+        ]
       : []),
   ];
   const executions = await dependencies.executionRepository.claimExecutions(
@@ -176,6 +188,7 @@ export const processComment = async (
       instagramCommentId: event.commentId,
       leaseExpiresAt: new Date(Date.now() + 2 * 60 * 1000),
       messageText: delivery.messageText,
+      quickReplyOptions: delivery.quickReplyOptions,
     })),
   );
   if (executions.length === 0) return { outcome: COMMENT_PROCESS_OUTCOME.DUPLICATE };

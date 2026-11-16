@@ -5,6 +5,7 @@ import { parseEnvironment, type Environment } from './config/environment.js';
 import { createDatabase, type Database } from './database/database.js';
 import { logger } from './logging/logger.js';
 import { createInstagramCommentReplyClient } from './instagram/comment-reply-client.js';
+import { createInstagramDirectMessageClient } from './instagram/direct-message-client.js';
 import { createInstagramLoginClient } from './instagram/login-client.js';
 import { createInstagramMediaClient } from './instagram/media-client.js';
 import { createInstagramPrivateReplyClient } from './instagram/private-reply-client.js';
@@ -38,8 +39,12 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
   const instagramWebhookClient = createInstagramWebhookClient({
     apiVersion: environment.META_API_VERSION,
   });
+  const instagramDirectMessageClient = createInstagramDirectMessageClient({
+    apiVersion: environment.META_API_VERSION,
+  });
   const app = createApp({
     automationRepository: database.automationRepository,
+    dmConversationRepository: database.dmConversationRepository,
     executionRepository: database.executionRepository,
     instagramAuth: {
       appBaseUrl: environment.APP_BASE_URL,
@@ -70,6 +75,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
       instagramCommentReplyClient: createInstagramCommentReplyClient({
         apiVersion: environment.META_API_VERSION,
       }),
+      instagramDirectMessageClient,
       instagramPrivateReplyClient: createInstagramPrivateReplyClient({
         apiVersion: environment.META_API_VERSION,
       }),
@@ -81,6 +87,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
       maintenanceHealthRepository: database.maintenanceHealthRepository,
       runMaintenance: () =>
         runMaintenance({
+          dmConversationRepository: database.dmConversationRepository,
           executionRepository: database.executionRepository,
           instagramCommentReplyClient: createInstagramCommentReplyClient({
             apiVersion: environment.META_API_VERSION,
@@ -88,6 +95,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
           instagramPrivateReplyClient: createInstagramPrivateReplyClient({
             apiVersion: environment.META_API_VERSION,
           }),
+          instagramDirectMessageClient,
           instagramTokenRefreshClient: createInstagramTokenRefreshClient(),
           logger,
           tokenProtector,

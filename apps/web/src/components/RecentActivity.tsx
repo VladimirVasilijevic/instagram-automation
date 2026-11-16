@@ -7,6 +7,7 @@ import {
   type ExecutionActivity,
   type ExecutionDeliveryActivity,
 } from '../api/executions.js';
+import { getRecentDmAnswers, type DmAnswerActivity } from '../api/dm-answers.js';
 
 type ActivityState =
   | { status: 'loading' }
@@ -44,6 +45,9 @@ export const RecentActivity = ({
   const [attempt, setAttempt] = useState(0);
   const [view, setView] = useState<ActivityView>('selected-post');
   const [refreshing, setRefreshing] = useState(false);
+  const [answerState, setAnswerState] = useState<
+    { status: 'loading' } | { status: 'ready'; answers: DmAnswerActivity[] } | { status: 'error' }
+  >({ status: 'loading' });
   const [copiedUsername, setCopiedUsername] = useState<string | null>(null);
   const activityMediaId = view === 'selected-post' ? selectedMediaId : undefined;
 
@@ -70,6 +74,27 @@ export const RecentActivity = ({
       })
       .finally(() => {
         if (!controller.signal.aborted) setRefreshing(false);
+      });
+    return () => controller.abort();
+  }, [activityMediaId, attempt, view]);
+
+  useEffect(() => {
+    if (view === 'selected-post' && activityMediaId === undefined) {
+      setAnswerState({ status: 'loading' });
+      return;
+    }
+    if (view === 'selected-post' && activityMediaId === null) {
+      setAnswerState({ status: 'ready', answers: [] });
+      return;
+    }
+    const controller = new AbortController();
+    setAnswerState({ status: 'loading' });
+    void getRecentDmAnswers(controller.signal, activityMediaId ?? undefined)
+      .then((answers) => {
+        if (!controller.signal.aborted) setAnswerState({ status: 'ready', answers });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAnswerState({ status: 'error' });
       });
     return () => controller.abort();
   }, [activityMediaId, attempt, view]);
@@ -256,6 +281,56 @@ export const RecentActivity = ({
           ))}
         </ul>
       )}
+      <div className="mt-8 border-t border-[var(--app-border)] pt-6">
+        <h3 className="text-lg font-semibold text-[#292638]">DM answers</h3>
+        {answerState.status === 'loading' && (
+          <p className="mt-3 text-sm text-[#625b6e]">Loading answers…</p>
+        )}
+        {answerState.status === 'error' && (
+          <p role="alert" className="mt-3 text-sm text-red-800">
+            DM answers could not be loaded. Refresh activity to try again.
+          </p>
+        )}
+        {answerState.status === 'ready' &&
+          (() => {
+            const visibleAnswers = answerState.answers;
+            return visibleAnswers.length === 0 ? (
+              <p className="mt-3 text-sm text-[#625b6e]">No DM answers for this view yet.</p>
+            ) : (
+              <ul className="mt-3 grid gap-3" aria-label="Recent DM answers">
+                {visibleAnswers.map((answer) => (
+                  <li
+                    key={`${answer.receivedAt}-${answer.commenterUsername ?? ''}-${answer.choiceTitle ?? answer.typedText ?? ''}`}
+                    className="rounded-xl border border-[var(--app-border)] bg-[#faf9f6] p-4"
+                  >
+                    <p className="font-semibold text-[#292638]">
+                      {answer.commenterUsername ? `@${answer.commenterUsername}` : 'Instagram user'}
+                    </p>
+                    <p className="mt-2 break-words text-sm text-[#433d50]">
+                      {answer.choiceTitle
+                        ? `Selected: ${answer.choiceTitle}`
+                        : `Typed reply: ${answer.typedText ?? ''}`}
+                    </p>
+                    {answer.followupStatus && (
+                      <p className="mt-2 text-sm text-[#625b6e]">
+                        Follow-up:{' '}
+                        {answer.followupStatus === 'pending'
+                          ? 'Pending'
+                          : statusText[answer.followupStatus]}
+                      </p>
+                    )}
+                    <time
+                      className="mt-2 block text-xs text-[#625b6e]"
+                      dateTime={answer.receivedAt}
+                    >
+                      {formatTimestamp(answer.receivedAt)}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+      </div>
     </section>
   );
 };

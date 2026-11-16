@@ -44,7 +44,9 @@ const fixture = () => {
     replyToComment: vi.fn().mockResolvedValue({ replyId: 'reply-id' }),
   };
   const instagramPrivateReplyClient = {
-    sendPrivateReply: vi.fn().mockResolvedValue({ replyId: 'private-reply-id' }),
+    sendPrivateReply: vi
+      .fn()
+      .mockResolvedValue({ recipientId: 'recipient-igsid', replyId: 'private-reply-id' }),
   };
   const tokenRefreshRepository = { markAccountReconnectRequired: vi.fn() };
   return {
@@ -111,6 +113,32 @@ describe('reply delivery recovery policy', () => {
       message: 'Thanks!',
     });
     expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+    expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith(
+      'execution-id',
+      'lease-id',
+      'private-reply-id',
+      'recipient-igsid',
+    );
+  });
+
+  it('reuses the stored choice snapshot on a private retry', async () => {
+    const f = fixture();
+    const retryExecution: Execution = {
+      ...execution(2),
+      deliveryChannel: 'private',
+      quickReplyOptions: [{ id: 'yes-id', title: 'Yes', followUpText: 'Stored follow-up' }],
+    };
+
+    await expect(deliverReply(input(retryExecution), f.dependencies, now)).resolves.toBe(
+      'succeeded',
+    );
+    expect(f.instagramPrivateReplyClient.sendPrivateReply).toHaveBeenCalledWith({
+      accessToken: 'plaintext-token',
+      commentId: 'comment-id',
+      instagramUserId: 'instagram-account-id',
+      message: 'Thanks!',
+      quickReplies: [{ title: 'Yes', payload: 'qr:execution-id:yes-id' }],
+    });
   });
 
   it('schedules only explicit rate-limit failures and stops after three attempts', async () => {

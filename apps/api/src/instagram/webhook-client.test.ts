@@ -48,6 +48,20 @@ describe('Instagram webhook subscription adapter', () => {
     });
   });
 
+  it('includes messages when the account has a quick-reply conversation', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
+
+    await createInstagramWebhookClient({ apiVersion: 'v24.0' }, fetcher).subscribeToComments({
+      ...input,
+      includeMessages: true,
+    });
+    expect(String(fetcher.mock.calls[0]![0])).toBe(
+      'https://graph.instagram.com/v24.0/17841400000000001/subscribed_apps?subscribed_fields=comments%2Cmessages',
+    );
+  });
+
   it('returns safe provider diagnostics without response details', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

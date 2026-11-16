@@ -7,12 +7,17 @@ import { registerMaintenanceRoute } from './maintenance.js';
 
 const summary: MaintenanceSummary = {
   expiredTokenCount: 0,
+  followupFailedCount: 0,
+  followupRetryPendingCount: 0,
+  followupSucceededCount: 0,
+  followupUncertainCount: 0,
   reconnectRequiredCount: 1,
   replyFailedCount: 0,
   replyRetryPendingCount: 1,
   replySucceededCount: 2,
   replyUncertainCount: 0,
   staleExecutionCount: 1,
+  staleFollowupCount: 0,
   tokenRefreshFailedCount: 0,
   tokenRefreshedCount: 3,
 };

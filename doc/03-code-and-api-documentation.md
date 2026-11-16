@@ -94,6 +94,7 @@ Current documented operations:
 | GET    | `/api/automation`                      | Session cookie                              | `200`, `401`, sanitized `503`           |
 | PUT    | `/api/automation`                      | Session cookie and automation JSON          | `200`, `400`, `401`, sanitized errors   |
 | GET    | `/api/executions?limit=50`             | Session cookie                              | `200`, `400`, `401`, sanitized `503`    |
+| GET    | `/api/dm-answers`                      | Session cookie                              | `200`, `401`, sanitized `503`           |
 | GET    | `/api/maintenance-health`              | Session cookie                              | `200`, `401`, sanitized `503`           |
 
 `POST /api/internal/maintenance` is deliberately excluded from Swagger/OpenAPI. It is a private
@@ -108,6 +109,19 @@ failure is newer than the latest success or the latest completed pass found work
 `delayed` means the last successful pass is older than 45 minutes. `never_run` means no successful
 pass has been recorded since migration `0005_operational_health.sql` was applied.
 
+`GET /api/automation` returns `quickReplyOptions` with each configured choice's UUID `id`, visible
+`title`, and `followUpText`. `PUT /api/automation` accepts up to 13 choices; each title must contain
+1–20 characters and each follow-up must contain 1–1000 characters after trimming. An omitted array
+defaults to `[]` for older clients. Choices require private delivery, and their IDs must be unique.
+The API stores the configuration on the automation and snapshots it onto each private execution
+before dispatch.
+
+`GET /api/dm-answers` is owner-authenticated and returns the account's recorded quick-reply choices
+and typed DM answers with safe follow-up status for the ReplyKit activity view. Its `answers` array
+contains up to 50 records with `choiceTitle`, `commenterUsername`, `followupStatus`, `mediaId`,
+`receivedAt`, and `typedText`. It does not expose provider tokens or raw webhook envelopes. The
+optional `mediaId` query filters answers by post before the 50-record limit is applied.
+
 Start OAuth through **Continue with Instagram** in the browser. Swagger request execution is not a
 replacement for the provider's browser consent flow. Authentication responses and `/api/me` use
 `Cache-Control: no-store`; callback responses also suppress referrers. See the
@@ -120,10 +134,17 @@ mode: exact trimmed text, a complete word or hashtag contained anywhere in the c
 top-level comment. Text matching ignores capitalization. The server atomically claims each selected
 delivery channel and records a dispatch boundary before calling Meta's public- or private-reply API.
 Definite rate-limit rejections can be retried by scheduled maintenance; ambiguous outcomes are left
-for manual review to prevent duplicate messages. Signed Instagram deliveries that are valid but do
-not contain a comment event are acknowledged with `200` and counted by safe event category;
-malformed comment events still return sanitized `400`. Do not use Swagger to submit webhook
-deliveries.
+for manual review to prevent duplicate messages. Signed Instagram message deliveries are normalized
+separately from comments. Supported inbound text and quick-reply events are deduplicated by their
+provider message ID; a selected choice may create one durable follow-up send, while typed text is
+saved for review. Echoes and unsupported messaging events are acknowledged and counted without
+logging their content. Malformed comment events still return sanitized `400`. Do not use Swagger to
+submit webhook deliveries.
+
+The account's `/subscribed_apps` request includes `comments,messages` when quick replies are
+configured, and `comments` for text-only automation. Select the `messages` field in the Meta App
+Dashboard before enabling quick replies. The quick-reply request on the first comment-addressed
+private DM is locally tested but remains unverified with live Meta delivery.
 
 Unknown routes return the global JSON `404` envelope. Unexpected route errors return the global
 sanitized JSON `500` envelope.

@@ -1,16 +1,18 @@
 import { z } from 'zod';
 
-/** Server-side input for subscribing one Instagram professional account to comment deliveries. */
+/** Server-side input for subscribing one Instagram professional account to comment and DM deliveries. */
 export interface SubscribeToCommentsInput {
   /** Long-lived token decrypted only immediately before the provider request. */
   accessToken: string;
   /** Instagram professional account receiving the subscription. */
   instagramUserId: string;
+  /** Include message events when a quick-reply conversation is configured. */
+  includeMessages?: boolean;
 }
 
-/** Instagram boundary used to request comment webhook deliveries for a connected account. */
+/** Instagram boundary used to request comment and message webhook deliveries for an account. */
 export interface InstagramWebhookClient {
-  /** Repeated requests keep the account subscribed to comment webhook events. */
+  /** Repeated requests keep the account subscribed to comment and message webhook events. */
   subscribeToComments(input: SubscribeToCommentsInput): Promise<void>;
 }
 
@@ -26,13 +28,13 @@ export interface InstagramWebhookDiagnostics {
   reason: 'http_error' | 'invalid_json' | 'invalid_response' | 'network_error' | 'timeout';
 }
 
-/** Sanitized failure from the Instagram comment-subscription endpoint. */
+/** Sanitized failure from the Instagram webhook-subscription endpoint. */
 export class InstagramWebhookError extends Error {
   constructor(
     private readonly diagnostics: InstagramWebhookDiagnostics,
     options?: ErrorOptions,
   ) {
-    super('Instagram comment subscription failed', options);
+    super('Instagram webhook subscription failed', options);
     this.name = 'InstagramWebhookError';
   }
 
@@ -85,16 +87,20 @@ const providerErrorCodes = (payload: unknown) => {
 
 const successSchema = z.object({ success: z.literal(true) });
 
-/** Creates the Meta adapter that requests an idempotent comments subscription for one account. */
+/** Creates the Meta adapter that requests comment and message subscriptions for one account. */
 export const createInstagramWebhookClient = (
   config: InstagramWebhookConfig,
   fetcher: typeof fetch = fetch,
 ): InstagramWebhookClient => ({
-  async subscribeToComments({ accessToken, instagramUserId }): Promise<void> {
+  async subscribeToComments({
+    accessToken,
+    instagramUserId,
+    includeMessages = false,
+  }): Promise<void> {
     const url = new URL(
       `https://graph.instagram.com/${config.apiVersion}/${instagramUserId}/subscribed_apps`,
     );
-    url.searchParams.set('subscribed_fields', 'comments');
+    url.searchParams.set('subscribed_fields', includeMessages ? 'comments,messages' : 'comments');
     let httpStatus: number | undefined;
     try {
       const response = await fetcher(url, {

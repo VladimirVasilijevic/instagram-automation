@@ -10,6 +10,7 @@ import { createSessionToken } from '../security/session-token.js';
 import {
   createPostgresAccountRepository,
   createPostgresAutomationRepository,
+  createPostgresDmConversationRepository,
   createPostgresExecutionRepository,
   createPostgresMaintenanceHealthRepository,
   createPostgresSessionRepository,
@@ -38,6 +39,32 @@ const triggerModesMigrationPath = resolve(
   import.meta.dirname,
   '../../../../db/migrations/0007_automation_trigger_modes.sql',
 );
+const quickReplyMigrationPath = resolve(
+  import.meta.dirname,
+  '../../../../db/migrations/0008_quick_reply_conversations.sql',
+);
+
+const ensureAutomationSchema = async (transactionSql: postgres.TransactionSql) => {
+  const migrations = [
+    { column: 'delivery_mode', table: 'automations', path: multichannelMigrationPath },
+    { column: 'media_id', table: 'executions', path: executionMediaMigrationPath },
+    { column: 'trigger_mode', table: 'automations', path: triggerModesMigrationPath },
+    { column: 'quick_reply_options', table: 'automations', path: quickReplyMigrationPath },
+  ];
+  for (const migration of migrations) {
+    const [schemaState] = await transactionSql<{ migration_applied: boolean }[]>`
+      select exists (
+        select 1 from information_schema.columns
+        where table_schema = 'app_private'
+          and table_name = ${migration.table}
+          and column_name = ${migration.column}
+      ) as migration_applied
+    `;
+    if (!schemaState?.migration_applied) {
+      await transactionSql.unsafe(await readFile(migration.path, 'utf8'));
+    }
+  }
+};
 
 describeDatabase('PostgreSQL repositories', () => {
   const rollbackSignal = new Error('rollback integration transaction');
@@ -249,42 +276,7 @@ describeDatabase('PostgreSQL repositories', () => {
 
     try {
       await sql.begin(async (transactionSql) => {
-        const [schemaState] = await transactionSql<{ migration_applied: boolean }[]>`
-          select exists (
-            select 1
-            from information_schema.columns
-            where table_schema = 'app_private'
-              and table_name = 'automations'
-              and column_name = 'delivery_mode'
-          ) as migration_applied
-        `;
-        if (!schemaState?.migration_applied) {
-          await transactionSql.unsafe(await readFile(multichannelMigrationPath, 'utf8'));
-        }
-        const [executionMediaSchema] = await transactionSql<{ migration_applied: boolean }[]>`
-          select exists (
-            select 1
-            from information_schema.columns
-            where table_schema = 'app_private'
-              and table_name = 'executions'
-              and column_name = 'media_id'
-          ) as migration_applied
-        `;
-        if (!executionMediaSchema?.migration_applied) {
-          await transactionSql.unsafe(await readFile(executionMediaMigrationPath, 'utf8'));
-        }
-        const [triggerModeSchema] = await transactionSql<{ migration_applied: boolean }[]>`
-          select exists (
-            select 1
-            from information_schema.columns
-            where table_schema = 'app_private'
-              and table_name = 'automations'
-              and column_name = 'trigger_mode'
-          ) as migration_applied
-        `;
-        if (!triggerModeSchema?.migration_applied) {
-          await transactionSql.unsafe(await readFile(triggerModesMigrationPath, 'utf8'));
-        }
+        await ensureAutomationSchema(transactionSql);
 
         const accountRepository = createPostgresAccountRepository(transactionSql);
         const automationRepository = createPostgresAutomationRepository(transactionSql);
@@ -645,5 +637,223 @@ describeDatabase('PostgreSQL repositories', () => {
       automation_count: 0,
       execution_count: 0,
     });
+  });
+
+  it('snapshots quick replies, deduplicates answers, and leases one follow-up', async () => {
+    const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 7).toString('base64'));
+    const optionId = randomUUID();
+    const option = { id: optionId, title: 'Yes', followUpText: 'Here is the next step.' };
+    const now = new Date();
+    try {
+      await sql.begin(async (transactionSql) => {
+        await ensureAutomationSchema(transactionSql);
+        const accountRepository = createPostgresAccountRepository(transactionSql);
+        const automationRepository = createPostgresAutomationRepository(transactionSql);
+        const executionRepository = createPostgresExecutionRepository(transactionSql);
+        const conversationRepository = createPostgresDmConversationRepository(transactionSql);
+        const account = await accountRepository.upsertConnectedAccount({
+          accessTokenCiphertext: tokenProtector.encrypt('quick-reply-test-token'),
+          instagramUserId: `owner-${randomUUID()}`,
+          tokenExpiresAt: new Date(now.getTime() + 86_400_000),
+          username: 'quick_reply_owner',
+        });
+        const otherAccount = await accountRepository.upsertConnectedAccount({
+          accessTokenCiphertext: tokenProtector.encrypt('other-test-token'),
+          instagramUserId: `other-${randomUUID()}`,
+          tokenExpiresAt: new Date(now.getTime() + 86_400_000),
+          username: 'other_owner',
+        });
+        const automation = await automationRepository.saveAutomation({
+          accountId: account.id,
+          deliveryMode: 'private',
+          enabled: true,
+          mediaId: 'quick-reply-media',
+          privateReplyText: 'Would you like more information?',
+          quickReplyOptions: [option],
+          replyText: '',
+          triggerMode: 'all',
+          triggerText: null,
+        });
+        expect(automation.quickReplyOptions).toEqual([option]);
+        const execution = await executionRepository.claimExecution({
+          automationId: automation.id,
+          mediaId: automation.mediaId,
+          commenterInstagramId: 'commenter-id',
+          commenterUsername: 'commenter',
+          commentText: 'Info please',
+          deliveryChannel: 'private',
+          instagramCommentId: `comment-${randomUUID()}`,
+          leaseExpiresAt: new Date(now.getTime() + 120_000),
+          messageText: automation.privateReplyText!,
+          quickReplyOptions: automation.quickReplyOptions,
+        });
+        if (!execution?.leaseId) throw new Error('Private execution was not claimed');
+        const succeeded = await executionRepository.markSucceeded(
+          execution.id,
+          execution.leaseId,
+          'first-private-message',
+          'recipient-igsid',
+        );
+        expect(succeeded).toMatchObject({
+          quickReplyOptions: [option],
+          recipientIgsid: 'recipient-igsid',
+          status: 'succeeded',
+        });
+        await automationRepository.saveAutomation({
+          accountId: account.id,
+          deliveryMode: 'private',
+          enabled: true,
+          mediaId: automation.mediaId,
+          privateReplyText: 'Changed question',
+          quickReplyOptions: [{ ...option, followUpText: 'Changed follow-up' }],
+          replyText: '',
+          triggerMode: 'all',
+          triggerText: null,
+        });
+        expect(
+          (await executionRepository.listRecentByAccountId(account.id, 1))[0]?.quickReplyOptions,
+        ).toEqual([option]);
+
+        const choiceInput = {
+          accountId: account.id,
+          providerMessageId: `inbound-${randomUUID()}`,
+          senderIgsid: 'recipient-igsid',
+          text: 'Yes',
+          quickReplyPayload: `qr:${execution.id}:${optionId}`,
+          sentAt: new Date(Date.now() + 1_000),
+          receivedAt: new Date(),
+        };
+        await expect(
+          conversationRepository.recordInboundAnswer({
+            ...choiceInput,
+            accountId: otherAccount.id,
+          }),
+        ).resolves.toBeNull();
+        await expect(
+          conversationRepository.recordInboundAnswer({
+            ...choiceInput,
+            senderIgsid: 'unrelated-recipient',
+          }),
+        ).resolves.toBeNull();
+        const result = await conversationRepository.recordInboundAnswer(choiceInput);
+        expect(result).toMatchObject({
+          answer: { executionId: execution.id, optionId },
+          followup: { messageText: option.followUpText, status: 'pending' },
+          duplicate: false,
+        });
+        await expect(
+          conversationRepository.recordInboundAnswer(choiceInput),
+        ).resolves.toMatchObject({
+          answer: { id: result!.answer.id },
+          duplicate: true,
+        });
+        const followup = result?.followup;
+        if (!followup) throw new Error('Choice did not enqueue follow-up');
+        const claim = await conversationRepository.claimFollowup(
+          followup.id,
+          now,
+          new Date(now.getTime() + 120_000),
+        );
+        expect(claim).toMatchObject({
+          followup: { id: followup.id, attemptCount: 1, status: 'processing' },
+          instagramUserId: account.instagramUserId,
+        });
+        expect(claim?.accessTokenCiphertext).toBe(account.accessTokenCiphertext);
+        await expect(
+          conversationRepository.claimFollowup(followup.id, now, new Date(now.getTime() + 120_000)),
+        ).resolves.toBeNull();
+        expect(
+          await conversationRepository.markFollowupDispatchStarted(
+            followup.id,
+            claim!.followup.leaseId!,
+            now,
+          ),
+        ).toBe(true);
+        expect(
+          await conversationRepository.markFollowupSucceeded(
+            followup.id,
+            claim!.followup.leaseId!,
+            'follow-up-message',
+          ),
+        ).toMatchObject({ status: 'succeeded', providerReplyId: 'follow-up-message' });
+        await expect(
+          conversationRepository.listRecentAnswersByAccountId(account.id, 50),
+        ).resolves.toMatchObject([
+          {
+            answer: { optionId },
+            choiceTitle: 'Yes',
+            commenterUsername: 'commenter',
+            mediaId: automation.mediaId,
+            followup: { status: 'succeeded' },
+          },
+        ]);
+        await expect(
+          conversationRepository.listRecentAnswersByAccountId(otherAccount.id, 50),
+        ).resolves.toEqual([]);
+        await expect(
+          conversationRepository.listRecentAnswersByAccountId(account.id, 50, 'other-post'),
+        ).resolves.toEqual([]);
+        await expect(
+          conversationRepository.listRecentAnswersByAccountId(account.id, 50, automation.mediaId),
+        ).resolves.toHaveLength(1);
+
+        const secondExecution = await executionRepository.claimExecution({
+          automationId: automation.id,
+          mediaId: automation.mediaId,
+          commenterInstagramId: 'second-commenter-id',
+          commenterUsername: 'second-commenter',
+          commentText: 'More info',
+          deliveryChannel: 'private',
+          instagramCommentId: `comment-${randomUUID()}`,
+          leaseExpiresAt: new Date(now.getTime() + 120_000),
+          messageText: 'Changed question',
+          quickReplyOptions: [{ ...option, followUpText: 'Changed follow-up' }],
+        });
+        if (!secondExecution?.leaseId) throw new Error('Second private execution was not claimed');
+        await executionRepository.markSucceeded(
+          secondExecution.id,
+          secondExecution.leaseId,
+          'second-private-message',
+          'second-recipient',
+        );
+        const staleTyped = await conversationRepository.recordInboundAnswer({
+          accountId: account.id,
+          providerMessageId: `stale-typed-${randomUUID()}`,
+          senderIgsid: 'second-recipient',
+          text: 'Before the prompt',
+          quickReplyPayload: null,
+          sentAt: new Date(now.getTime() - 60_000),
+          receivedAt: new Date(),
+        });
+        expect(staleTyped).toBeNull();
+        const lateTyped = await conversationRepository.recordInboundAnswer({
+          accountId: account.id,
+          providerMessageId: `late-typed-${randomUUID()}`,
+          senderIgsid: 'second-recipient',
+          text: 'Unrelated much later',
+          quickReplyPayload: null,
+          sentAt: new Date(Date.now() + 25 * 60 * 60 * 1_000),
+          receivedAt: new Date(),
+        });
+        expect(lateTyped).toBeNull();
+        const typed = await conversationRepository.recordInboundAnswer({
+          accountId: account.id,
+          providerMessageId: `typed-${randomUUID()}`,
+          senderIgsid: 'second-recipient',
+          text: 'Something else',
+          quickReplyPayload: null,
+          sentAt: new Date(Date.now() + 1_000),
+          receivedAt: new Date(),
+        });
+        expect(typed).toMatchObject({
+          answer: { executionId: secondExecution.id, text: 'Something else', optionId: null },
+          followup: null,
+        });
+
+        throw rollbackSignal;
+      });
+    } catch (error) {
+      if (error !== rollbackSignal) throw error;
+    }
   });
 });

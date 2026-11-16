@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCurrentAccount, logout } from '../api/auth.js';
 import { getAutomation } from '../api/automation.js';
 import { getRecentExecutions } from '../api/executions.js';
+import { getRecentDmAnswers } from '../api/dm-answers.js';
 import { getMaintenanceHealth } from '../api/maintenance-health.js';
 import { getRecentMedia } from '../api/media.js';
 import { AccountPage } from './AccountPage.js';
@@ -11,6 +12,7 @@ import { AccountPage } from './AccountPage.js';
 vi.mock('../api/auth.js', () => ({ getCurrentAccount: vi.fn(), logout: vi.fn() }));
 vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
 vi.mock('../api/executions.js', () => ({ getRecentExecutions: vi.fn() }));
+vi.mock('../api/dm-answers.js', () => ({ getRecentDmAnswers: vi.fn() }));
 vi.mock('../api/maintenance-health.js', () => ({ getMaintenanceHealth: vi.fn() }));
 vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
 const account = {
@@ -24,6 +26,7 @@ beforeEach(() => {
   vi.mocked(getRecentMedia).mockResolvedValue([]);
   vi.mocked(getAutomation).mockResolvedValue(null);
   vi.mocked(getRecentExecutions).mockResolvedValue([]);
+  vi.mocked(getRecentDmAnswers).mockResolvedValue([]);
   vi.mocked(getMaintenanceHealth).mockResolvedValue({
     checkedAt: '2026-09-29T10:00:00.000Z',
     counts: {

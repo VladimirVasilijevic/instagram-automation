@@ -9,6 +9,16 @@ import {
 
 export type { DeliveryMode, TriggerMode } from '@instagram-automation/contracts';
 
+/** A tappable answer and its one-step follow-up message. */
+export interface QuickReplyOption {
+  /** Stable option identifier included in the webhook payload. */
+  id: string;
+  /** Short title displayed on the Instagram quick-reply button. */
+  title: string;
+  /** Message sent after the recipient selects this option. */
+  followUpText: string;
+}
+
 /** The single comment automation configured by the signed-in account. */
 export interface Automation {
   /** Selected reply channels. */
@@ -19,6 +29,8 @@ export interface Automation {
   mediaId: string;
   /** Private message when private delivery is enabled. */
   privateReplyText: string | null;
+  /** Tappable replies shown with the private message. */
+  quickReplyOptions?: QuickReplyOption[];
   /** Public reply text when public delivery is enabled. */
   replyText: string;
   /** Comment-matching rule. */
@@ -37,6 +49,8 @@ export interface SaveAutomationInput {
   mediaId: string;
   /** Private message text, or null when private delivery is disabled. */
   privateReplyText: string | null;
+  /** Optional quick replies and their one-step follow-up messages. */
+  quickReplyOptions?: QuickReplyOption[];
   /** Public reply text, or an empty string when public delivery is disabled. */
   replyText: string;
   /** Comment-matching rule. */
@@ -65,6 +79,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === 'string';
+const isQuickReplyOption = (value: unknown): value is QuickReplyOption =>
+  isRecord(value) &&
+  typeof value.id === 'string' &&
+  typeof value.title === 'string' &&
+  typeof value.followUpText === 'string';
 
 const request = async (
   path: string,
@@ -96,6 +115,9 @@ const readAutomation = (value: unknown): Automation => {
     typeof value.mediaId !== 'string' ||
     value.mediaId.trim() === '' ||
     !isNullableString(value.privateReplyText) ||
+    (value.quickReplyOptions !== undefined &&
+      (!Array.isArray(value.quickReplyOptions) ||
+        !value.quickReplyOptions.every(isQuickReplyOption))) ||
     typeof value.replyText !== 'string' ||
     !isNullableString(value.triggerText) ||
     (triggerMode === TRIGGER_MODE.ALL && value.triggerText !== null) ||
@@ -118,6 +140,9 @@ const readAutomation = (value: unknown): Automation => {
     enabled: value.enabled,
     mediaId: value.mediaId,
     privateReplyText: value.privateReplyText,
+    ...(value.quickReplyOptions === undefined
+      ? {}
+      : { quickReplyOptions: value.quickReplyOptions }),
     replyText: value.replyText,
     triggerMode,
     triggerText: value.triggerText,

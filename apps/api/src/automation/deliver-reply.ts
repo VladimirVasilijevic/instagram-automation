@@ -73,21 +73,33 @@ export const deliverReply = async (
   try {
     const result =
       input.execution.deliveryChannel === DELIVERY_CHANNEL.PUBLIC
-        ? await dependencies.instagramCommentReplyClient.replyToComment({
-            accessToken,
-            commentId: input.commentId,
-            message: input.message,
-          })
+        ? {
+            ...(await dependencies.instagramCommentReplyClient.replyToComment({
+              accessToken,
+              commentId: input.commentId,
+              message: input.message,
+            })),
+            recipientId: undefined,
+          }
         : await dependencies.instagramPrivateReplyClient.sendPrivateReply({
             accessToken,
             commentId: input.commentId,
             instagramUserId: input.instagramUserId,
             message: input.message,
+            ...(input.execution.quickReplyOptions?.length
+              ? {
+                  quickReplies: input.execution.quickReplyOptions.map((option) => ({
+                    title: option.title,
+                    payload: `qr:${input.execution.id}:${option.id}`,
+                  })),
+                }
+              : {}),
           });
     const completed = await dependencies.executionRepository.markSucceeded(
       input.execution.id,
       leaseId,
       result.replyId,
+      ...(result.recipientId ? [result.recipientId] : []),
     );
     if (!completed) throw new Error('Reply execution lease ownership was lost after success');
     return EXECUTION_STATUS.SUCCEEDED;
