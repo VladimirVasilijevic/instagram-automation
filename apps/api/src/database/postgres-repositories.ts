@@ -16,14 +16,20 @@ import type {
   AuthenticatedSession,
   ClaimExecutionInput,
   CreateSessionInput,
+  DmConversationRepository,
+  DmFollowup,
+  DmFollowupClaim,
+  DmFollowupStatus,
   Execution,
   ExecutionFailure,
   ExecutionRepository,
   InstagramAccount,
+  InboundDmAnswer,
   MaintenanceCounts,
   MaintenanceHealth,
   MaintenanceHealthRepository,
   SaveAutomationInput,
+  QuickReplyOption,
   Session,
   SessionRepository,
   TokenRefreshRepository,
@@ -62,6 +68,7 @@ interface AutomationRow {
   id: string;
   media_id: string;
   private_reply_text: string | null;
+  quick_reply_options: QuickReplyOption[];
   reply_text: string;
   trigger_mode: TriggerMode;
   trigger_text: string | null;
@@ -88,8 +95,54 @@ interface ExecutionRow {
   message_text: string;
   next_attempt_at: Date | null;
   provider_reply_id: string | null;
+  quick_reply_options: QuickReplyOption[];
+  recipient_igsid: string | null;
   status: ExecutionStatus;
   updated_at: Date;
+}
+
+interface InboundDmAnswerRow {
+  id: string;
+  account_id: string;
+  execution_id: string | null;
+  provider_message_id: string;
+  sender_igsid: string;
+  option_id: string | null;
+  text: string | null;
+  sent_at: Date;
+  received_at: Date;
+}
+
+interface InboundDmAnswerActivityRow extends InboundDmAnswerRow {
+  choice_title: string | null;
+  commenter_username: string | null;
+  media_id: string | null;
+}
+
+interface DmFollowupRow {
+  id: string;
+  account_id: string;
+  answer_id: string;
+  recipient_igsid: string;
+  message_text: string;
+  expires_at: Date;
+  status: DmFollowupStatus;
+  attempt_count: number;
+  next_attempt_at: Date | null;
+  lease_id: string | null;
+  lease_expires_at: Date | null;
+  dispatch_started_at: Date | null;
+  provider_reply_id: string | null;
+  failure_kind: RecoveryKind | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface DmFollowupClaimRow extends DmFollowupRow {
+  access_token_ciphertext: string;
+  instagram_user_id: string;
 }
 
 interface ExecutionRetryRow extends ExecutionRow {
@@ -150,6 +203,7 @@ const toAutomation = (row: AutomationRow): Automation => ({
   id: row.id,
   mediaId: row.media_id,
   privateReplyText: row.private_reply_text,
+  quickReplyOptions: row.quick_reply_options,
   replyText: row.reply_text,
   triggerMode: row.trigger_mode,
   triggerText: row.trigger_text,
@@ -176,8 +230,49 @@ const toExecution = (row: ExecutionRow): Execution => ({
   messageText: row.message_text,
   nextAttemptAt: row.next_attempt_at,
   providerReplyId: row.provider_reply_id,
+  quickReplyOptions: row.quick_reply_options,
+  recipientIgsid: row.recipient_igsid,
   status: row.status,
   updatedAt: row.updated_at,
+});
+
+const toInboundDmAnswer = (row: InboundDmAnswerRow): InboundDmAnswer => ({
+  id: row.id,
+  accountId: row.account_id,
+  executionId: row.execution_id,
+  providerMessageId: row.provider_message_id,
+  senderIgsid: row.sender_igsid,
+  optionId: row.option_id,
+  text: row.text,
+  sentAt: row.sent_at,
+  receivedAt: row.received_at,
+});
+
+const toDmFollowup = (row: DmFollowupRow): DmFollowup => ({
+  id: row.id,
+  accountId: row.account_id,
+  answerId: row.answer_id,
+  recipientIgsid: row.recipient_igsid,
+  messageText: row.message_text,
+  expiresAt: row.expires_at,
+  status: row.status,
+  attemptCount: row.attempt_count,
+  nextAttemptAt: row.next_attempt_at,
+  leaseId: row.lease_id,
+  leaseExpiresAt: row.lease_expires_at,
+  dispatchStartedAt: row.dispatch_started_at,
+  providerReplyId: row.provider_reply_id,
+  failureKind: row.failure_kind,
+  errorCode: row.error_code,
+  errorMessage: row.error_message,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const toDmFollowupClaim = (row: DmFollowupClaimRow): DmFollowupClaim => ({
+  followup: toDmFollowup(row),
+  accessTokenCiphertext: row.access_token_ciphertext as ProtectedToken,
+  instagramUserId: row.instagram_user_id,
 });
 
 const toMaintenanceHealth = (row: MaintenanceHealthRow): MaintenanceHealth => ({
@@ -529,7 +624,7 @@ export const createPostgresAutomationRepository = (
   async findByAccountId(accountId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
       select id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
-        private_reply_text, enabled, created_at, updated_at
+        private_reply_text, quick_reply_options, enabled, created_at, updated_at
       from app_private.automations
       where account_id = ${accountId}
       limit 1
@@ -541,7 +636,7 @@ export const createPostgresAutomationRepository = (
   async findEnabledByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
       select id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
-        private_reply_text, enabled, created_at, updated_at
+        private_reply_text, quick_reply_options, enabled, created_at, updated_at
       from app_private.automations
       where account_id = ${accountId}
         and media_id = ${mediaId}
@@ -556,10 +651,11 @@ export const createPostgresAutomationRepository = (
     const rows = await sql<AutomationRow[]>`
       insert into app_private.automations (
         account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
-        private_reply_text, enabled
+        private_reply_text, quick_reply_options, enabled
       ) values (
         ${input.accountId}, ${input.mediaId}, ${input.triggerMode}, ${input.triggerText},
-        ${input.deliveryMode}, ${input.replyText}, ${input.privateReplyText}, ${input.enabled}
+        ${input.deliveryMode}, ${input.replyText}, ${input.privateReplyText},
+        ${sql.json(input.quickReplyOptions ?? [])}, ${input.enabled}
       )
       on conflict (account_id) do update
       set
@@ -569,9 +665,10 @@ export const createPostgresAutomationRepository = (
         delivery_mode = excluded.delivery_mode,
         reply_text = excluded.reply_text,
         private_reply_text = excluded.private_reply_text,
+        quick_reply_options = excluded.quick_reply_options,
         enabled = excluded.enabled
       returning id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
-        private_reply_text, enabled, created_at, updated_at
+        private_reply_text, quick_reply_options, enabled, created_at, updated_at
     `;
     const automation = rows[0];
 
@@ -601,6 +698,7 @@ export const createPostgresExecutionRepository = (
       instagram_comment_id: input.instagramCommentId,
       lease_expires_at: input.leaseExpiresAt.toISOString(),
       message_text: input.messageText,
+      quick_reply_options: input.quickReplyOptions ?? [],
     }));
     const rows = await sql<ExecutionRow[]>`
       insert into app_private.executions (
@@ -609,6 +707,7 @@ export const createPostgresExecutionRepository = (
         instagram_comment_id,
         delivery_channel,
         message_text,
+        quick_reply_options,
         commenter_instagram_id,
         commenter_username,
         comment_text,
@@ -622,6 +721,7 @@ export const createPostgresExecutionRepository = (
         requested.instagram_comment_id,
         requested.delivery_channel,
         requested.message_text,
+        requested.quick_reply_options,
         requested.commenter_instagram_id,
         requested.commenter_username,
         requested.comment_text,
@@ -634,6 +734,7 @@ export const createPostgresExecutionRepository = (
         instagram_comment_id text,
         delivery_channel text,
         message_text text,
+        quick_reply_options jsonb,
         commenter_instagram_id text,
         commenter_username text,
         comment_text text,
@@ -653,6 +754,7 @@ export const createPostgresExecutionRepository = (
         instagram_comment_id,
         delivery_channel,
         message_text,
+        quick_reply_options,
         commenter_instagram_id,
         commenter_username,
         comment_text,
@@ -665,6 +767,7 @@ export const createPostgresExecutionRepository = (
         ${input.instagramCommentId},
         ${input.deliveryChannel},
         ${input.messageText},
+        ${sql.json(input.quickReplyOptions ?? [])},
         ${input.commenterInstagramId},
         ${input.commenterUsername},
         ${input.commentText},
@@ -878,7 +981,12 @@ export const createPostgresExecutionRepository = (
     return rows[0] ? toExecution(rows[0]) : null;
   },
 
-  async markSucceeded(executionId, leaseId, providerReplyId): Promise<Execution | null> {
+  async markSucceeded(
+    executionId,
+    leaseId,
+    providerReplyId,
+    recipientIgsid,
+  ): Promise<Execution | null> {
     if (providerReplyId.trim() === '') throw new TypeError('Provider reply ID must be non-empty');
     const rows = await sql<ExecutionRow[]>`
       update app_private.executions
@@ -888,6 +996,7 @@ export const createPostgresExecutionRepository = (
         error_message = null,
         failure_kind = null,
         provider_reply_id = ${providerReplyId},
+        recipient_igsid = ${recipientIgsid ?? null},
         next_attempt_at = null,
         lease_id = null,
         lease_expires_at = null
@@ -898,5 +1007,400 @@ export const createPostgresExecutionRepository = (
     `;
 
     return rows[0] ? toExecution(rows[0]) : null;
+  },
+});
+
+/** Creates durable persistence for incoming Instagram answers and their one-step branch messages. */
+export const createPostgresDmConversationRepository = (
+  sql: PostgresQueryClient,
+): DmConversationRepository => ({
+  async recordInboundAnswer(input) {
+    const alreadyRecorded = await sql<InboundDmAnswerRow[]>`
+      select * from app_private.inbound_dm_answers
+      where account_id = ${input.accountId}
+        and provider_message_id = ${input.providerMessageId}
+      limit 1
+    `;
+    if (alreadyRecorded[0]) {
+      const followups = await sql<DmFollowupRow[]>`
+        select * from app_private.dm_followups where answer_id = ${alreadyRecorded[0].id} limit 1
+      `;
+      return {
+        answer: toInboundDmAnswer(alreadyRecorded[0]),
+        followup: followups[0] ? toDmFollowup(followups[0]) : null,
+        duplicate: true,
+      };
+    }
+    const pendingPrompts = await sql<{ id: string }[]>`
+      select execution.id
+      from app_private.executions as execution
+      inner join app_private.automations as automation on automation.id = execution.automation_id
+      where automation.account_id = ${input.accountId}
+        and execution.delivery_channel = 'private'
+        and execution.status = ${EXECUTION_STATUS.SUCCEEDED}
+        and execution.recipient_igsid = ${input.senderIgsid}
+        and execution.quick_reply_options <> '[]'::jsonb
+        and (
+          ${input.quickReplyPayload}::text is not null
+          or (
+            ${input.text}::text is not null
+            and ${input.sentAt} >= coalesce(execution.dispatch_started_at, execution.updated_at)
+            and ${input.sentAt} <
+              coalesce(execution.dispatch_started_at, execution.updated_at) + interval '24 hours'
+          )
+        )
+        and not exists (
+          select 1 from app_private.inbound_dm_answers as answer
+          where answer.execution_id = execution.id
+        )
+      limit 1
+    `;
+    if (pendingPrompts.length === 0) return null;
+    const match = input.quickReplyPayload?.match(
+      /^qr:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+    );
+    const executionId = match?.[1] ?? null;
+    const optionId = match?.[2] ?? null;
+    const rows = await sql<InboundDmAnswerRow[]>`
+      with possible as (
+        select execution.id, execution.quick_reply_options,
+          count(*) over () as match_count
+        from app_private.executions as execution
+        inner join app_private.automations as automation on automation.id = execution.automation_id
+        where automation.account_id = ${input.accountId}
+          and execution.delivery_channel = 'private'
+          and execution.status = ${EXECUTION_STATUS.SUCCEEDED}
+          and execution.recipient_igsid = ${input.senderIgsid}
+          and execution.quick_reply_options <> '[]'::jsonb
+          and not exists (
+            select 1 from app_private.inbound_dm_answers as answer
+            where answer.execution_id = execution.id
+          )
+          and (
+            (
+              ${executionId}::uuid is not null
+              and execution.id = ${executionId}::uuid
+              and exists (
+                select 1 from jsonb_array_elements(execution.quick_reply_options) as option_value
+                where option_value->>'id' = ${optionId}
+              )
+            )
+            or (
+              ${input.quickReplyPayload}::text is null
+              and ${input.text}::text is not null
+              and ${input.sentAt} >= coalesce(execution.dispatch_started_at, execution.updated_at)
+              and ${input.sentAt} <
+                coalesce(execution.dispatch_started_at, execution.updated_at) + interval '24 hours'
+            )
+          )
+      ), selected as (
+        select id from possible where match_count = 1
+      ), inserted as (
+        insert into app_private.inbound_dm_answers (
+          account_id, execution_id, provider_message_id, sender_igsid,
+          option_id, text, sent_at, received_at
+        ) values (
+          ${input.accountId},
+          (select id from selected),
+          ${input.providerMessageId},
+          ${input.senderIgsid},
+          case when (select id from selected) is not null then ${optionId}::uuid else null end,
+          ${input.text},
+          ${input.sentAt},
+          ${input.receivedAt}
+        )
+        on conflict do nothing
+        returning *
+      ), queued as (
+        insert into app_private.dm_followups (
+          account_id, answer_id, recipient_igsid, message_text, expires_at
+        )
+        select answer.account_id, answer.id, answer.sender_igsid,
+          option_value->>'followUpText', answer.sent_at + interval '24 hours'
+        from inserted as answer
+        inner join app_private.executions as execution on execution.id = answer.execution_id
+        cross join lateral jsonb_array_elements(execution.quick_reply_options) as option_value
+        where answer.option_id is not null
+          and option_value->>'id' = answer.option_id::text
+        on conflict (answer_id) do nothing
+        returning id
+      )
+      select * from inserted
+    `;
+    let answer = rows[0];
+    let duplicate = false;
+    if (!answer) {
+      const existing = await sql<InboundDmAnswerRow[]>`
+        select * from app_private.inbound_dm_answers
+        where account_id = ${input.accountId}
+          and provider_message_id = ${input.providerMessageId}
+        limit 1
+      `;
+      answer = existing[0];
+      duplicate = answer !== undefined;
+    }
+    if (!answer) {
+      const unmatched = await sql<InboundDmAnswerRow[]>`
+        insert into app_private.inbound_dm_answers (
+          account_id, provider_message_id, sender_igsid, text, sent_at, received_at
+        ) values (
+          ${input.accountId}, ${input.providerMessageId}, ${input.senderIgsid},
+          ${input.text}, ${input.sentAt}, ${input.receivedAt}
+        )
+        on conflict (account_id, provider_message_id) do nothing
+        returning *
+      `;
+      answer = unmatched[0];
+    }
+    if (!answer) {
+      const existing = await sql<InboundDmAnswerRow[]>`
+        select * from app_private.inbound_dm_answers
+        where account_id = ${input.accountId}
+          and provider_message_id = ${input.providerMessageId}
+        limit 1
+      `;
+      answer = existing[0];
+      duplicate = true;
+    }
+    if (!answer) throw new Error('Inbound DM answer was not persisted');
+    const followupRows = await sql<DmFollowupRow[]>`
+      select * from app_private.dm_followups where answer_id = ${answer.id} limit 1
+    `;
+    return {
+      answer: toInboundDmAnswer(answer),
+      followup: followupRows[0] ? toDmFollowup(followupRows[0]) : null,
+      duplicate,
+    };
+  },
+
+  async claimFollowup(id, now, leaseUntil) {
+    const rows = await sql<DmFollowupClaimRow[]>`
+      with candidate as (
+        select followup.id
+        from app_private.dm_followups as followup
+        inner join app_private.instagram_accounts as account on account.id = followup.account_id
+        where followup.id = ${id}
+          and followup.status = 'pending'
+          and followup.expires_at > ${leaseUntil}
+          and account.connection_status = 'active'
+        for update of followup skip locked
+      ), claimed as (
+        update app_private.dm_followups as followup
+        set status = ${EXECUTION_STATUS.PROCESSING},
+          attempt_count = followup.attempt_count + 1,
+          lease_id = gen_random_uuid(), lease_expires_at = ${leaseUntil},
+          dispatch_started_at = null
+        from candidate
+        where followup.id = candidate.id
+        returning followup.*
+      )
+      select claimed.*, account.access_token_ciphertext, account.instagram_user_id
+      from claimed
+      inner join app_private.instagram_accounts as account on account.id = claimed.account_id
+    `;
+    return rows[0] ? toDmFollowupClaim(rows[0]) : null;
+  },
+
+  async claimDueFollowups(now, leaseUntil, limit) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+      throw new RangeError('Follow-up batch limit must be from 1 through 50');
+    const rows = await sql<DmFollowupClaimRow[]>`
+      with candidates as (
+        select followup.id
+        from app_private.dm_followups as followup
+        inner join app_private.instagram_accounts as account on account.id = followup.account_id
+        where account.connection_status = 'active'
+          and followup.expires_at > ${leaseUntil}
+          and followup.attempt_count < 3
+          and (
+            followup.status = 'pending'
+            or (
+              followup.status = ${EXECUTION_STATUS.RETRY_PENDING}
+              and followup.next_attempt_at <= ${now}
+            )
+            or (
+              followup.status = ${EXECUTION_STATUS.PROCESSING}
+              and followup.dispatch_started_at is null
+              and followup.lease_expires_at <= ${now}
+            )
+          )
+        order by coalesce(followup.next_attempt_at, followup.lease_expires_at, followup.created_at), followup.id
+        limit ${limit}
+        for update of followup skip locked
+      ), claimed as (
+        update app_private.dm_followups as followup
+        set status = ${EXECUTION_STATUS.PROCESSING},
+          attempt_count = followup.attempt_count + 1,
+          next_attempt_at = null,
+          lease_id = gen_random_uuid(), lease_expires_at = ${leaseUntil},
+          dispatch_started_at = null,
+          error_code = null, error_message = null, failure_kind = null
+        from candidates
+        where followup.id = candidates.id
+        returning followup.*
+      )
+      select claimed.*, account.access_token_ciphertext, account.instagram_user_id
+      from claimed
+      inner join app_private.instagram_accounts as account on account.id = claimed.account_id
+    `;
+    return rows.map(toDmFollowupClaim);
+  },
+
+  async resolveStaleFollowups(now) {
+    const rows = await sql<{ id: string }[]>`
+      update app_private.dm_followups
+      set status = case
+            when dispatch_started_at is not null then ${EXECUTION_STATUS.UNCERTAIN}
+            else ${EXECUTION_STATUS.FAILED}
+          end,
+          failure_kind = case
+            when dispatch_started_at is not null then ${RECOVERY_KIND.UNCERTAIN}
+            else ${RECOVERY_KIND.PERMANENT}
+          end,
+          error_code = case
+            when dispatch_started_at is not null then 'DELIVERY_OUTCOME_UNKNOWN'
+            else 'FOLLOWUP_WINDOW_EXPIRED'
+          end,
+          error_message = case
+            when dispatch_started_at is not null
+              then 'Delivery requires manual review to prevent a duplicate message.'
+            else 'The messaging window expired before the follow-up could be sent.'
+          end,
+          next_attempt_at = null, lease_id = null, lease_expires_at = null
+      where (
+        status in ('pending', ${EXECUTION_STATUS.RETRY_PENDING}) and expires_at <= ${now}
+      ) or (
+        status = ${EXECUTION_STATUS.PROCESSING}
+        and lease_expires_at <= ${now}
+        and (dispatch_started_at is not null or attempt_count >= 3 or expires_at <= ${now})
+      )
+      returning id
+    `;
+    return rows.length;
+  },
+
+  async markFollowupDispatchStarted(id, leaseId, at) {
+    const rows = await sql<{ id: string }[]>`
+      update app_private.dm_followups
+      set dispatch_started_at = ${at}
+      where id = ${id} and status = ${EXECUTION_STATUS.PROCESSING}
+        and lease_id = ${leaseId} and expires_at > ${at}
+      returning id
+    `;
+    return rows.length === 1;
+  },
+
+  async markFollowupSucceeded(id, leaseId, providerReplyId) {
+    if (providerReplyId.trim() === '') throw new TypeError('Provider reply ID must be non-empty');
+    const rows = await sql<DmFollowupRow[]>`
+      update app_private.dm_followups
+      set status = ${EXECUTION_STATUS.SUCCEEDED},
+        provider_reply_id = ${providerReplyId},
+        error_code = null, error_message = null, failure_kind = null,
+        next_attempt_at = null, lease_id = null, lease_expires_at = null
+      where id = ${id} and status = ${EXECUTION_STATUS.PROCESSING} and lease_id = ${leaseId}
+      returning *
+    `;
+    return rows[0] ? toDmFollowup(rows[0]) : null;
+  },
+
+  async markFollowupRetryPending(id, leaseId, failure, retryAt) {
+    if (failure.errorCode.trim() === '' || failure.errorMessage.trim() === '')
+      throw new TypeError('Follow-up failure code and message must be non-empty');
+    const rows = await sql<DmFollowupRow[]>`
+      update app_private.dm_followups
+      set status = case
+          when ${retryAt}::timestamptz < expires_at and attempt_count < 3
+            then ${EXECUTION_STATUS.RETRY_PENDING}
+          else ${EXECUTION_STATUS.FAILED}
+        end,
+        error_code = case
+          when ${retryAt}::timestamptz < expires_at and attempt_count < 3
+            then ${failure.errorCode}
+          else 'FOLLOWUP_WINDOW_EXPIRED'
+        end,
+        error_message = case
+          when ${retryAt}::timestamptz < expires_at and attempt_count < 3
+            then ${failure.errorMessage}
+          else 'The messaging window expired before a safe retry.'
+        end,
+        failure_kind = case
+          when ${retryAt}::timestamptz < expires_at and attempt_count < 3
+            then ${failure.failureKind}
+          else ${RECOVERY_KIND.PERMANENT}
+        end,
+        next_attempt_at = case
+          when ${retryAt}::timestamptz < expires_at and attempt_count < 3
+            then ${retryAt}
+          else null
+        end,
+        lease_id = null, lease_expires_at = null, dispatch_started_at = null
+      where id = ${id} and status = ${EXECUTION_STATUS.PROCESSING} and lease_id = ${leaseId}
+      returning *
+    `;
+    return rows[0] ? toDmFollowup(rows[0]) : null;
+  },
+
+  async markFollowupFailed(id, leaseId, failure) {
+    if (failure.errorCode.trim() === '' || failure.errorMessage.trim() === '')
+      throw new TypeError('Follow-up failure code and message must be non-empty');
+    const rows = await sql<DmFollowupRow[]>`
+      update app_private.dm_followups
+      set status = ${EXECUTION_STATUS.FAILED},
+        error_code = ${failure.errorCode}, error_message = ${failure.errorMessage},
+        failure_kind = ${failure.failureKind}, next_attempt_at = null,
+        lease_id = null, lease_expires_at = null
+      where id = ${id} and status = ${EXECUTION_STATUS.PROCESSING} and lease_id = ${leaseId}
+      returning *
+    `;
+    return rows[0] ? toDmFollowup(rows[0]) : null;
+  },
+
+  async markFollowupUncertain(id, leaseId, failure) {
+    if (failure.errorCode.trim() === '' || failure.errorMessage.trim() === '')
+      throw new TypeError('Follow-up failure code and message must be non-empty');
+    const rows = await sql<DmFollowupRow[]>`
+      update app_private.dm_followups
+      set status = ${EXECUTION_STATUS.UNCERTAIN},
+        error_code = ${failure.errorCode}, error_message = ${failure.errorMessage},
+        failure_kind = ${failure.failureKind}, next_attempt_at = null,
+        lease_id = null, lease_expires_at = null
+      where id = ${id} and status = ${EXECUTION_STATUS.PROCESSING} and lease_id = ${leaseId}
+      returning *
+    `;
+    return rows[0] ? toDmFollowup(rows[0]) : null;
+  },
+
+  async listRecentAnswersByAccountId(accountId, limit, mediaId) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+      throw new RangeError('Answer activity limit must be from 1 through 50');
+    const answers = await sql<InboundDmAnswerActivityRow[]>`
+      select answer.*, execution.commenter_username, execution.media_id,
+        (
+          select option_value->>'title'
+          from jsonb_array_elements(execution.quick_reply_options) as option_value
+          where option_value->>'id' = answer.option_id::text
+          limit 1
+        ) as choice_title
+      from app_private.inbound_dm_answers as answer
+      left join app_private.executions as execution on execution.id = answer.execution_id
+      where answer.account_id = ${accountId}
+        and (${mediaId ?? null}::text is null or execution.media_id = ${mediaId ?? null})
+      order by answer.received_at desc, answer.id desc
+      limit ${limit}
+    `;
+    if (answers.length === 0) return [];
+    const followups = await sql<DmFollowupRow[]>`
+      select * from app_private.dm_followups
+      where answer_id in ${sql(answers.map((answer) => answer.id))}
+    `;
+    const byAnswer = new Map(followups.map((followup) => [followup.answer_id, followup]));
+    return answers.map((answer) => ({
+      answer: toInboundDmAnswer(answer),
+      followup: byAnswer.has(answer.id) ? toDmFollowup(byAnswer.get(answer.id)!) : null,
+      choiceTitle: answer.choice_title,
+      commenterUsername: answer.commenter_username,
+      mediaId: answer.media_id,
+    }));
   },
 });

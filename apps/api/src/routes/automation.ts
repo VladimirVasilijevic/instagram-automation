@@ -19,11 +19,18 @@ import {
 } from '../middleware/session.js';
 import type { TokenProtector } from '../security/token-protector.js';
 
+const quickReplyOptionSchema = z.object({
+  id: z.uuid(),
+  title: z.string().trim().min(1).max(20),
+  followUpText: z.string().trim().min(1).max(1000),
+});
+
 const automationSchema = z.object({
   deliveryMode: z.enum(DELIVERY_MODE),
   enabled: z.boolean(),
   mediaId: z.string(),
   privateReplyText: z.string().nullable(),
+  quickReplyOptions: z.array(quickReplyOptionSchema),
   replyText: z.string(),
   triggerMode: z.enum(TRIGGER_MODE),
   triggerText: z.string().nullable(),
@@ -35,6 +42,7 @@ const saveAutomationSchema = z
     enabled: z.boolean(),
     mediaId: z.string().trim().min(1),
     privateReplyText: z.string().trim().max(1000).nullable(),
+    quickReplyOptions: z.array(quickReplyOptionSchema).max(13).default([]),
     replyText: z.string().trim().max(2200),
     triggerMode: z.enum(TRIGGER_MODE),
     triggerText: z.string().trim().max(100).nullable(),
@@ -85,6 +93,23 @@ const saveAutomationSchema = z
         code: 'custom',
         path: ['privateReplyText'],
         message: 'Private reply must be null',
+      });
+    }
+    if (value.deliveryMode === DELIVERY_MODE.PUBLIC && value.quickReplyOptions.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['quickReplyOptions'],
+        message: 'Quick replies require a private message',
+      });
+    }
+    if (
+      new Set(value.quickReplyOptions.map((option) => option.id)).size !==
+      value.quickReplyOptions.length
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['quickReplyOptions'],
+        message: 'Quick reply IDs must be unique',
       });
     }
   });
@@ -164,6 +189,7 @@ const toAutomationResponse = (automation: Automation) => ({
   enabled: automation.enabled,
   mediaId: automation.mediaId,
   privateReplyText: automation.privateReplyText,
+  quickReplyOptions: automation.quickReplyOptions ?? [],
   replyText: automation.replyText,
   triggerMode: automation.triggerMode,
   triggerText: automation.triggerText,
@@ -265,6 +291,7 @@ export const registerAutomationRoutes = (
         await dependencies.instagramWebhookClient.subscribeToComments({
           accessToken,
           instagramUserId: account.instagramUserId,
+          includeMessages: parsedInput.data.quickReplyOptions.length > 0,
         });
       } catch (error) {
         const authenticationRejected =

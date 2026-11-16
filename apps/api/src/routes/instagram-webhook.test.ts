@@ -93,8 +93,21 @@ const createFixture = () => {
     markSucceeded: vi.fn(),
     markUncertain: vi.fn(),
   };
+  const dmConversationRepository = {
+    recordInboundAnswer: vi.fn(),
+    claimFollowup: vi.fn(),
+    claimDueFollowups: vi.fn(),
+    resolveStaleFollowups: vi.fn(),
+    markFollowupDispatchStarted: vi.fn(),
+    markFollowupSucceeded: vi.fn(),
+    markFollowupRetryPending: vi.fn(),
+    markFollowupFailed: vi.fn(),
+    markFollowupUncertain: vi.fn(),
+    listRecentAnswersByAccountId: vi.fn().mockResolvedValue([]),
+  };
   const app = createApp({
     automationRepository,
+    dmConversationRepository,
     executionRepository,
     database: { checkHealth: vi.fn() },
     instagramAuth: {
@@ -114,6 +127,7 @@ const createFixture = () => {
       accountRepository,
       appSecret,
       instagramCommentReplyClient,
+      instagramDirectMessageClient: { sendDirectMessage: vi.fn() },
       instagramPrivateReplyClient,
       tokenProtector,
       verifyToken,
@@ -130,6 +144,7 @@ const createFixture = () => {
     instagramWebhookClient,
     instagramCommentReplyClient,
     executionRepository,
+    dmConversationRepository,
     logger,
   };
 };
@@ -163,6 +178,11 @@ describe('Instagram webhook routes', () => {
     await expect(response.text()).resolves.toBe('EVENT_RECEIVED');
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
       commentEventCount: 1,
+      messageEventCount: 0,
+      messageDuplicateCount: 0,
+      messageFollowupStartedCount: 0,
+      messageIgnoredCount: 0,
+      messageRecordedCount: 0,
       duplicateCount: 0,
       failedCount: 0,
       ignoredAccountNotConnectedCount: 1,
@@ -243,6 +263,11 @@ describe('Instagram webhook routes', () => {
     );
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
       commentEventCount: 1,
+      messageEventCount: 0,
+      messageDuplicateCount: 0,
+      messageFollowupStartedCount: 0,
+      messageIgnoredCount: 0,
+      messageRecordedCount: 0,
       duplicateCount: 0,
       failedCount: 0,
       ignoredAccountNotConnectedCount: 0,
@@ -274,6 +299,11 @@ describe('Instagram webhook routes', () => {
     expect(f.accountRepository.findByInstagramUserId).not.toHaveBeenCalled();
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
       commentEventCount: 0,
+      messageEventCount: 0,
+      messageDuplicateCount: 0,
+      messageFollowupStartedCount: 0,
+      messageIgnoredCount: 0,
+      messageRecordedCount: 0,
       duplicateCount: 0,
       failedCount: 0,
       ignoredAccountNotConnectedCount: 0,
@@ -289,6 +319,50 @@ describe('Instagram webhook routes', () => {
       unsupportedOtherEntryEventCount: 0,
     });
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('private message body');
+  });
+
+  it('records a signed incoming quick reply without logging its payload', async () => {
+    const f = createFixture();
+    f.accountRepository.findByInstagramUserId.mockResolvedValue(account);
+    f.dmConversationRepository.recordInboundAnswer.mockResolvedValue({
+      answer: { id: 'answer-id' },
+      followup: null,
+      duplicate: false,
+    });
+    const body = JSON.stringify({
+      object: 'instagram',
+      entry: [
+        {
+          id: account.instagramUserId,
+          messaging: [
+            {
+              sender: { id: 'customer-igsid' },
+              recipient: { id: account.instagramUserId },
+              timestamp: 1_767_000_000_000,
+              message: {
+                mid: 'mid-1',
+                text: 'Yes',
+                quick_reply: { payload: 'private-choice-payload' },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const response = await f.app.request('/api/webhooks/instagram', {
+      method: 'POST',
+      headers: { 'x-hub-signature-256': signature(body) },
+      body,
+    });
+    expect(response.status).toBe(200);
+    expect(f.dmConversationRepository.recordInboundAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: account.id,
+        providerMessageId: 'mid-1',
+        quickReplyPayload: 'private-choice-payload',
+      }),
+    );
+    expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('private-choice-payload');
   });
 
   it('rejects unsigned, malformed, and invalid comment deliveries safely', async () => {
@@ -335,6 +409,7 @@ describe('Instagram webhook routes', () => {
     expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith({
       accessToken: 'private-access-token',
       instagramUserId: account.instagramUserId,
+      includeMessages: false,
     });
   });
 });

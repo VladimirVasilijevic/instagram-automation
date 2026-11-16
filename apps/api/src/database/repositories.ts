@@ -240,6 +240,16 @@ export interface SessionRepository {
   findActiveByTokenHash(tokenHash: SessionTokenHash): Promise<AuthenticatedSession | null>;
 }
 
+/** Stable, owner-configured choice and the single message sent when it is selected. */
+export type QuickReplyOption = {
+  /** Stable identifier embedded in the quick-reply payload. */
+  id: string;
+  /** Short button title shown to the Instagram recipient. */
+  title: string;
+  /** Single message sent after the recipient selects this choice. */
+  followUpText: string;
+};
+
 /** Persisted automation configuration for one connected Instagram account. */
 export interface Automation {
   /** Internal account identifier that owns the automation. */
@@ -262,6 +272,9 @@ export interface Automation {
 
   /** Configured private reply sent for a matching comment. */
   privateReplyText: string | null;
+
+  /** Choices offered with a private reply, or an empty array for text-only delivery. */
+  quickReplyOptions?: QuickReplyOption[];
 
   /** Configured public reply sent for a matching comment. */
   replyText: string;
@@ -295,6 +308,9 @@ export interface SaveAutomationInput {
 
   /** Configured private reply sent for a matching comment. */
   privateReplyText: string | null;
+
+  /** Choices offered with a private reply, or an empty array for text-only delivery. */
+  quickReplyOptions?: QuickReplyOption[];
 
   /** Owner-configured text used by exact and contains rules, or null for every comment. */
   triggerText: string | null;
@@ -378,6 +394,12 @@ export interface Execution {
   /** Immutable message text used by initial delivery and controlled retries. */
   messageText: string;
 
+  /** Immutable choice configuration used by initial delivery and controlled retries. */
+  quickReplyOptions?: QuickReplyOption[];
+
+  /** Meta-scoped DM recipient returned after confirmed private delivery. */
+  recipientIgsid?: string | null;
+
   /** Opaque ownership token for the currently processing attempt. */
   leaseId: string | null;
 
@@ -422,6 +444,9 @@ export interface ClaimExecutionInput {
 
   /** Immutable message text for initial delivery and retries. */
   messageText: string;
+
+  /** Immutable choice configuration for initial delivery and retries. */
+  quickReplyOptions?: QuickReplyOption[];
 
   /** Expiry of the initial processing lease. */
   leaseExpiresAt: Date;
@@ -521,5 +546,170 @@ export interface ExecutionRepository {
     executionId: string,
     leaseId: string,
     providerReplyId: string,
+    recipientIgsid?: string | null,
   ): Promise<Execution | null>;
+}
+
+/** One incoming answer or an unmatched typed message saved for owner review. */
+export interface InboundDmAnswer {
+  /** Internal answer identifier. */
+  id: string;
+  /** Connected account that received the answer. */
+  accountId: string;
+  /** Matched private-reply execution, when unambiguous. */
+  executionId: string | null;
+  /** Meta message identifier used to deduplicate webhooks. */
+  providerMessageId: string;
+  /** Instagram-scoped sender identifier. */
+  senderIgsid: string;
+  /** Selected choice identifier, if this was a quick reply. */
+  optionId: string | null;
+  /** Typed message text, if present. */
+  text: string | null;
+  /** Time Meta says the message was sent. */
+  sentAt: Date;
+  /** Time the application received the message. */
+  receivedAt: Date;
+}
+
+/** Validated values from an authenticated Instagram message webhook. */
+export interface RecordInboundDmAnswerInput {
+  /** Connected account that received the webhook. */
+  accountId: string;
+  /** Meta message identifier. */
+  providerMessageId: string;
+  /** Instagram-scoped sender identifier. */
+  senderIgsid: string;
+  /** Typed message text, if present. */
+  text: string | null;
+  /** Quick-reply payload, if the recipient selected a choice. */
+  quickReplyPayload: string | null;
+  /** Time Meta says the message was sent. */
+  sentAt: Date;
+  /** Time the application received the webhook. */
+  receivedAt: Date;
+}
+
+/** Status of one choice-triggered normal DM. */
+export type DmFollowupStatus = 'pending' | ExecutionStatus;
+
+/** Durable follow-up message with a strict messaging-window deadline. */
+export interface DmFollowup {
+  /** Internal follow-up identifier. */
+  id: string;
+  /** Connected account sending the follow-up. */
+  accountId: string;
+  /** Answer that requested this follow-up. */
+  answerId: string;
+  /** Instagram-scoped recipient identifier. */
+  recipientIgsid: string;
+  /** Configured message to send. */
+  messageText: string;
+  /** Messaging-window deadline. */
+  expiresAt: Date;
+  /** Current delivery state. */
+  status: DmFollowupStatus;
+  /** Number of delivery attempts already claimed. */
+  attemptCount: number;
+  /** Earliest next retry time, if applicable. */
+  nextAttemptAt: Date | null;
+  /** Identifier of the current delivery lease. */
+  leaseId: string | null;
+  /** Time the current lease ends. */
+  leaseExpiresAt: Date | null;
+  /** Time a provider request began, if it did. */
+  dispatchStartedAt: Date | null;
+  /** Confirmed Meta message identifier, if delivery succeeded. */
+  providerReplyId: string | null;
+  /** Safe failure category. */
+  failureKind: RecoveryKind | null;
+  /** Safe application or provider error code. */
+  errorCode: string | null;
+  /** Safe failure description. */
+  errorMessage: string | null;
+  /** Time the follow-up was queued. */
+  createdAt: Date;
+  /** Time the row was last updated. */
+  updatedAt: Date;
+}
+
+/** Follow-up leased for delivery together with protected provider credentials. */
+export interface DmFollowupClaim {
+  /** Leased follow-up message. */
+  followup: DmFollowup;
+  /** Encrypted token decrypted only during delivery. */
+  accessTokenCiphertext: ProtectedToken;
+  /** Professional Instagram account identifier. */
+  instagramUserId: string;
+}
+
+/** A deduplicated inbound answer and its optional branch message. */
+export interface RecordInboundDmAnswerResult {
+  /** Saved incoming answer. */
+  answer: InboundDmAnswer;
+  /** Follow-up queued for a selected choice, if any. */
+  followup: DmFollowup | null;
+  /** Whether this Meta message was previously recorded. */
+  duplicate: boolean;
+}
+
+/** Owner-visible answer context without exposing Instagram-scoped sender IDs. */
+export interface DmAnswerActivity {
+  /** Saved answer. */
+  answer: InboundDmAnswer;
+  /** Follow-up state for a selected choice. */
+  followup: DmFollowup | null;
+  /** Choice title from the execution snapshot, if selected. */
+  choiceTitle: string | null;
+  /** Original commenter's username, if available. */
+  commenterUsername: string | null;
+  /** Original Instagram media identifier, if available. */
+  mediaId: string | null;
+}
+
+/** Persistence for incoming Instagram answers and recipient-addressed follow-ups. */
+export interface DmConversationRepository {
+  /** Saves a webhook once, matches a prompt, and enqueues one branch atomically. */
+  recordInboundAnswer(
+    input: RecordInboundDmAnswerInput,
+  ): Promise<RecordInboundDmAnswerResult | null>;
+  /** Claims one newly queued follow-up for immediate delivery. */
+  claimFollowup(id: string, now: Date, leaseUntil: Date): Promise<DmFollowupClaim | null>;
+  /** Claims due recovery work without duplicating concurrent workers. */
+  claimDueFollowups(now: Date, leaseUntil: Date, limit: number): Promise<DmFollowupClaim[]>;
+  /** Resolves expired leases and messaging windows. */
+  resolveStaleFollowups(now: Date): Promise<number>;
+  /** Records the irreversible boundary before calling Meta. */
+  markFollowupDispatchStarted(id: string, leaseId: string, at: Date): Promise<boolean>;
+  /** Completes a confirmed normal DM. */
+  markFollowupSucceeded(
+    id: string,
+    leaseId: string,
+    providerReplyId: string,
+  ): Promise<DmFollowup | null>;
+  /** Schedules an explicitly safe retry inside the messaging window. */
+  markFollowupRetryPending(
+    id: string,
+    leaseId: string,
+    failure: ExecutionFailure,
+    retryAt: Date,
+  ): Promise<DmFollowup | null>;
+  /** Stops after an unrecoverable provider rejection. */
+  markFollowupFailed(
+    id: string,
+    leaseId: string,
+    failure: ExecutionFailure,
+  ): Promise<DmFollowup | null>;
+  /** Stops after a possible send whose result is unknown. */
+  markFollowupUncertain(
+    id: string,
+    leaseId: string,
+    failure: ExecutionFailure,
+  ): Promise<DmFollowup | null>;
+  /** Lists recent answers and branch results owned by one account. */
+  listRecentAnswersByAccountId(
+    accountId: string,
+    limit: number,
+    mediaId?: string,
+  ): Promise<DmAnswerActivity[]>;
 }

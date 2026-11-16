@@ -7,6 +7,7 @@ import { createPostgresOAuthStateRepository } from './postgres-oauth-states.js';
 import {
   createPostgresAccountRepository,
   createPostgresAutomationRepository,
+  createPostgresDmConversationRepository,
   createPostgresExecutionRepository,
   createPostgresMaintenanceHealthRepository,
   createPostgresSessionRepository,
@@ -15,6 +16,7 @@ import {
 import type {
   AccountRepository,
   AutomationRepository,
+  DmConversationRepository,
   ExecutionRepository,
   MaintenanceHealthRepository,
   SessionRepository,
@@ -49,6 +51,9 @@ export interface Database extends DatabaseHealthChecker {
 
   /** PostgreSQL-backed execution and recent-activity persistence. */
   executionRepository: ExecutionRepository;
+
+  /** PostgreSQL-backed incoming answers and branch-message persistence. */
+  dmConversationRepository: DmConversationRepository;
 
   /** PostgreSQL-backed expiring-token maintenance persistence. */
   tokenRefreshRepository: TokenRefreshRepository;
@@ -89,6 +94,10 @@ export const createDatabase = (connectionString: string): Database => {
     close: () => operationGate.run(async () => sql.end({ timeout: 5 })),
     executionRepository: serializeAsyncMethods(
       createPostgresExecutionRepository(sql),
+      operationGate,
+    ),
+    dmConversationRepository: serializeAsyncMethods(
+      createPostgresDmConversationRepository(sql),
       operationGate,
     ),
     maintenanceHealthRepository: serializeAsyncMethods(

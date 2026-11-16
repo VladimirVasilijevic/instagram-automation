@@ -105,6 +105,7 @@ describe('processComment', () => {
         deliveryChannel: 'public',
         mediaId: event.mediaId,
         messageText: 'Public response',
+        quickReplyOptions: [],
       }),
     ]);
     expect(f.dependencies.instagramCommentReplyClient.replyToComment).toHaveBeenCalledWith({
@@ -210,6 +211,44 @@ describe('processComment', () => {
       instagramUserId: account.instagramUserId,
       message: 'Private response',
     });
+  });
+
+  it('snapshots choices only for the private execution', async () => {
+    const f = createFixture();
+    const quickReplyOptions = [
+      { id: 'yes-id', title: 'Yes', followUpText: 'Here is more.' },
+      { id: 'no-id', title: 'No', followUpText: 'Understood.' },
+    ];
+    f.dependencies.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+      accountId: account.id,
+      deliveryMode: 'both',
+      enabled: true,
+      id: 'automation-id',
+      mediaId: event.mediaId,
+      privateReplyText: 'Would you like more?',
+      quickReplyOptions,
+      replyText: 'Check your DMs.',
+      triggerMode: 'exact',
+      triggerText: '#Hello',
+    });
+    f.dependencies.executionRepository.claimExecutions.mockResolvedValue([
+      f.publicExecution,
+      { ...f.privateExecution, messageText: 'Would you like more?', quickReplyOptions },
+    ]);
+
+    await expect(processComment(event, f.dependencies)).resolves.toEqual({ outcome: 'succeeded' });
+    expect(f.dependencies.executionRepository.claimExecutions).toHaveBeenCalledWith([
+      expect.objectContaining({ deliveryChannel: 'public', quickReplyOptions: [] }),
+      expect.objectContaining({ deliveryChannel: 'private', quickReplyOptions }),
+    ]);
+    expect(f.dependencies.instagramPrivateReplyClient.sendPrivateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quickReplies: [
+          { title: 'Yes', payload: 'qr:private-execution-id:yes-id' },
+          { title: 'No', payload: 'qr:private-execution-id:no-id' },
+        ],
+      }),
+    );
   });
 
   it('ignores nested, owner, and unmatched comments', async () => {

@@ -16,6 +16,13 @@ export interface SendPrivateReplyInput {
   commentId: string;
   /** Owner-configured private message. */
   message: string;
+  /** Optional choices presented with the private message. */
+  quickReplies?: readonly {
+    /** Button title shown to the Instagram recipient. */
+    title: string;
+    /** Opaque value returned when this button is selected. */
+    payload: string;
+  }[];
 }
 
 /** Confirmed Meta response from one private reply. */
@@ -118,7 +125,18 @@ export const createInstagramPrivateReplyClient = (
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: { text: input.message },
+          message: {
+            text: input.message,
+            ...(input.quickReplies?.length
+              ? {
+                  quick_replies: input.quickReplies.map(({ title, payload }) => ({
+                    content_type: 'text',
+                    title,
+                    payload,
+                  })),
+                }
+              : {}),
+          },
           recipient: { comment_id: input.commentId },
         }),
         redirect: 'error',

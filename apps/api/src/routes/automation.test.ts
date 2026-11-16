@@ -40,6 +40,7 @@ const responseAutomation = {
   enabled: automation.enabled,
   mediaId: automation.mediaId,
   privateReplyText: automation.privateReplyText,
+  quickReplyOptions: [],
   replyText: automation.replyText,
   triggerMode: automation.triggerMode,
   triggerText: automation.triggerText,
@@ -188,6 +189,7 @@ describe('automation configuration routes', () => {
       deliveryMode: 'public',
       mediaId: automation.mediaId,
       privateReplyText: null,
+      quickReplyOptions: [],
       replyText: automation.replyText,
       triggerMode: 'exact',
       triggerText: '#Hello',
@@ -201,6 +203,7 @@ describe('automation configuration routes', () => {
     expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith({
       accessToken: 'private-instagram-token',
       instagramUserId: account.instagramUserId,
+      includeMessages: false,
     });
     expect(f.instagramMediaClient.listRecentMedia.mock.invocationCallOrder[0]!).toBeLessThan(
       f.instagramWebhookClient.subscribeToComments.mock.invocationCallOrder[0]!,
@@ -216,6 +219,7 @@ describe('automation configuration routes', () => {
       ...automation,
       deliveryMode: 'both' as const,
       privateReplyText: 'Private response',
+      quickReplyOptions: [],
       replyText: 'Public response',
       triggerMode: 'contains' as const,
       triggerText: '#test',
@@ -243,10 +247,84 @@ describe('automation configuration routes', () => {
       enabled: true,
       mediaId: automation.mediaId,
       privateReplyText: 'Private response',
+      quickReplyOptions: [],
       replyText: 'Public response',
       triggerMode: 'contains',
       triggerText: '#test',
     });
+  });
+
+  it('validates and saves one quick reply with its follow-up text', async () => {
+    const f = createFixture();
+    const option = {
+      id: '11111111-1111-4111-8111-111111111111',
+      title: 'Yes',
+      followUpText: 'Here is more information.',
+    };
+    f.automationRepository.saveAutomation.mockResolvedValue({
+      ...automation,
+      deliveryMode: 'private',
+      privateReplyText: 'Choose an option',
+      quickReplyOptions: [option],
+    });
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: { ...f.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deliveryMode: 'private',
+        enabled: true,
+        mediaId: automation.mediaId,
+        privateReplyText: 'Choose an option',
+        quickReplyOptions: [
+          { ...option, title: ' Yes ', followUpText: ' Here is more information. ' },
+        ],
+        replyText: '',
+        triggerMode: 'exact',
+        triggerText: '#Hello',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({ quickReplyOptions: [option] }),
+    );
+    expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith({
+      accessToken: 'private-instagram-token',
+      instagramUserId: account.instagramUserId,
+      includeMessages: true,
+    });
+    await expect(response.json()).resolves.toEqual({
+      automation: expect.objectContaining({ quickReplyOptions: [option] }),
+    });
+  });
+
+  it('rejects quick replies for public-only delivery and duplicate IDs', async () => {
+    const f = createFixture();
+    const option = {
+      id: '11111111-1111-4111-8111-111111111111',
+      title: 'Yes',
+      followUpText: 'More details',
+    };
+    for (const [deliveryMode, quickReplyOptions] of [
+      ['public', [option]],
+      ['private', [option, option]],
+    ] as const) {
+      const response = await f.app.request('/api/automation', {
+        method: 'PUT',
+        headers: { ...f.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deliveryMode,
+          enabled: true,
+          mediaId: automation.mediaId,
+          privateReplyText: deliveryMode === 'private' ? 'Choose' : null,
+          quickReplyOptions,
+          replyText: deliveryMode === 'public' ? 'Reply' : '',
+          triggerMode: 'exact',
+          triggerText: '#Hello',
+        }),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
   });
 
   it('saves every-comment mode without trigger text', async () => {
@@ -278,6 +356,7 @@ describe('automation configuration routes', () => {
       enabled: false,
       mediaId: automation.mediaId,
       privateReplyText: null,
+      quickReplyOptions: [],
       replyText: 'Public response',
       triggerMode: 'all',
       triggerText: null,

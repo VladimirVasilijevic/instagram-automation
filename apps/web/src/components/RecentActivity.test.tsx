@@ -2,11 +2,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getRecentExecutions } from '../api/executions.js';
+import { getRecentDmAnswers } from '../api/dm-answers.js';
 import { RecentActivity } from './RecentActivity.js';
 
 vi.mock('../api/executions.js', () => ({ getRecentExecutions: vi.fn() }));
+vi.mock('../api/dm-answers.js', () => ({ getRecentDmAnswers: vi.fn() }));
 
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(getRecentDmAnswers).mockResolvedValue([]);
+});
 
 describe('RecentActivity', () => {
   it('renders empty and successful activity states', async () => {
@@ -67,6 +72,35 @@ describe('RecentActivity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
     expect(screen.getByText('The public reply could not be sent.')).toBeInTheDocument();
+  });
+
+  it('shows selected quick replies, typed answers, and follow-up status', async () => {
+    vi.mocked(getRecentExecutions).mockResolvedValue([]);
+    vi.mocked(getRecentDmAnswers).mockResolvedValue([
+      {
+        choiceTitle: 'Yes',
+        commenterUsername: 'customer',
+        followupStatus: 'succeeded',
+        mediaId: 'selected-post',
+        receivedAt: '2026-09-24T12:00:00.000Z',
+        typedText: null,
+      },
+      {
+        choiceTitle: null,
+        commenterUsername: 'other_customer',
+        followupStatus: null,
+        mediaId: 'selected-post',
+        receivedAt: '2026-09-24T12:01:00.000Z',
+        typedText: 'Please send details',
+      },
+    ]);
+    render(<RecentActivity selectedMediaId="selected-post" />);
+
+    expect(await screen.findByText('Selected: Yes')).toBeInTheDocument();
+    expect(screen.getByText('Typed reply: Please send details')).toBeInTheDocument();
+    expect(screen.getByText('Follow-up: Succeeded')).toBeInTheDocument();
+    expect(getRecentDmAnswers).toHaveBeenCalledOnce();
+    expect(vi.mocked(getRecentDmAnswers).mock.calls[0]?.[1]).toBe('selected-post');
   });
 
   it('explains scheduled retries and ambiguous deliveries without provider details', async () => {
@@ -148,15 +182,21 @@ describe('RecentActivity', () => {
 
     expect(await screen.findByText('@selected_user')).toBeInTheDocument();
     expect(vi.mocked(getRecentExecutions).mock.calls[0]?.[1]).toBe('selected-post');
+    await waitFor(() => expect(getRecentDmAnswers).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(getRecentDmAnswers).mock.calls[0]?.[1]).toBe('selected-post');
     fireEvent.click(screen.getByRole('button', { name: 'All recent activity' }));
     expect(await screen.findByText('@other_user')).toBeInTheDocument();
     expect(screen.getByText('@legacy_user')).toBeInTheDocument();
     expect(screen.getByText(/Some older activity is not linked to a post/)).toBeInTheDocument();
     expect(vi.mocked(getRecentExecutions).mock.calls[1]?.[1]).toBeUndefined();
+    await waitFor(() => expect(getRecentDmAnswers).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(getRecentDmAnswers).mock.calls[1]?.[1]).toBeUndefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Selected post' }));
     await waitFor(() => expect(getRecentExecutions).toHaveBeenCalledTimes(3));
     expect(vi.mocked(getRecentExecutions).mock.calls[2]?.[1]).toBe('selected-post');
+    await waitFor(() => expect(getRecentDmAnswers).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(getRecentDmAnswers).mock.calls[2]?.[1]).toBe('selected-post');
   });
 
   it('asks the user to select a post before loading selected-post activity', async () => {
@@ -165,6 +205,7 @@ describe('RecentActivity', () => {
 
     expect(await screen.findByText(/Select a post in Automation setup/)).toBeInTheDocument();
     expect(getRecentExecutions).not.toHaveBeenCalled();
+    expect(getRecentDmAnswers).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Refresh activity' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'All recent activity' }));
     await waitFor(() => expect(getRecentExecutions).toHaveBeenCalledOnce());

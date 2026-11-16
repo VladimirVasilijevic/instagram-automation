@@ -6,6 +6,7 @@ import type { InstagramMediaClient } from './instagram/media-client.js';
 import type { InstagramWebhookClient } from './instagram/webhook-client.js';
 import type {
   AutomationRepository,
+  DmConversationRepository,
   ExecutionRepository,
   SessionRepository,
   TokenRefreshRepository,
@@ -13,6 +14,7 @@ import type {
 import type { Logger } from './logging/logger.js';
 import { toSafeErrorContext } from './logging/logger.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerDmAnswerRoutes } from './routes/dm-answers.js';
 import { registerAutomationRoutes } from './routes/automation.js';
 import { registerExecutionRoutes } from './routes/executions.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -58,6 +60,8 @@ export interface InstagramSubscriptionDependencies {
 export interface AppDependencies {
   /** Account-scoped automation persistence used by configuration routes. */
   automationRepository: AutomationRepository;
+  /** Optional conversation persistence for quick-reply answers and branch messages. */
+  dmConversationRepository?: DmConversationRepository;
   /** Idempotent comment-processing persistence used by webhook delivery. */
   executionRepository: Pick<
     ExecutionRepository,
@@ -142,6 +146,10 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     context.header('Cache-Control', 'no-store');
     await next();
   });
+  app.use('/api/dm-answers', async (context, next) => {
+    context.header('Cache-Control', 'no-store');
+    await next();
+  });
   app.use('/api/maintenance-health', async (context, next) => {
     context.header('Cache-Control', 'no-store');
     await next();
@@ -189,6 +197,14 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     sessionCookie: dependencies.sessionCookie,
     sessionRepository: dependencies.sessionRepository,
   });
+  if (dependencies.dmConversationRepository) {
+    registerDmAnswerRoutes(app, {
+      dmConversationRepository: dependencies.dmConversationRepository,
+      logger: dependencies.logger,
+      sessionCookie: dependencies.sessionCookie,
+      sessionRepository: dependencies.sessionRepository,
+    });
+  }
   registerInstagramAuthRoutes(app, {
     ...dependencies.instagramAuth,
     logger: dependencies.logger,
@@ -207,6 +223,7 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
       ...dependencies.instagramWebhook,
       ...dependencies.instagramSubscription,
       automationRepository: dependencies.automationRepository,
+      dmConversationRepository: dependencies.dmConversationRepository,
       executionRepository: dependencies.executionRepository,
       logger: dependencies.logger,
       sessionCookie: dependencies.sessionCookie,

@@ -95,6 +95,7 @@ describe('automation editor', () => {
         enabled: true,
         mediaId: media[0]!.id,
         privateReplyText: null,
+        quickReplyOptions: [],
         replyText: 'Updated reply',
         triggerMode: 'exact',
         triggerText: '#Hello',
@@ -182,11 +183,44 @@ describe('automation editor', () => {
         enabled: true,
         mediaId: media[0]!.id,
         privateReplyText: 'Private message',
+        quickReplyOptions: [],
         replyText: 'Public message',
         triggerMode: 'contains',
         triggerText: '#test',
       }),
     );
+  });
+
+  it('configures a quick reply with one follow-up message', async () => {
+    vi.mocked(saveAutomation).mockImplementation(async (input) => ({
+      ...input,
+      quickReplyOptions: input.quickReplyOptions ?? [],
+    }));
+    render(<AutomationEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
+    fireEvent.click(screen.getByLabelText('Private DM only'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add quick reply' }));
+    expect(screen.getByRole('button', { name: 'Save automation' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Quick reply 1'), { target: { value: ' Yes ' } });
+    fireEvent.change(screen.getByLabelText('Follow-up for reply 1'), {
+      target: { value: ' Here is more information. ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    await waitFor(() =>
+      expect(saveAutomation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deliveryMode: 'private',
+          quickReplyOptions: [
+            { id: expect.any(String), title: 'Yes', followUpText: 'Here is more information.' },
+          ],
+        }),
+      ),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('Automation saved');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove quick reply 1' }));
+    expect(screen.queryByLabelText('Quick reply 1')).not.toBeInTheDocument();
   });
 
   it('saves every top-level comment mode without trigger text', async () => {
@@ -212,6 +246,7 @@ describe('automation editor', () => {
         enabled: true,
         mediaId: media[0]!.id,
         privateReplyText: null,
+        quickReplyOptions: [],
         replyText: 'Hello! Thanks for commenting.',
         triggerMode: 'all',
         triggerText: null,

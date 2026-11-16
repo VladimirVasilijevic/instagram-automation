@@ -7,13 +7,16 @@ import {
   processComment,
   type IgnoredCommentProcessResult,
 } from '../automation/process-comment.js';
+import { processIncomingMessage } from '../automation/process-incoming-message.js';
 import type {
   AccountRepository,
   AutomationRepository,
+  DmConversationRepository,
   ExecutionRepository,
   TokenRefreshRepository,
 } from '../database/repositories.js';
 import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
+import type { InstagramDirectMessageClient } from '../instagram/direct-message-client.js';
 import type { InstagramPrivateReplyClient } from '../instagram/private-reply-client.js';
 import type { InstagramWebhookClient } from '../instagram/webhook-client.js';
 import { InstagramWebhookError } from '../instagram/webhook-client.js';
@@ -31,15 +34,22 @@ export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDepe
   /** Resolves connected Instagram accounts during later event processing. */
   accountRepository: Pick<AccountRepository, 'findByInstagramUserId'>;
   /** Resolves enabled automations for an owner and commented media item. */
-  automationRepository: Pick<AutomationRepository, 'findEnabledByAccountAndMedia'>;
+  automationRepository: Pick<
+    AutomationRepository,
+    'findByAccountId' | 'findEnabledByAccountAndMedia'
+  >;
   /** App Secret used solely to authenticate signed webhook delivery bodies. */
   appSecret: string;
   /** Provider client that enables comments delivery for the signed-in account. */
   instagramCommentReplyClient: InstagramCommentReplyClient;
+  /** Sends one recipient-addressed follow-up after an incoming quick-reply tap. */
+  instagramDirectMessageClient?: InstagramDirectMessageClient;
   /** Provider client that sends comment-addressed private replies. */
   instagramPrivateReplyClient: InstagramPrivateReplyClient;
   /** Provider client that enables comments delivery for the signed-in account. */
   instagramWebhookClient: InstagramWebhookClient;
+  /** Persists account-owned DM answers and follow-up jobs. */
+  dmConversationRepository?: DmConversationRepository;
   /** Claims and completes idempotent comment processing records. */
   executionRepository: Pick<
     ExecutionRepository,
@@ -145,8 +155,34 @@ export const registerInstagramWebhookRoutes = (
       if (result.outcome === COMMENT_PROCESS_OUTCOME.SUCCEEDED) outcomeCounts.succeededCount += 1;
     }
     const unsupportedEventCounts = normalized.unsupportedEventCounts;
+    const messageOutcomeCounts = {
+      messageDuplicateCount: 0,
+      messageFollowupStartedCount: 0,
+      messageIgnoredCount: 0,
+      messageRecordedCount: 0,
+    };
+    for (const event of normalized.messageEvents) {
+      if (!dependencies.dmConversationRepository || !dependencies.instagramDirectMessageClient) {
+        messageOutcomeCounts.messageIgnoredCount += 1;
+        continue;
+      }
+      const outcome = await processIncomingMessage(event, {
+        accountRepository: dependencies.accountRepository,
+        dmConversationRepository: dependencies.dmConversationRepository,
+        instagramDirectMessageClient: dependencies.instagramDirectMessageClient,
+        logger: dependencies.logger,
+        tokenProtector: dependencies.tokenProtector,
+        tokenRefreshRepository: dependencies.tokenRefreshRepository,
+      });
+      if (outcome === 'duplicate') messageOutcomeCounts.messageDuplicateCount += 1;
+      if (outcome === 'followup_started') messageOutcomeCounts.messageFollowupStartedCount += 1;
+      if (outcome === 'ignored') messageOutcomeCounts.messageIgnoredCount += 1;
+      if (outcome === 'recorded') messageOutcomeCounts.messageRecordedCount += 1;
+    }
     dependencies.logger.info('Instagram webhook processed', {
       commentEventCount: normalized.events.length,
+      messageEventCount: normalized.messageEvents.length,
+      ...messageOutcomeCounts,
       ...outcomeCounts,
       ignoredAccountNotConnectedCount: ignoredReasonCounts.account_not_connected,
       ignoredConnectionInactiveCount: ignoredReasonCounts.connection_inactive,
@@ -165,9 +201,11 @@ export const registerInstagramWebhookRoutes = (
   app.post('/api/webhooks/instagram/subscription', async (context) => {
     const { account } = context.get('authenticatedSession');
     try {
+      const automation = await dependencies.automationRepository.findByAccountId(account.id);
       await dependencies.instagramWebhookClient.subscribeToComments({
         accessToken: dependencies.tokenProtector.decrypt(account.accessTokenCiphertext),
         instagramUserId: account.instagramUserId,
+        includeMessages: Boolean(automation?.quickReplyOptions?.length),
       });
       return context.body(null, 204);
     } catch (error) {

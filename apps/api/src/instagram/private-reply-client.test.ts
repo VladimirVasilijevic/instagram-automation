@@ -37,6 +37,32 @@ describe('Instagram private-reply HTTP adapter', () => {
     });
   });
 
+  it('includes text quick replies with stable payloads on a comment-addressed message', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message_id: 'message-id', recipient_id: 'recipient-id' })),
+      );
+    await createInstagramPrivateReplyClient({ apiVersion: 'v24.0' }, fetcher).sendPrivateReply({
+      ...input,
+      quickReplies: [
+        { title: 'Yes', payload: 'qr:execution-id:yes-id' },
+        { title: 'No', payload: 'qr:execution-id:no-id' },
+      ],
+    });
+
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body))).toEqual({
+      message: {
+        text: input.message,
+        quick_replies: [
+          { content_type: 'text', title: 'Yes', payload: 'qr:execution-id:yes-id' },
+          { content_type: 'text', title: 'No', payload: 'qr:execution-id:no-id' },
+        ],
+      },
+      recipient: { comment_id: input.commentId },
+    });
+  });
+
   it('reports only safe Meta diagnostics and classifies authentication rejection', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
