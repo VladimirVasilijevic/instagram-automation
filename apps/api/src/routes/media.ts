@@ -130,7 +130,7 @@ export const registerMediaRoute = (
                 mediaType: 'POST',
                 mediaUrl: null,
                 permalink: post.permalinkUrl,
-                thumbnailUrl: null,
+                thumbnailUrl: post.pictureUrl,
                 timestamp: null,
               }));
             })()

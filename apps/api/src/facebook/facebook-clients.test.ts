@@ -114,7 +114,14 @@ describe('Facebook Page adapter', () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       response({
         data: [
-          { id: 'page-1_42', message: 'New post', permalink_url: 'https://facebook.com/post/42' },
+          {
+            id: 'page-1_42',
+            message: 'New post',
+            permalink_url: 'https://facebook.com/post/42',
+            full_picture: 'https://cdn.example/post.jpg',
+          },
+          { id: 'page-1_43', message: 'Text-only post' },
+          { id: 'page-1_44', full_picture: null },
         ],
       }),
     );
@@ -122,13 +129,20 @@ describe('Facebook Page adapter', () => {
     expect(
       await client.listRecentPosts({ pageId: 'page-1', pageAccessToken: 'page-secret', limit: 12 }),
     ).toEqual([
-      { id: 'page-1_42', message: 'New post', permalinkUrl: 'https://facebook.com/post/42' },
+      {
+        id: 'page-1_42',
+        message: 'New post',
+        permalinkUrl: 'https://facebook.com/post/42',
+        pictureUrl: 'https://cdn.example/post.jpg',
+      },
+      { id: 'page-1_43', message: 'Text-only post', permalinkUrl: null, pictureUrl: null },
+      { id: 'page-1_44', message: null, permalinkUrl: null, pictureUrl: null },
     ]);
     const [url, init] = fetcher.mock.calls[0]!;
     const requestUrl = new URL(String(url));
     expect(requestUrl.origin).toBe('https://graph.facebook.com');
     expect(requestUrl.pathname).toBe('/v24.0/page-1/posts');
-    expect(requestUrl.searchParams.get('fields')).toBe('id,message,permalink_url');
+    expect(requestUrl.searchParams.get('fields')).toBe('id,message,permalink_url,full_picture');
     expect(requestUrl.searchParams.get('limit')).toBe('12');
     expect(String(url)).not.toContain('page-secret');
     expect(init?.headers).toMatchObject({ Authorization: 'Bearer page-secret' });

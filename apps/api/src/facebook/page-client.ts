@@ -30,6 +30,8 @@ export interface FacebookPagePost {
   message: string | null;
   /** Public link to the post, when Meta supplies one. */
   permalinkUrl: string | null;
+  /** Image supplied by Meta for the post attachment, when available. */
+  pictureUrl: string | null;
 }
 
 /** Page discovery and webhook subscription capabilities. */
@@ -80,6 +82,7 @@ const postsSchema = z.object({
       id: z.string().min(1),
       message: z.string().optional(),
       permalink_url: z.string().url().optional(),
+      full_picture: z.string().url().nullish(),
     }),
   ),
 });
@@ -126,7 +129,7 @@ export const createFacebookPageClient = (
     const url = new URL(
       `https://graph.facebook.com/${config.apiVersion}/${encodeURIComponent(pageId)}/posts`,
     );
-    url.searchParams.set('fields', 'id,message,permalink_url');
+    url.searchParams.set('fields', 'id,message,permalink_url,full_picture');
     url.searchParams.set('limit', String(Math.max(1, Math.min(100, Math.trunc(limit)))));
     const posts = expectFacebookResponse(
       'list_page_posts',
@@ -142,6 +145,7 @@ export const createFacebookPageClient = (
       id: post.id,
       message: post.message ?? null,
       permalinkUrl: post.permalink_url ?? null,
+      pictureUrl: post.full_picture ?? null,
     }));
   },
   async subscribeToEvents({ pageId, pageAccessToken, includeMessages }) {
