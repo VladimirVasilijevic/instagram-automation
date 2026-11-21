@@ -9,6 +9,10 @@ import type {
   ExecutionRepository,
   TokenRefreshRepository,
 } from '../database/repositories.js';
+import type { FacebookCommentReplyClient } from '../facebook/comment-reply-client.js';
+import { FacebookClientError } from '../facebook/http.js';
+import type { FacebookPrivateReplyClient } from '../facebook/private-reply-client.js';
+import type { SocialConnectionRepository } from '../database/identity-repositories.js';
 import {
   InstagramCommentReplyError,
   type InstagramCommentReplyClient,
@@ -28,6 +32,7 @@ export type ReplyDeliveryOutcome = Exclude<ExecutionStatus, typeof EXECUTION_STA
 /** Executes one leased provider attempt with conservative duplicate prevention. */
 export const deliverReply = async (
   input: {
+    provider?: 'instagram' | 'facebook';
     accountId: string;
     accessTokenCiphertext: ProtectedToken;
     commentId: string;
@@ -42,6 +47,9 @@ export const deliverReply = async (
     >;
     instagramCommentReplyClient: InstagramCommentReplyClient;
     instagramPrivateReplyClient: InstagramPrivateReplyClient;
+    facebookCommentReplyClient?: FacebookCommentReplyClient;
+    facebookPrivateReplyClient?: FacebookPrivateReplyClient;
+    socialConnectionRepository?: Pick<SocialConnectionRepository, 'markReconnectRequired'>;
     logger: Logger;
     tokenProtector: TokenProtector;
     tokenRefreshRepository: Pick<TokenRefreshRepository, 'markAccountReconnectRequired'>;
@@ -55,10 +63,13 @@ export const deliverReply = async (
   try {
     accessToken = dependencies.tokenProtector.decrypt(input.accessTokenCiphertext);
   } catch (error) {
-    dependencies.logger.error('Instagram token decryption failed', toSafeErrorContext(error));
+    dependencies.logger.error(
+      'Social connection token decryption failed',
+      toSafeErrorContext(error),
+    );
     const failed = await dependencies.executionRepository.markFailed(input.execution.id, leaseId, {
       errorCode: 'TOKEN_DECRYPTION_FAILED',
-      errorMessage: 'The Instagram connection must be repaired before replies can continue.',
+      errorMessage: 'The social connection must be repaired before replies can continue.',
       failureKind: RECOVERY_KIND.PERMANENT,
     });
     if (!failed) throw new Error('Reply execution lease ownership was lost', { cause: error });
@@ -71,75 +82,106 @@ export const deliverReply = async (
     throw new Error('Reply execution lease ownership was lost before dispatch');
 
   try {
+    const provider = input.provider ?? 'instagram';
     const result =
       input.execution.deliveryChannel === DELIVERY_CHANNEL.PUBLIC
-        ? {
-            ...(await dependencies.instagramCommentReplyClient.replyToComment({
+        ? provider === 'facebook'
+          ? await dependencies.facebookCommentReplyClient!.replyToComment({
+              pageAccessToken: accessToken,
+              commentId: input.commentId,
+              message: input.message,
+            })
+          : await dependencies.instagramCommentReplyClient.replyToComment({
               accessToken,
               commentId: input.commentId,
               message: input.message,
-            })),
-            recipientId: undefined,
-          }
-        : await dependencies.instagramPrivateReplyClient.sendPrivateReply({
-            accessToken,
-            commentId: input.commentId,
-            instagramUserId: input.instagramUserId,
-            message: input.message,
-            ...(input.execution.quickReplyOptions?.length
-              ? {
-                  quickReplies: input.execution.quickReplyOptions.map((option) => ({
-                    title: option.title,
-                    payload: `qr:${input.execution.id}:${option.id}`,
-                  })),
-                }
-              : {}),
-          });
+            })
+        : provider === 'facebook'
+          ? await dependencies.facebookPrivateReplyClient!.sendPrivateReply({
+              pageId: input.instagramUserId,
+              pageAccessToken: accessToken,
+              commentId: input.commentId,
+              message: input.message,
+              ...(input.execution.quickReplyOptions?.length
+                ? {
+                    quickReplies: input.execution.quickReplyOptions.map((option) => ({
+                      title: option.title,
+                      payload: `qr:${input.execution.id}:${option.id}`,
+                    })),
+                  }
+                : {}),
+            })
+          : await dependencies.instagramPrivateReplyClient.sendPrivateReply({
+              accessToken,
+              commentId: input.commentId,
+              instagramUserId: input.instagramUserId,
+              message: input.message,
+              ...(input.execution.quickReplyOptions?.length
+                ? {
+                    quickReplies: input.execution.quickReplyOptions.map((option) => ({
+                      title: option.title,
+                      payload: `qr:${input.execution.id}:${option.id}`,
+                    })),
+                  }
+                : {}),
+            });
     const completed = await dependencies.executionRepository.markSucceeded(
       input.execution.id,
       leaseId,
       result.replyId,
-      ...(result.recipientId ? [result.recipientId] : []),
+      ...('recipientId' in result && typeof result.recipientId === 'string'
+        ? [result.recipientId]
+        : []),
     );
     if (!completed) throw new Error('Reply execution lease ownership was lost after success');
     return EXECUTION_STATUS.SUCCEEDED;
   } catch (error) {
     const providerError =
-      error instanceof InstagramCommentReplyError || error instanceof InstagramPrivateReplyError
+      error instanceof InstagramCommentReplyError ||
+      error instanceof InstagramPrivateReplyError ||
+      error instanceof FacebookClientError
         ? error
         : null;
     const recoveryKind: RecoveryKind = providerError
       ? providerError.recoveryKind()
       : RECOVERY_KIND.UNCERTAIN;
     dependencies.logger.error(
-      'Instagram reply failed',
+      'Social reply failed',
       providerError
         ? { deliveryChannel: input.execution.deliveryChannel, ...providerError.toLogContext() }
         : { deliveryChannel: input.execution.deliveryChannel, ...toSafeErrorContext(error) },
     );
     if (recoveryKind === RECOVERY_KIND.AUTHENTICATION) {
-      await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
-        input.accountId,
-        'TOKEN_REJECTED',
-      );
+      if (input.provider === 'facebook')
+        await dependencies.socialConnectionRepository?.markReconnectRequired(
+          input.accountId,
+          'TOKEN_REJECTED',
+        );
+      else
+        await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
+          input.accountId,
+          'TOKEN_REJECTED',
+        );
     }
+    const providerName = input.provider === 'facebook' ? 'Facebook' : 'Instagram';
+    const providerCode = input.provider === 'facebook' ? 'FACEBOOK' : 'INSTAGRAM';
     const failure = {
       errorCode:
         recoveryKind === RECOVERY_KIND.UNCERTAIN
           ? 'DELIVERY_OUTCOME_UNKNOWN'
           : recoveryKind === RECOVERY_KIND.AUTHENTICATION
-            ? 'INSTAGRAM_RECONNECT_REQUIRED'
+            ? `${providerCode}_RECONNECT_REQUIRED`
             : recoveryKind === RECOVERY_KIND.RETRYABLE
-              ? 'INSTAGRAM_REPLY_RETRY_SCHEDULED'
-              : 'INSTAGRAM_REPLY_REJECTED',
+              ? `${providerCode}_REPLY_RETRY_SCHEDULED`
+              : `${providerCode}_REPLY_REJECTED`,
       errorMessage:
         recoveryKind === RECOVERY_KIND.UNCERTAIN
           ? 'Delivery requires manual review to prevent a duplicate reply.'
           : recoveryKind === RECOVERY_KIND.AUTHENTICATION
-            ? 'Reconnect Instagram before this reply can be retried.'
+            ? `Reconnect ${providerName} before this reply can be retried.`
             : recoveryKind === RECOVERY_KIND.RETRYABLE
-              ? 'Instagram temporarily rejected the reply. A controlled retry is scheduled.'
-              : `Instagram rejected the ${input.execution.deliveryChannel} reply.`,
+              ? `${providerName} temporarily rejected the reply. A controlled retry is scheduled.`
+              : `${providerName} rejected the ${input.execution.deliveryChannel} reply.`,
       failureKind: recoveryKind,
     } as const;
     let completed: Execution | null;

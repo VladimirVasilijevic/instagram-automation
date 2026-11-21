@@ -2,12 +2,22 @@ import type {
   DeliveryChannel,
   DeliveryMode,
   ExecutionStatus,
+  SocialProvider,
   TriggerMode,
 } from '@instagram-automation/contracts';
 
 import type { SessionTokenHash } from '../security/session-token.js';
 import type { ProtectedToken } from '../security/token-protector.js';
 import type { RecoveryKind } from '../automation/recovery.js';
+import type { SocialConnection, User } from './identity-repositories.js';
+
+export type {
+  FacebookPageConnection,
+  IdentityRepository,
+  SocialConnection,
+  SocialConnectionRepository,
+  User,
+} from './identity-repositories.js';
 
 export type {
   DeliveryChannel,
@@ -179,8 +189,11 @@ export interface AccountRepository {
 
 /** Persisted application login session without its credential hash. */
 export interface Session {
-  /** Internal account identifier that owns the session. */
-  accountId: string;
+  /** Application user who owns the session. */
+  userId: string;
+
+  /** Legacy Instagram account identifier, null for provider-neutral sessions. */
+  accountId: string | null;
 
   /** Time at which the session row was created. */
   createdAt: Date;
@@ -192,10 +205,16 @@ export interface Session {
   id: string;
 }
 
-/** Active session and its connected Instagram account. */
+/** Active user session with an optional connected social account. */
 export interface AuthenticatedSession {
-  /** Connected account authenticated by the session credential. */
-  account: InstagramAccount;
+  /** Application user authenticated by the session credential. */
+  user: User;
+
+  /** First connected social account, if one exists. */
+  connection: SocialConnection | null;
+
+  /** Instagram details for the connected account, if it is Instagram. */
+  account: InstagramAccount | null;
 
   /** Active, unexpired application session. */
   session: Session;
@@ -203,8 +222,11 @@ export interface AuthenticatedSession {
 
 /** Input used to persist a newly generated application session. */
 export interface CreateSessionInput {
-  /** Internal account identifier that owns the session. */
-  accountId: string;
+  /** Internal application user identifier. */
+  userId?: string;
+
+  /** Legacy Instagram account identifier during migration. */
+  accountId?: string;
 
   /** Instant after which the session must not authenticate requests. */
   expiresAt: Date;
@@ -466,6 +488,12 @@ export interface ExecutionFailure {
 
 /** Execution plus protected account and reply data needed by maintenance. */
 export interface ExecutionRetryClaim {
+  /** Provider that owns the claimed execution. */
+  provider: SocialProvider;
+  /** Provider-neutral social connection identifier. */
+  connectionId: string;
+  /** Provider-scoped Instagram account or Facebook Page identifier. */
+  externalAccountId: string;
   /** Connected account ID used for reconnection state changes. */
   accountId: string;
   /** Encrypted provider token decrypted only immediately before dispatch. */
@@ -635,6 +663,12 @@ export interface DmFollowup {
 
 /** Follow-up leased for delivery together with protected provider credentials. */
 export interface DmFollowupClaim {
+  /** Provider that owns the claimed follow-up. */
+  provider: SocialProvider;
+  /** Provider-neutral social connection identifier. */
+  connectionId: string;
+  /** Provider-scoped Instagram account or Facebook Page identifier. */
+  externalAccountId: string;
   /** Leased follow-up message. */
   followup: DmFollowup;
   /** Encrypted token decrypted only during delivery. */

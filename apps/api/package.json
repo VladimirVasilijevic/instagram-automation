@@ -22,12 +22,15 @@
     "load-test:verify": "tsx --env-file=../../.env.load-test.local scripts/load-test-data.ts verify",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "test:integration": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run src/database/postgres-repositories.integration.test.ts",
-    "test:integration:oauth": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run src/database/postgres-oauth-states.integration.test.ts",
+    "test:integration": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run --testTimeout 20000 src/database/postgres-repositories.integration.test.ts",
+    "test:integration:oauth": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run --testTimeout 20000 src/database/postgres-oauth-states.integration.test.ts",
+    "test:integration:identity": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run --testTimeout 20000 src/database/postgres-identity-repositories.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json"
   },
   "dependencies": {
+    "@instagram-automation/application": "workspace:*",
     "@instagram-automation/contracts": "workspace:*",
+    "@instagram-automation/domain": "workspace:*",
     "@hono/node-server": "2.1.1",
     "@hono/swagger-ui": "0.6.1",
     "@hono/zod-openapi": "1.6.1",

@@ -1,69 +1,75 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getCurrentAccount, logout } from './auth.js';
+import { getCurrentViewer, logout } from './auth.js';
 
 afterEach(() => vi.unstubAllGlobals());
-const account = {
-  connectionStatus: 'active',
-  id: 'account-id',
-  instagramUserId: '17841400000000001',
-  username: 'example',
+
+const viewer = {
+  user: { id: 'user-id', displayName: 'Ava' },
+  connection: {
+    id: 'connection-id',
+    provider: 'instagram',
+    externalAccountId: '17841400000000001',
+    displayName: 'example',
+    connectionStatus: 'active',
+  },
 };
 
-describe('account API client', () => {
-  it('returns only safe identity fields using same-origin credentials and no cache', async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ account: { ...account, unwanted: 'not-returned' } })),
-      );
+describe('viewer API client', () => {
+  it('reads only safe user and connection fields with the session cookie', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...viewer,
+          user: { ...viewer.user, secret: 'discarded' },
+          connection: { ...viewer.connection, token: 'discarded' },
+        }),
+      ),
+    );
     vi.stubGlobal('fetch', fetcher);
-    expect(await getCurrentAccount()).toEqual(account);
+    expect(await getCurrentViewer()).toEqual(viewer);
     expect(fetcher).toHaveBeenCalledWith(
       '/api/me',
       expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }),
     );
   });
-  it('represents a missing or expired session as signed out', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
-    expect(await getCurrentAccount()).toBeNull();
-  });
-  it.each([
-    {},
-    { account: null },
-    { account: { ...account, username: '' } },
-    { account: { ...account, instagramUserId: 123 } },
-    { account: { ...account, connectionStatus: 'private' } },
-  ])('rejects invalid account data', async (payload) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
-    await expect(getCurrentAccount()).rejects.toThrow('invalid response');
-  });
-  it('does not present provider or server error bodies to the user', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('secret', { status: 500 })));
-    await expect(getCurrentAccount()).rejects.toThrow('Account service is unavailable');
-  });
-  it('rejects invalid JSON and wraps network errors', async () => {
+
+  it('distinguishes signed out from signed in without a connection', async () => {
     vi.stubGlobal(
       'fetch',
       vi
         .fn()
-        .mockResolvedValueOnce(new Response('bad json'))
-        .mockRejectedValueOnce(new Error('private-detail')),
+        .mockResolvedValueOnce(new Response(null, { status: 401 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ user: viewer.user, connection: null })),
+        ),
     );
-    await expect(getCurrentAccount()).rejects.toThrow('invalid response');
-    await expect(getCurrentAccount()).rejects.toThrow('Account service is unavailable');
+    expect(await getCurrentViewer()).toBeNull();
+    expect(await getCurrentViewer()).toEqual({ user: viewer.user, connection: null });
   });
-  it('passes cancellation and accepts only successful logout responses', async () => {
+
+  it.each([
+    {},
+    { user: null, connection: null },
+    { user: { id: '' }, connection: null },
+    { user: viewer.user, connection: { ...viewer.connection, provider: 'unknown' } },
+    { user: viewer.user, connection: { ...viewer.connection, displayName: '' } },
+  ])('rejects invalid viewer data', async (payload) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
+    await expect(getCurrentViewer()).rejects.toThrow('invalid response');
+  });
+
+  it('keeps server and provider errors out of displayed messages', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('secret', { status: 500 })));
+    await expect(getCurrentViewer()).rejects.toThrow('Account service is unavailable');
+  });
+
+  it('requires successful logout', async () => {
     const fetcher = vi
       .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 503 }));
     vi.stubGlobal('fetch', fetcher);
-    const controller = new AbortController();
-    controller.abort();
-    await getCurrentAccount(controller.signal);
-    expect(fetcher.mock.calls[0]![1].signal.aborted).toBe(true);
     await logout();
     expect(fetcher).toHaveBeenCalledWith(
       '/api/auth/logout',

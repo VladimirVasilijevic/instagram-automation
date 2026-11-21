@@ -8,6 +8,7 @@ import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
 import { createSessionToken } from '../security/session-token.js';
 
 const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 8).toString('base64'));
+const user = { id: 'user-id', createdAt: new Date('2026-09-01T00:00:00.000Z') };
 const account: InstagramAccount = {
   connectionStatus: 'active',
   id: 'e9e90c93-1843-43d1-91d8-9ef894c26f4f',
@@ -20,6 +21,14 @@ const account: InstagramAccount = {
   tokenRefreshNextAttemptAt: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+};
+const connection = {
+  id: account.id,
+  userId: user.id,
+  provider: 'instagram' as const,
+  externalAccountId: account.instagramUserId,
+  displayName: account.username,
+  connectionStatus: account.connectionStatus,
 };
 const automation: Automation = {
   id: 'automation-id',
@@ -50,6 +59,7 @@ const createFixture = () => {
   const sessionToken = createSessionToken();
   const session: Session = {
     id: 'session-id',
+    userId: user.id,
     accountId: account.id,
     expiresAt: new Date('2026-12-01T00:00:00.000Z'),
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
@@ -58,7 +68,7 @@ const createFixture = () => {
     createSession: vi.fn(),
     deleteByTokenHash: vi.fn(),
     findActiveByTokenHash: vi.fn(async (tokenHash: string) =>
-      tokenHash === sessionToken.tokenHash ? { account, session } : null,
+      tokenHash === sessionToken.tokenHash ? { user, connection, account, session } : null,
     ),
   };
   const automationRepository = {
@@ -98,8 +108,12 @@ const createFixture = () => {
       appBaseUrl: 'https://app.example',
       redirectUri: 'https://app.example/api/auth/instagram/callback',
       instagramClient: { authorizationUrl: vi.fn(), completeLogin: vi.fn() },
-      accountRepository: { upsertConnectedAccount: vi.fn(), findByInstagramUserId: vi.fn() },
-      oauthStateRepository: { createState: vi.fn(), consumeState: vi.fn() },
+      identityRepository: { completeInstagramLogin: vi.fn() },
+      oauthStateRepository: {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+        consumeStateDetails: vi.fn(),
+      },
       tokenProtector,
     },
     instagramMedia: { instagramMediaClient, tokenProtector },
@@ -448,7 +462,7 @@ describe('automation configuration routes', () => {
     expect(body).not.toContain('private-instagram-token');
     expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
     expect(f.logger.error).toHaveBeenCalledWith(
-      'Instagram media validation failed',
+      'Social media validation failed',
       expect.objectContaining({
         stage: 'media',
         reason: 'http_error',
@@ -566,7 +580,7 @@ describe('automation configuration routes', () => {
     expect(f.tokenRefreshRepository.markAccountReconnectRequired).not.toHaveBeenCalled();
     expect(body).not.toContain('private-instagram-token');
     expect(f.logger.error).toHaveBeenCalledWith(
-      'Instagram comment subscription failed while saving automation',
+      'Social comment subscription failed while saving automation',
       expect.objectContaining({
         reason: 'http_error',
         httpStatus: '500',

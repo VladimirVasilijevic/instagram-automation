@@ -1,5 +1,3 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
-
 import type { OpenAPIHono } from '@hono/zod-openapi';
 
 import {
@@ -28,6 +26,10 @@ import {
   type SessionMiddlewareDependencies,
 } from '../middleware/session.js';
 import type { TokenProtector } from '../security/token-protector.js';
+import {
+  equalWebhookSecrets,
+  verifyMetaWebhookSignature,
+} from '../security/meta-webhook-signature.js';
 
 /** Dependencies for public signed delivery and authenticated account subscription routes. */
 export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDependencies {
@@ -70,9 +72,6 @@ export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDepe
   verifyToken: string;
 }
 
-const equalBuffers = (left: Buffer, right: Buffer): boolean =>
-  left.length === right.length && timingSafeEqual(left, right);
-
 const createIgnoredReasonCounts = (): Record<IgnoredCommentProcessResult['reason'], number> => ({
   account_not_connected: 0,
   connection_inactive: 0,
@@ -83,16 +82,7 @@ const createIgnoredReasonCounts = (): Record<IgnoredCommentProcessResult['reason
 });
 
 /** Verifies Meta's SHA-256 signature over the exact delivery bytes. */
-export const verifyWebhookSignature = (
-  rawBody: Buffer,
-  signature: string | undefined,
-  appSecret: string,
-): boolean => {
-  const match = signature?.match(/^sha256=([a-f0-9]{64})$/i);
-  if (!match) return false;
-  const expected = createHmac('sha256', appSecret).update(rawBody).digest();
-  return equalBuffers(expected, Buffer.from(match[1]!, 'hex'));
-};
+export const verifyWebhookSignature = verifyMetaWebhookSignature;
 
 /** Registers Meta's public handshake/delivery endpoint and owner comment-subscription action. */
 export const registerInstagramWebhookRoutes = (
@@ -107,7 +97,7 @@ export const registerInstagramWebhookRoutes = (
       mode !== 'subscribe' ||
       !challenge ||
       !token ||
-      !equalBuffers(Buffer.from(token), Buffer.from(dependencies.verifyToken))
+      !equalWebhookSecrets(token, dependencies.verifyToken)
     ) {
       return context.text('Forbidden', 403);
     }
@@ -200,6 +190,7 @@ export const registerInstagramWebhookRoutes = (
   app.use('/api/webhooks/instagram/subscription', createRequireSessionMiddleware(dependencies));
   app.post('/api/webhooks/instagram/subscription', async (context) => {
     const { account } = context.get('authenticatedSession');
+    if (!account) return context.json({ error: { code: 'INSTAGRAM_CONNECTION_REQUIRED' } }, 409);
     try {
       const automation = await dependencies.automationRepository.findByAccountId(account.id);
       await dependencies.instagramWebhookClient.subscribeToComments({

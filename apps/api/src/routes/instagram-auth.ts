@@ -1,7 +1,7 @@
 import { createRoute, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 
-import type { AccountRepository, SessionRepository } from '../database/repositories.js';
+import type { IdentityRepository, SessionRepository } from '../database/repositories.js';
 import { InstagramLoginError, type InstagramLoginClient } from '../instagram/login-client.js';
 import type { Logger } from '../logging/logger.js';
 import { toSafeErrorContext } from '../logging/logger.js';
@@ -28,8 +28,8 @@ export interface InstagramAuthDependencies {
   redirectUri: string;
   /** Provider authorization and identity operations. */
   instagramClient: InstagramLoginClient;
-  /** Connected account persistence. */
-  accountRepository: AccountRepository;
+  /** Atomic application identity and Instagram account persistence. */
+  identityRepository: Pick<IdentityRepository, 'completeInstagramLogin'>;
   /** Single-use OAuth attempt persistence. */
   oauthStateRepository: OAuthStateRepository;
   /** Session persistence used for credential creation and rotation. */
@@ -79,12 +79,20 @@ export const registerInstagramAuthRoutes = (
       return fail(context, 'configuration');
     }
     try {
+      const token = getSessionCookie(context, dependencies.sessionCookie);
+      const currentSession =
+        token && isSessionToken(token)
+          ? await dependencies.sessionRepository.findActiveByTokenHash(hashSessionToken(token))
+          : null;
       const state = createSessionToken();
       const browserBinding = createSessionToken();
       await dependencies.oauthStateRepository.createState({
         stateHash: state.tokenHash,
         browserBindingHash: browserBinding.tokenHash,
         expiresAt: new Date(Date.now() + oauthStateTtlSeconds * 1000),
+        provider: 'instagram',
+        intent: 'sign_in',
+        intendedUserId: currentSession?.user.id ?? null,
       });
       setOAuthCookie(context, dependencies.sessionCookie, browserBinding.token);
       return context.redirect(dependencies.instagramClient.authorizationUrl(state.token), 302);
@@ -109,11 +117,25 @@ export const registerInstagramAuthRoutes = (
       return fail(context, 'invalid_state');
     }
     try {
-      const accepted = await dependencies.oauthStateRepository.consumeState(
+      const accepted = await dependencies.oauthStateRepository.consumeStateDetails(
         hashSessionToken(state),
         hashSessionToken(binding),
       );
-      if (!accepted) return fail(context, 'invalid_state');
+      if (!accepted || accepted.provider !== 'instagram' || accepted.intent !== 'sign_in') {
+        return fail(context, 'invalid_state');
+      }
+      if (accepted.intendedUserId) {
+        const currentToken = getSessionCookie(context, dependencies.sessionCookie);
+        const currentSession =
+          currentToken && isSessionToken(currentToken)
+            ? await dependencies.sessionRepository.findActiveByTokenHash(
+                hashSessionToken(currentToken),
+              )
+            : null;
+        if (currentSession?.user.id !== accepted.intendedUserId) {
+          return fail(context, 'invalid_state');
+        }
+      }
       const errors = context.req.queries('error') ?? [];
       if (errors.length)
         return fail(
@@ -125,11 +147,12 @@ export const registerInstagramAuthRoutes = (
       if (codes.length !== 1 || !code || code.length > 4096) return fail(context, 'unavailable');
 
       const connection = await dependencies.instagramClient.completeLogin(code);
-      const account = await dependencies.accountRepository.upsertConnectedAccount({
+      const { user, account } = await dependencies.identityRepository.completeInstagramLogin({
         instagramUserId: connection.instagramUserId,
         username: connection.username,
         accessTokenCiphertext: dependencies.tokenProtector.encrypt(connection.accessToken),
         tokenExpiresAt: connection.tokenExpiresAt,
+        intendedUserId: accepted.intendedUserId,
       });
       const previousToken = getSessionCookie(context, dependencies.sessionCookie);
       if (previousToken && isSessionToken(previousToken)) {
@@ -137,6 +160,7 @@ export const registerInstagramAuthRoutes = (
       }
       const sessionToken = createSessionToken();
       await dependencies.sessionRepository.createSession({
+        userId: user.id,
         accountId: account.id,
         tokenHash: sessionToken.tokenHash,
         expiresAt: new Date(Date.now() + dependencies.sessionCookie.ttlSeconds * 1000),

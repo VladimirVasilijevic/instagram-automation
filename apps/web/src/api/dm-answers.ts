@@ -38,7 +38,7 @@ const readAnswer = (value: unknown): DmAnswerActivity => {
   };
 };
 
-/** Lists recent account-owned answers without exposing Instagram-scoped IDs. */
+/** Lists recent connection-owned answers without exposing provider-scoped IDs. */
 export const getRecentDmAnswers = async (
   signal?: AbortSignal,
   mediaId?: string,

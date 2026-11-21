@@ -104,6 +104,35 @@ describe('parseEnvironment', () => {
     ).toMatchObject({ API_PORT: 4000, NODE_ENV: 'production' });
   });
 
+  it('keeps Facebook disabled when optional settings are blank', () => {
+    expect(
+      parseEnvironment({
+        ...requiredEnvironment,
+        FACEBOOK_APP_ID: '',
+        FACEBOOK_APP_SECRET: '',
+        FACEBOOK_API_VERSION: '',
+        FACEBOOK_REDIRECT_URI: '',
+        FACEBOOK_WEBHOOK_VERIFY_TOKEN: '',
+      }).FACEBOOK_APP_ID,
+    ).toBeUndefined();
+  });
+
+  it('requires a complete same-origin Facebook configuration', () => {
+    expect(() => parseEnvironment({ ...requiredEnvironment, FACEBOOK_APP_ID: '1234' })).toThrow(
+      'All FACEBOOK_* settings are required',
+    );
+    expect(() =>
+      parseEnvironment({
+        ...requiredEnvironment,
+        FACEBOOK_APP_ID: '1234',
+        FACEBOOK_APP_SECRET: 'secret',
+        FACEBOOK_API_VERSION: 'v24.0',
+        FACEBOOK_REDIRECT_URI: 'https://other.example/api/auth/facebook/callback',
+        FACEBOOK_WEBHOOK_VERIFY_TOKEN: 'verify-token',
+      }),
+    ).toThrow('share an origin');
+  });
+
   it('rejects a missing database URL without including other environment values', () => {
     expect(() =>
       parseEnvironment({

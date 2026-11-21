@@ -29,6 +29,15 @@ const createFixture = () => {
     createdAt: new Date(),
     updatedAt: new Date(),
   };
+  const user = { id: account.id, createdAt: new Date() };
+  const connection = {
+    id: account.id,
+    userId: user.id,
+    provider: 'instagram' as const,
+    externalAccountId: account.instagramUserId,
+    displayName: account.username,
+    connectionStatus: 'active' as const,
+  };
   const oauthStateRepository = {
     createState: vi.fn(async (input: OAuthStateInput) => {
       stateRows.set(input.stateHash, input);
@@ -39,13 +48,30 @@ const createFixture = () => {
         return false;
       return stateRows.delete(stateHash);
     }),
+    consumeStateDetails: vi.fn(async (stateHash: string, bindingHash: string) => {
+      const row = stateRows.get(stateHash);
+      if (!row || row.browserBindingHash !== bindingHash || row.expiresAt.getTime() <= Date.now())
+        return null;
+      stateRows.delete(stateHash);
+      return {
+        provider: row.provider ?? ('instagram' as const),
+        intent: row.intent ?? ('sign_in' as const),
+        intendedUserId: row.intendedUserId ?? null,
+      };
+    }),
   };
   const sessionRepository = {
     createSession: vi.fn(
-      async (input: { accountId: string; tokenHash: string; expiresAt: Date }) => {
+      async (input: {
+        userId?: string;
+        accountId?: string;
+        tokenHash: string;
+        expiresAt: Date;
+      }) => {
         const session = {
           id: 'session-id',
-          accountId: input.accountId,
+          userId: input.userId ?? user.id,
+          accountId: input.accountId ?? null,
           expiresAt: input.expiresAt,
           createdAt: new Date(),
         };
@@ -56,12 +82,13 @@ const createFixture = () => {
     deleteByTokenHash: vi.fn(async (hash: string) => sessions.delete(hash)),
     findActiveByTokenHash: vi.fn(async (hash: string) => {
       const session = sessions.get(hash);
-      return session && session.expiresAt.getTime() > Date.now() ? { session, account } : null;
+      return session && session.expiresAt.getTime() > Date.now()
+        ? { session, user, connection, account }
+        : null;
     }),
   };
-  const accountRepository = {
-    upsertConnectedAccount: vi.fn().mockResolvedValue(account),
-    findByInstagramUserId: vi.fn(),
+  const identityRepository = {
+    completeInstagramLogin: vi.fn().mockResolvedValue({ user, connection, account }),
   };
   const instagramClient = {
     authorizationUrl: vi.fn(
@@ -98,7 +125,7 @@ const createFixture = () => {
       appBaseUrl: 'https://app.example',
       redirectUri: `https://app.example${callbackPath}`,
       tokenProtector,
-      accountRepository,
+      identityRepository,
       oauthStateRepository,
       instagramClient,
     },
@@ -134,7 +161,7 @@ const createFixture = () => {
     stateRows,
     sessions,
     sessionRepository,
-    accountRepository,
+    identityRepository,
     oauthStateRepository,
     instagramClient,
     logger,
@@ -165,7 +192,7 @@ describe('Instagram browser login', () => {
     const response = await f.callback(state, cookie);
     expect(response.headers.get('location')).toBe('https://app.example/app');
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
-    const input = f.accountRepository.upsertConnectedAccount.mock.calls[0]![0];
+    const input = f.identityRepository.completeInstagramLogin.mock.calls[0]![0];
     expect(input.instagramUserId).toBe(f.account.instagramUserId);
     expect(input.accessTokenCiphertext).not.toBe('private-instagram-token');
     expect(f.tokenProtector.decrypt(input.accessTokenCiphertext)).toBe('private-instagram-token');
@@ -180,6 +207,14 @@ describe('Instagram browser login', () => {
       expect(me.status).toBe(200);
       expect(me.headers.get('cache-control')).toBe('no-store');
       await expect(me.json()).resolves.toEqual({
+        user: { id: f.account.id },
+        connection: {
+          id: f.account.id,
+          provider: 'instagram',
+          externalAccountId: f.account.instagramUserId,
+          displayName: f.account.username,
+          connectionStatus: 'active',
+        },
         account: {
           connectionStatus: 'active',
           id: f.account.id,
@@ -268,9 +303,10 @@ describe('Instagram browser login', () => {
       const error = new Error('private-instagram-token');
       if (stage === 'provider') f.instagramClient.completeLogin.mockRejectedValueOnce(error);
       if (stage === 'account')
-        f.accountRepository.upsertConnectedAccount.mockRejectedValueOnce(error);
+        f.identityRepository.completeInstagramLogin.mockRejectedValueOnce(error);
       if (stage === 'session') f.sessionRepository.createSession.mockRejectedValueOnce(error);
-      if (stage === 'state') f.oauthStateRepository.consumeState.mockRejectedValueOnce(error);
+      if (stage === 'state')
+        f.oauthStateRepository.consumeStateDetails.mockRejectedValueOnce(error);
       const response = await f.callback(state, cookie);
       expect(response.headers.get('location')).toBe('https://app.example/?login_error=unavailable');
       expect(response.headers.get('set-cookie')).not.toMatch(/igauto_session=[A-Za-z0-9_-]+/);
@@ -325,7 +361,7 @@ describe('Instagram browser login', () => {
     const response = await f.callback(state, cookie);
     expect(response.headers.get('location')).toBe('https://app.example/app');
     expect(response.headers.get('set-cookie')).toMatch(/igauto_session=[A-Za-z0-9_-]+/);
-    expect(f.accountRepository.upsertConnectedAccount).toHaveBeenCalledExactlyOnceWith(
+    expect(f.identityRepository.completeInstagramLogin).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         instagramUserId: f.account.instagramUserId,
         username: f.account.username,
@@ -368,7 +404,7 @@ describe('Instagram browser login', () => {
       invalidFields: 'permissions',
       invalidFieldTypes: 'permissions:missing',
     });
-    expect(f.accountRepository.upsertConnectedAccount).not.toHaveBeenCalled();
+    expect(f.identityRepository.completeInstagramLogin).not.toHaveBeenCalled();
     expect(f.sessionRepository.createSession).not.toHaveBeenCalled();
     expect(response.headers.get('set-cookie')).not.toMatch(/igauto_session=[A-Za-z0-9_-]+/);
     expect(fetcher).toHaveBeenCalledOnce();
@@ -434,7 +470,7 @@ describe('Instagram browser login', () => {
       });
       expect(response.headers.get('location')).toBe('https://app.example/?login_error=unavailable');
       expect(response.headers.get('set-cookie')).not.toMatch(/igauto_session=[A-Za-z0-9_-]+/);
-      expect(f.accountRepository.upsertConnectedAccount).not.toHaveBeenCalled();
+      expect(f.identityRepository.completeInstagramLogin).not.toHaveBeenCalled();
       expect(f.sessionRepository.createSession).not.toHaveBeenCalled();
       expect(fetcher).toHaveBeenCalledTimes(stage + 1);
       const visible =

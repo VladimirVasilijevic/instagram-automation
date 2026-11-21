@@ -13,7 +13,7 @@ export type { DeliveryMode, TriggerMode } from '@instagram-automation/contracts'
 export interface QuickReplyOption {
   /** Stable option identifier included in the webhook payload. */
   id: string;
-  /** Short title displayed on the Instagram quick-reply button. */
+  /** Short title displayed on the provider's quick-reply button. */
   title: string;
   /** Message sent after the recipient selects this option. */
   followUpText: string;
@@ -25,7 +25,7 @@ export interface Automation {
   deliveryMode: DeliveryMode;
   /** Whether a matching comment may trigger a reply. */
   enabled: boolean;
-  /** Selected Instagram media identifier. */
+  /** Selected provider post or media identifier. */
   mediaId: string;
   /** Private message when private delivery is enabled. */
   privateReplyText: string | null;
@@ -45,7 +45,7 @@ export interface SaveAutomationInput {
   deliveryMode: DeliveryMode;
   /** Whether new matching comments may run the automation. */
   enabled: boolean;
-  /** Selected Instagram post or reel identifier. */
+  /** Selected provider post or media identifier. */
   mediaId: string;
   /** Private message text, or null when private delivery is disabled. */
   privateReplyText: string | null;
@@ -61,7 +61,11 @@ export interface SaveAutomationInput {
 
 /** Safe save-failure categories the browser may render with specific recovery guidance. */
 export type AutomationSaveErrorCode =
-  'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE' | 'INSTAGRAM_RECONNECT_REQUIRED';
+  | 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE'
+  | 'INSTAGRAM_RECONNECT_REQUIRED'
+  | 'FACEBOOK_COMMENT_SUBSCRIPTION_UNAVAILABLE'
+  | 'FACEBOOK_MEDIA_UNAVAILABLE'
+  | 'FACEBOOK_RECONNECT_REQUIRED';
 
 /** Safe application-owned failure returned while saving automation settings. */
 export class AutomationSaveError extends Error {
@@ -189,7 +193,10 @@ export const saveAutomation = async (input: SaveAutomationInput): Promise<Automa
       const code = isRecord(payload) && isRecord(payload.error) ? payload.error.code : undefined;
       if (
         code === 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE' ||
-        code === 'INSTAGRAM_RECONNECT_REQUIRED'
+        code === 'INSTAGRAM_RECONNECT_REQUIRED' ||
+        code === 'FACEBOOK_COMMENT_SUBSCRIPTION_UNAVAILABLE' ||
+        code === 'FACEBOOK_MEDIA_UNAVAILABLE' ||
+        code === 'FACEBOOK_RECONNECT_REQUIRED'
       ) {
         throw new AutomationSaveError(code);
       }

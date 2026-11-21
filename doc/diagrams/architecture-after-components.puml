@@ -1,0 +1,107 @@
+@startuml
+title ReplyKit after refactor — component boundaries
+
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam database {
+  BackgroundColor #ECFDF5
+  BorderColor #059669
+  FontColor #064E3B
+}
+skinparam cloud {
+  BackgroundColor #FFF7ED
+  BorderColor #EA580C
+  FontColor #7C2D12
+}
+
+actor "ReplyKit user" as user
+actor "Commenter" as commenter
+
+package "apps/web — React" {
+  component "Sign-in and connection UI\nInstagram or Facebook" as webAuth
+  component "Automation editor\npublic, private, both\nquick replies and follow-ups" as webAutomation
+  component "Activity and health UI" as webActivity
+  component "Same-origin API clients" as webApi
+  webAuth --> webApi
+  webAutomation --> webApi
+  webActivity --> webApi
+}
+
+package "apps/api — Hono" {
+  component "Identity and session routes" as authRoutes
+  component "Social connection routes\nexplicit Facebook Page selection" as connectionRoutes
+  component "Automation and activity routes" as automationRoutes
+  component "Instagram webhook route" as igWebhook
+  component "Facebook Page webhook route" as fbWebhook
+  component "Maintenance route" as maintenance
+}
+
+package "Business logic" {
+  component "packages/domain\ncomment safety and trigger matching" as domain
+  component "packages/application\ndelivery channel selection" as application
+  component "Comment and message processing\nclaims, dispatch, follow-ups" as processors
+}
+
+package "Provider adapters" {
+  component "Instagram OAuth, media,\ncomments and messaging" as instagramAdapter
+  component "Facebook Login, Pages,\ncomments and Messenger" as facebookAdapter
+}
+
+package "Persistence boundary" {
+  component "Identity, connection, automation,\nexecution and conversation interfaces" as repositoryPorts
+  component "PostgreSQL repositories" as postgresAdapter
+}
+
+database "Supabase PostgreSQL\napp_private" as database
+cloud "Meta Instagram" as instagram
+cloud "Meta Facebook Pages / Messenger" as facebook
+cloud "Supabase Cron" as cron
+
+user --> webAuth : signs in or connects Page
+user --> webAutomation : configures replies
+user --> webActivity : reviews results
+webApi --> authRoutes : /api/auth/*, /api/me
+webApi --> connectionRoutes : /api/connections/facebook/*
+webApi --> automationRoutes : /api/automation, /api/media,\n/api/executions, /api/dm-answers
+commenter --> instagram : comments or answers
+commenter --> facebook : comments or answers
+instagram --> igWebhook : signed events
+facebook --> fbWebhook : signed Page/Messenger events
+cron --> maintenance : scheduled recovery
+authRoutes --> instagramAdapter : Instagram identity
+authRoutes --> facebookAdapter : Facebook identity
+connectionRoutes --> facebookAdapter : list authorized Pages
+automationRoutes --> instagramAdapter : Instagram media/subscription
+automationRoutes --> facebookAdapter : Facebook posts/subscription
+igWebhook --> processors : normalized events
+fbWebhook --> processors : normalized events
+processors --> domain : evaluate comment
+processors --> application : select delivery channels
+processors --> instagramAdapter : Instagram reply/DM
+processors --> facebookAdapter : Page reply/Messenger
+maintenance --> processors : safe retries
+authRoutes --> repositoryPorts
+connectionRoutes --> repositoryPorts
+automationRoutes --> repositoryPorts
+processors --> repositoryPorts
+maintenance --> repositoryPorts
+repositoryPorts --> postgresAdapter : implemented by
+postgresAdapter --> database : SQL and atomic claims
+instagramAdapter --> instagram : HTTPS
+facebookAdapter --> facebook : HTTPS
+
+note bottom of repositoryPorts
+  PostgreSQL is the current adapter. Another database must preserve
+  claim, deduplication, transaction and retry guarantees.
+end note
+
+@enduml

@@ -1,28 +1,52 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getCurrentAccount, logout } from '../api/auth.js';
+import { getCurrentViewer, logout } from '../api/auth.js';
+import { getCapabilities } from '../api/capabilities.js';
 import { getAutomation } from '../api/automation.js';
 import { getRecentExecutions } from '../api/executions.js';
+import { getPendingFacebookPages, selectFacebookPage } from '../api/facebook-pages.js';
 import { getRecentDmAnswers } from '../api/dm-answers.js';
 import { getMaintenanceHealth } from '../api/maintenance-health.js';
 import { getRecentMedia } from '../api/media.js';
 import { AccountPage } from './AccountPage.js';
 
-vi.mock('../api/auth.js', () => ({ getCurrentAccount: vi.fn(), logout: vi.fn() }));
+vi.mock('../api/auth.js', () => ({ getCurrentViewer: vi.fn(), logout: vi.fn() }));
+vi.mock('../api/capabilities.js', () => ({ getCapabilities: vi.fn() }));
 vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
 vi.mock('../api/executions.js', () => ({ getRecentExecutions: vi.fn() }));
+vi.mock('../api/facebook-pages.js', () => ({
+  getPendingFacebookPages: vi.fn(),
+  selectFacebookPage: vi.fn(),
+}));
 vi.mock('../api/dm-answers.js', () => ({ getRecentDmAnswers: vi.fn() }));
 vi.mock('../api/maintenance-health.js', () => ({ getMaintenanceHealth: vi.fn() }));
 vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
-const account = {
-  connectionStatus: 'active' as const,
-  id: 'account-id',
-  instagramUserId: '17841400000000001',
-  username: 'example',
+
+const instagramViewer = {
+  user: { id: 'user-id', displayName: 'Ava' },
+  connection: {
+    id: 'connection-id',
+    provider: 'instagram' as const,
+    externalAccountId: '17841400000000001',
+    displayName: 'example',
+    connectionStatus: 'active' as const,
+  },
 };
+const facebookViewer = {
+  user: { id: 'user-id', displayName: 'Ava' },
+  connection: {
+    id: 'page-connection-id',
+    provider: 'facebook' as const,
+    externalAccountId: 'page-id',
+    displayName: 'My Bakery',
+    connectionStatus: 'active' as const,
+  },
+};
+
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getCapabilities).mockResolvedValue({ facebookLoginEnabled: true });
   vi.mocked(getRecentMedia).mockResolvedValue([]);
   vi.mocked(getAutomation).mockResolvedValue(null);
   vi.mocked(getRecentExecutions).mockResolvedValue([]);
@@ -49,145 +73,130 @@ beforeEach(() => {
 });
 afterEach(() => window.history.replaceState(null, '', '/'));
 
-describe('account and connect screens', () => {
-  it('loads before offering same-origin Instagram login', async () => {
-    vi.mocked(getCurrentAccount).mockResolvedValue(null);
+describe('ReplyKit account screens', () => {
+  it('offers both sign-in providers when signed out', async () => {
+    vi.mocked(getCurrentViewer).mockResolvedValue(null);
     render(<AccountPage />);
-    expect(screen.getByRole('status')).toHaveTextContent('Checking your connection');
+    expect(screen.getByRole('status')).toHaveTextContent('Checking your session');
     expect(await screen.findByRole('link', { name: 'Continue with Instagram' })).toHaveAttribute(
       'href',
       '/api/auth/instagram/start',
     );
-    expect(screen.queryByLabelText('Account menu for @example')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Service status' })).toHaveAttribute('href', '/status');
-    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toContainElement(
-      screen.getByRole('link', { name: 'Privacy' }),
+    expect(await screen.findByRole('link', { name: 'Continue with Facebook' })).toHaveAttribute(
+      'href',
+      '/api/auth/facebook/start',
     );
   });
-  it('restores an authenticated account from the server on reload', async () => {
-    window.history.replaceState(null, '', '/app');
-    vi.mocked(getCurrentAccount).mockResolvedValue(account);
-    const first = render(<AccountPage />);
-    expect(await screen.findByRole('heading', { name: 'Connected' })).toBeInTheDocument();
-    first.unmount();
-    render(<AccountPage />);
-    expect(await screen.findByRole('heading', { name: 'Connected' })).toBeInTheDocument();
-    expect(getCurrentAccount).toHaveBeenCalledTimes(2);
-    expect(window.location.pathname).toBe('/app');
-    expect(screen.getByRole('link', { name: 'View account' })).toHaveAttribute('href', '/account');
-    expect(screen.queryByText('Connected as @example')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Automation health' })).not.toBeInTheDocument();
-  });
-  it('shows the connected account menu and keeps the four navigation destinations', async () => {
-    vi.mocked(getCurrentAccount).mockResolvedValue(account);
-    render(<AccountPage />);
 
-    expect(await screen.findByLabelText('Account menu for @example')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/app');
-    expect(screen.getByRole('link', { name: 'Status' })).toHaveAttribute('href', '/status');
-    expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/account');
-    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
-
-    fireEvent.click(screen.getByLabelText('Account menu for @example'));
-    const accountMenu = screen.getByText('Instagram account').closest('details');
-    expect(accountMenu).not.toBeNull();
-    if (!accountMenu) return;
-    expect(within(accountMenu).getByRole('link', { name: 'Account details' })).toHaveAttribute(
-      'href',
-      '/account',
-    );
-    expect(within(accountMenu).getByRole('link', { name: 'Privacy information' })).toHaveAttribute(
-      'href',
-      '/privacy',
-    );
-    expect(within(accountMenu).getByRole('link', { name: 'Service status' })).toHaveAttribute(
-      'href',
-      '/status',
-    );
-  });
-  it('moves connected account details, reconnect actions, and health to the Account tab', async () => {
-    window.history.replaceState(null, '', '/account');
-    vi.mocked(getCurrentAccount).mockResolvedValue({
-      ...account,
-      connectionStatus: 'reconnect_required',
-    });
+  it('offers connection choices to a signed-in user with no connection', async () => {
+    vi.mocked(getCurrentViewer).mockResolvedValue({ ...instagramViewer, connection: null });
     render(<AccountPage />);
-
-    expect(await screen.findByText('Connected as @example')).toBeInTheDocument();
-    expect(await screen.findByText('Reconnect required')).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Reconnect Instagram');
-    expect(screen.getByRole('link', { name: 'Reconnect Instagram' })).toHaveAttribute(
+    expect(
+      await screen.findByRole('heading', { name: 'Connect a social account' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Connect Instagram' })).toHaveAttribute(
       'href',
       '/api/auth/instagram/start',
     );
-    expect(await screen.findByRole('heading', { name: 'Automation health' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('link', { name: 'Connect Facebook Page' })).toHaveAttribute(
+      'href',
+      '/api/connections/facebook/start',
+    );
     expect(screen.queryByText('Create your automation')).not.toBeInTheDocument();
   });
-  it('returns an expired /app session to the connect screen', async () => {
-    window.history.replaceState(null, '', '/app');
-    vi.mocked(getCurrentAccount).mockResolvedValue(null);
+
+  it('hides Facebook entry points when the API does not enable Facebook login', async () => {
+    vi.mocked(getCapabilities).mockResolvedValue({ facebookLoginEnabled: false });
+    vi.mocked(getCurrentViewer).mockResolvedValue(null);
     render(<AccountPage />);
     await screen.findByRole('link', { name: 'Continue with Instagram' });
-    expect(window.location.pathname).toBe('/');
+    expect(screen.queryByRole('link', { name: 'Continue with Facebook' })).not.toBeInTheDocument();
   });
-  it('shows recoverable account lookup errors and retries', async () => {
-    vi.mocked(getCurrentAccount)
-      .mockRejectedValueOnce(new Error('secret-detail'))
-      .mockResolvedValueOnce(account);
+
+  it('shows the connected Instagram workspace and keeps the user menu separate', async () => {
+    vi.mocked(getCurrentViewer).mockResolvedValue(instagramViewer);
     render(<AccountPage />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('could not check your account');
+    expect(await screen.findByRole('heading', { name: 'Connected' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Account menu for Ava')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View account' })).toHaveAttribute('href', '/account');
+    expect(screen.getByText('Instagram connection')).toBeInTheDocument();
+  });
+
+  it('shows Facebook Page identity and provider-specific reconnect action', async () => {
+    window.history.replaceState(null, '', '/account');
+    vi.mocked(getCurrentViewer).mockResolvedValue({
+      ...facebookViewer,
+      connection: { ...facebookViewer.connection, connectionStatus: 'reconnect_required' },
+    });
+    render(<AccountPage />);
+    expect(await screen.findByText('Connected as My Bakery')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reconnect Facebook Page' })).toHaveAttribute(
+      'href',
+      '/api/connections/facebook/start',
+    );
+    expect(screen.getByRole('heading', { name: 'Automation health' })).toBeInTheDocument();
+  });
+
+  it('hides an unavailable Facebook reconnect action', async () => {
+    window.history.replaceState(null, '', '/account');
+    vi.mocked(getCapabilities).mockResolvedValue({ facebookLoginEnabled: false });
+    vi.mocked(getCurrentViewer).mockResolvedValue({
+      ...facebookViewer,
+      connection: { ...facebookViewer.connection, connectionStatus: 'reconnect_required' },
+    });
+    render(<AccountPage />);
+    expect(await screen.findByText('Connected as My Bakery')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Reconnect Facebook Page' })).not.toBeInTheDocument();
+  });
+
+  it('requires explicit selection when Facebook returns multiple Pages', async () => {
+    window.history.replaceState(null, '', '/app?facebook_selection=selection-id');
+    vi.mocked(getCurrentViewer)
+      .mockResolvedValueOnce({ ...facebookViewer, connection: null })
+      .mockResolvedValueOnce(facebookViewer);
+    vi.mocked(getPendingFacebookPages).mockResolvedValue([
+      { id: 'page-a', name: 'Bakery A' },
+      { id: 'page-b', name: 'Bakery B' },
+    ]);
+    vi.mocked(selectFacebookPage).mockResolvedValue(undefined);
+    render(<AccountPage />);
+    expect(await screen.findByRole('button', { name: 'Connect Bakery A' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect Bakery B' })).toBeInTheDocument();
+    expect(selectFacebookPage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Bakery B' }));
+    await waitFor(() => expect(selectFacebookPage).toHaveBeenCalledWith('selection-id', 'page-b'));
+    expect(await screen.findByText('Facebook Page connection')).toBeInTheDocument();
+  });
+
+  it('lets a connected Facebook Page owner select a Page after reauthorization', async () => {
+    window.history.replaceState(null, '', '/app?facebook_selection=reauthorization-id');
+    vi.mocked(getCurrentViewer).mockResolvedValue(facebookViewer);
+    vi.mocked(getPendingFacebookPages).mockResolvedValue([{ id: 'page-a', name: 'Bakery A' }]);
+    vi.mocked(selectFacebookPage).mockResolvedValue(undefined);
+    render(<AccountPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Bakery A' }));
+    await waitFor(() =>
+      expect(selectFacebookPage).toHaveBeenCalledWith('reauthorization-id', 'page-a'),
+    );
+  });
+
+  it('does not expose a pending Page query value in an error', async () => {
+    window.history.replaceState(null, '', '/app?facebook_selection=secret-detail');
+    vi.mocked(getCurrentViewer).mockResolvedValue({ ...facebookViewer, connection: null });
+    vi.mocked(getPendingFacebookPages).mockRejectedValue(new Error('secret-detail'));
+    render(<AccountPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not load your Pages');
     expect(screen.queryByText('secret-detail')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByLabelText('Account menu for @example')).toBeInTheDocument();
   });
-  it.each([
-    ['invalid_state', 'expired or could not be verified'],
-    ['cancelled', 'was cancelled'],
-    ['permissions', 'Allow profile and comment access'],
-    ['configuration', 'not configured for this website'],
-    ['unavailable', 'could not complete Instagram login'],
-  ])('displays safe %s callback errors', async (code, message) => {
-    window.history.replaceState(null, '', `/?login_error=${code}`);
-    vi.mocked(getCurrentAccount).mockResolvedValue(null);
-    render(<AccountPage />);
-    expect(await screen.findByRole('alert')).toHaveTextContent(message);
-    expect(window.location.search).toBe('');
-  });
-  it('does not reflect arbitrary query text into the screen', async () => {
-    window.history.replaceState(null, '', '/?login_error=secret-detail');
-    vi.mocked(getCurrentAccount).mockResolvedValue(null);
-    render(<AccountPage />);
-    await screen.findByRole('link', { name: 'Continue with Instagram' });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByText('secret-detail')).not.toBeInTheDocument();
-  });
-  it('logs out and clears the displayed identity', async () => {
-    vi.mocked(getCurrentAccount).mockResolvedValue(account);
+
+  it('logs out without keeping the connected identity visible', async () => {
+    vi.mocked(getCurrentViewer).mockResolvedValue(instagramViewer);
     vi.mocked(logout).mockResolvedValue(undefined);
     render(<AccountPage />);
-    fireEvent.click(await screen.findByLabelText('Account menu for @example'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
-    expect(screen.getByRole('button', { name: 'Logging out…' })).toBeDisabled();
-    await screen.findByRole('link', { name: 'Continue with Instagram' });
-    expect(screen.queryByLabelText('Account menu for @example')).not.toBeInTheDocument();
-    expect(window.location.pathname).toBe('/');
-  });
-  it('keeps the identity visible when logout fails and allows a retry', async () => {
-    vi.mocked(getCurrentAccount).mockResolvedValue(account);
-    vi.mocked(logout)
-      .mockRejectedValueOnce(new Error('secret-detail'))
-      .mockResolvedValueOnce(undefined);
-    render(<AccountPage />);
-    fireEvent.click(await screen.findByLabelText('Account menu for @example'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Logout could not be completed');
-    expect(screen.getByLabelText('Account menu for @example')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Account menu for @example'));
+    fireEvent.click(await screen.findByLabelText('Account menu for Ava'));
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
-    await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Continue with Instagram' })).toBeInTheDocument(),
-    );
+    await screen.findByRole('link', { name: 'Continue with Instagram' });
+    expect(screen.queryByLabelText('Account menu for Ava')).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 });

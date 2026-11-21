@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { DELIVERY_MODE, TRIGGER_MODE } from '@instagram-automation/contracts';
+import type { SocialProvider } from '@instagram-automation/contracts';
 
 import {
   AutomationSaveError,
@@ -29,8 +30,10 @@ const mediaLabel = (item: RecentMedia): string =>
 /** Renders the owner-facing media, trigger, and delivery-channel automation editor. */
 export const AutomationEditor = ({
   onSelectedMediaChange,
+  provider = 'instagram',
 }: {
   onSelectedMediaChange?: (mediaId: string | null | undefined) => void;
+  provider?: SocialProvider;
 } = {}) => {
   const [state, setState] = useState<EditorState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -44,8 +47,13 @@ export const AutomationEditor = ({
   const [quickReplyOptions, setQuickReplyOptions] = useState<QuickReplyOption[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<'delivery' | 'generic' | 'reconnect' | null>(null);
+  const [saveError, setSaveError] = useState<'delivery' | 'generic' | 'media' | 'reconnect' | null>(
+    null,
+  );
   const [saved, setSaved] = useState(false);
+  const providerName = provider === 'facebook' ? 'Facebook Page' : 'Instagram';
+  const reconnectPath =
+    provider === 'facebook' ? '/api/connections/facebook/start' : '/api/auth/instagram/start';
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,9 +152,12 @@ export const AutomationEditor = ({
     } catch (error) {
       setSaveError(
         error instanceof AutomationSaveError
-          ? error.code === 'INSTAGRAM_RECONNECT_REQUIRED'
+          ? error.code === 'INSTAGRAM_RECONNECT_REQUIRED' ||
+            error.code === 'FACEBOOK_RECONNECT_REQUIRED'
             ? 'reconnect'
-            : 'delivery'
+            : error.code === 'FACEBOOK_MEDIA_UNAVAILABLE'
+              ? 'media'
+              : 'delivery'
           : 'generic',
       );
     } finally {
@@ -218,7 +229,7 @@ export const AutomationEditor = ({
 
       {state.media.length === 0 ? (
         <p className="ui-alert ui-alert-warning mt-6">
-          No recent Instagram posts are available yet. Create a post, then try again.
+          No recent {providerName} posts are available yet. Create a post, then try again.
         </p>
       ) : (
         <fieldset className="mt-6">
@@ -435,7 +446,7 @@ export const AutomationEditor = ({
                   }}
                 />
                 <span className="mt-2 block text-sm text-[#625b6e]">
-                  Instagram permits one private reply for each qualifying comment.
+                  One private reply can be sent for each qualifying comment.
                 </span>
               </label>
               {privateMessageMode === 'quick_replies' && (
@@ -443,7 +454,7 @@ export const AutomationEditor = ({
                   <h3 className="text-sm font-semibold text-[#292638]">Quick replies</h3>
                   <p className="mt-1 text-sm text-[#625b6e]">
                     Add at least one choice to this DM. Each choice can send one follow-up message
-                    after the person taps it. Check the buttons in the Instagram mobile app.
+                    after the person taps it. Check the buttons in the {providerName} app.
                   </p>
                   <div className="mt-3 grid gap-3">
                     {quickReplyOptions.map((option, index) => (
@@ -547,11 +558,19 @@ export const AutomationEditor = ({
           settings, if any, remain active.
         </p>
       )}
+      {saveError === 'media' && (
+        <p role="alert" className="ui-alert ui-alert-error mt-4">
+          The selected Facebook post could not be verified. Your changes were not saved. Choose a
+          current post and try again.
+        </p>
+      )}
       {saveError === 'reconnect' && (
         <div role="alert" className="ui-alert ui-alert-warning mt-4">
-          <p>Reconnect Instagram before enabling this automation. Your changes were not saved.</p>
-          <a className="ui-button mt-3 w-full sm:w-auto" href="/api/auth/instagram/start">
-            Reconnect Instagram
+          <p>
+            Reconnect {providerName} before enabling this automation. Your changes were not saved.
+          </p>
+          <a className="ui-button mt-3 w-full sm:w-auto" href={reconnectPath}>
+            Reconnect {providerName}
           </a>
         </div>
       )}

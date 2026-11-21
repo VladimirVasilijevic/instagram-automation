@@ -3,6 +3,8 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 
 import type { DatabaseHealthChecker } from './database/database.js';
 import type { InstagramMediaClient } from './instagram/media-client.js';
+import type { FacebookPageClient } from './facebook/page-client.js';
+import type { SocialConnectionRepository } from './database/identity-repositories.js';
 import type { InstagramWebhookClient } from './instagram/webhook-client.js';
 import type {
   AutomationRepository,
@@ -14,6 +16,14 @@ import type {
 import type { Logger } from './logging/logger.js';
 import { toSafeErrorContext } from './logging/logger.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import {
+  registerFacebookAuthRoutes,
+  type FacebookAuthRouteDependencies,
+} from './routes/facebook-auth.js';
+import {
+  registerFacebookWebhookRoutes,
+  type FacebookWebhookRouteDependencies,
+} from './routes/facebook-webhook.js';
 import { registerDmAnswerRoutes } from './routes/dm-answers.js';
 import { registerAutomationRoutes } from './routes/automation.js';
 import { registerExecutionRoutes } from './routes/executions.js';
@@ -58,6 +68,20 @@ export interface InstagramSubscriptionDependencies {
 
 /** Runtime dependencies and options used to construct the HTTP application. */
 export interface AppDependencies {
+  /** Signed Facebook Page webhook callbacks and verification. */
+  facebookWebhook?: Omit<FacebookWebhookRouteDependencies, 'logger'>;
+  /** Optional Facebook Page media, subscription, and connection capabilities. */
+  facebookPage?: {
+    /** Facebook Page discovery and subscription provider adapter. */
+    facebookPageClient: FacebookPageClient;
+    /** Page ownership and encrypted credential persistence. */
+    socialConnectionRepository: SocialConnectionRepository;
+  };
+  /** Optional Facebook Login and Page selection routes. */
+  facebookAuth?: Omit<
+    FacebookAuthRouteDependencies,
+    'logger' | 'sessionCookie' | 'sessionRepository'
+  >;
   /** Account-scoped automation persistence used by configuration routes. */
   automationRepository: AutomationRepository;
   /** Optional conversation persistence for quick-reply answers and branch messages. */
@@ -182,9 +206,13 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   );
 
   registerHealthRoutes(app, dependencies);
+  app.get('/api/capabilities', (context) =>
+    context.json({ facebookLoginEnabled: Boolean(dependencies.facebookAuth) }),
+  );
   registerAuthRoutes(app, dependencies);
   registerAutomationRoutes(app, {
     automationRepository: dependencies.automationRepository,
+    ...dependencies.facebookPage,
     ...dependencies.instagramMedia,
     ...dependencies.instagramSubscription,
     logger: dependencies.logger,
@@ -211,9 +239,24 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     sessionCookie: dependencies.sessionCookie,
     sessionRepository: dependencies.sessionRepository,
   });
+  if (dependencies.facebookAuth) {
+    registerFacebookAuthRoutes(app, {
+      ...dependencies.facebookAuth,
+      logger: dependencies.logger,
+      sessionCookie: dependencies.sessionCookie,
+      sessionRepository: dependencies.sessionRepository,
+    });
+  }
+  if (dependencies.facebookWebhook) {
+    registerFacebookWebhookRoutes(app, {
+      ...dependencies.facebookWebhook,
+      logger: dependencies.logger,
+    });
+  }
   registerMeRoute(app, dependencies);
   registerMediaRoute(app, {
     ...dependencies.instagramMedia,
+    ...dependencies.facebookPage,
     logger: dependencies.logger,
     sessionCookie: dependencies.sessionCookie,
     sessionRepository: dependencies.sessionRepository,

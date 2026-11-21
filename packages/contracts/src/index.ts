@@ -1,4 +1,15 @@
-/** Serialized delivery channels persisted for one Instagram comment. */
+/** Social provider that owns a connected account or Page. */
+export const SOCIAL_PROVIDER = {
+  /** Facebook Page connection. */
+  FACEBOOK: 'facebook',
+  /** Instagram Professional account connection. */
+  INSTAGRAM: 'instagram',
+} as const;
+
+/** Provider identifier used across authenticated API boundaries. */
+export type SocialProvider = (typeof SOCIAL_PROVIDER)[keyof typeof SOCIAL_PROVIDER];
+
+/** Serialized delivery channels persisted for one social comment. */
 export const DELIVERY_CHANNEL = {
   /** Private message authorized by a matching comment. */
   PRIVATE: 'private',

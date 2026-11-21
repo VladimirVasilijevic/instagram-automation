@@ -17,6 +17,15 @@ const createAuthenticatedSession = (): AuthenticatedSession => {
   const now = new Date();
 
   return {
+    user: { id: 'user-id', createdAt: now },
+    connection: {
+      id: 'account-id',
+      userId: 'user-id',
+      provider: 'instagram',
+      externalAccountId: 'instagram-user-id',
+      displayName: 'session_owner',
+      connectionStatus: 'active',
+    },
     account: {
       accessTokenCiphertext: new AesGcmTokenProtector(
         Buffer.alloc(32, 5).toString('base64'),
@@ -33,6 +42,7 @@ const createAuthenticatedSession = (): AuthenticatedSession => {
       username: 'session_owner',
     },
     session: {
+      userId: 'user-id',
       accountId: 'account-id',
       createdAt: now,
       expiresAt: new Date(now.getTime() + 3_600_000),
@@ -54,7 +64,10 @@ const createProtectedApp = (
     }),
   );
   app.get('/protected', (context) =>
-    context.json({ username: context.get('authenticatedSession').account.username }),
+    context.json({
+      userId: context.get('authenticatedSession').user.id,
+      username: context.get('authenticatedSession').account?.username ?? null,
+    }),
   );
 
   return app;
@@ -93,9 +106,28 @@ describe('required session middleware', () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ username: 'session_owner' });
+    await expect(response.json()).resolves.toEqual({
+      userId: 'user-id',
+      username: 'session_owner',
+    });
     expect(findActiveByTokenHash).toHaveBeenCalledWith(sessionToken.tokenHash);
     expect(findActiveByTokenHash).not.toHaveBeenCalledWith(sessionToken.token);
+  });
+
+  it('authenticates a Facebook user without a connected account', async () => {
+    const sessionToken = createSessionToken();
+    const authenticatedSession = {
+      ...createAuthenticatedSession(),
+      account: null,
+      connection: null,
+    };
+    const findActiveByTokenHash = vi.fn().mockResolvedValue(authenticatedSession);
+    const response = await createProtectedApp(findActiveByTokenHash).request('/protected', {
+      headers: { Cookie: `igauto_session=${sessionToken.token}` },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ userId: 'user-id', username: null });
   });
 
   it('rejects and clears an unknown or expired session', async () => {

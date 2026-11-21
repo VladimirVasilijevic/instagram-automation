@@ -54,6 +54,10 @@ const executionsRoute = createRoute({
       description: 'No active application session.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
+    409: {
+      description: 'No connected social account.',
+      content: { 'application/json': { schema: errorResponseSchema } },
+    },
     503: {
       description: 'Activity storage is unavailable.',
       content: { 'application/json': { schema: errorResponseSchema } },
@@ -136,10 +140,15 @@ export const registerExecutionRoutes = (
         400,
       );
     }
+    const { connection } = context.get('authenticatedSession');
+    if (!connection)
+      return context.json(
+        { error: { code: 'CONNECTION_REQUIRED', message: 'Connect a social account first.' } },
+        409,
+      );
     try {
-      const { account } = context.get('authenticatedSession');
       const executions = await dependencies.executionRepository.listRecentByAccountId(
-        account.id,
+        connection.id,
         parsedLimit.data,
         parsedMediaId?.success ? parsedMediaId.data : undefined,
       );

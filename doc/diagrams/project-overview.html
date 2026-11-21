@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReplyKit project UML</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, sans-serif;
+        color: #0f172a;
+        background: #f8fafc;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem;
+      }
+      main {
+        max-width: 120rem;
+        margin: auto;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin: 1.5rem 0;
+      }
+      a {
+        color: #1d4ed8;
+      }
+      section {
+        margin: 2rem 0 3rem;
+      }
+      .diagram {
+        overflow: auto;
+        padding: 1rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.5rem;
+        background: white;
+      }
+      .diagram img {
+        display: block;
+        max-width: none;
+      }
+      .source {
+        margin-top: 0.75rem;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ReplyKit project UML</h1>
+      <p>Current web app, API, Instagram integration, persistence, and scheduled recovery.</p>
+      <nav aria-label="Diagram navigation">
+        <a href="#components">Components</a>
+        <a href="#data">Data model</a>
+        <a href="#sequence">Main flow</a>
+      </nav>
+
+      <section id="components" aria-labelledby="components-title">
+        <h2 id="components-title">Components</h2>
+        <p>How the browser, API modules, Meta clients, PostgreSQL, and scheduler connect.</p>
+        <div class="diagram">
+          <img
+            src="project-overview-components.svg"
+            alt="UML component diagram of the full ReplyKit project"
+          />
+        </div>
+        <p class="source">
+          <a href="project-overview-components.puml">Editable PlantUML source</a>
+        </p>
+      </section>
+
+      <section id="data" aria-labelledby="data-title">
+        <h2 id="data-title">Data model</h2>
+        <p>Main tables and foreign-key relationships in the private PostgreSQL schema.</p>
+        <div class="diagram">
+          <img
+            src="project-overview-data.svg"
+            alt="UML data model with eight private PostgreSQL tables"
+          />
+        </div>
+        <p class="source"><a href="project-overview-data.puml">Editable PlantUML source</a></p>
+      </section>
+
+      <section id="sequence" aria-labelledby="sequence-title">
+        <h2 id="sequence-title">Main flow</h2>
+        <p>
+          Connecting an account, configuring a rule, delivering replies, recording DM answers, and
+          recovering safe retries.
+        </p>
+        <div class="diagram">
+          <img
+            src="project-overview-sequence.svg"
+            alt="UML sequence diagram of the account and comment automation flow"
+          />
+        </div>
+        <p class="source"><a href="project-overview-sequence.puml">Editable PlantUML source</a></p>
+      </section>
+    </main>
+  </body>
+</html>

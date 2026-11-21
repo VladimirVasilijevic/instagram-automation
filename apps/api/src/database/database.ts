@@ -3,6 +3,11 @@ import postgres from 'postgres';
 import type { OAuthStateRepository } from '../security/oauth-state.js';
 import { createAsyncOperationGate, serializeAsyncMethods } from './operation-gate.js';
 import { createPostgresOAuthStateRepository } from './postgres-oauth-states.js';
+import {
+  createPostgresIdentityRepository,
+  createPostgresSocialConnectionRepository,
+} from './postgres-identity-repositories.js';
+import type { IdentityRepository, SocialConnectionRepository } from './identity-repositories.js';
 
 import {
   createPostgresAccountRepository,
@@ -35,6 +40,10 @@ export interface DatabaseHealthChecker {
 
 /** Runtime PostgreSQL connection with health-check and shutdown capabilities. */
 export interface Database extends DatabaseHealthChecker {
+  /** Application users and verified login identities. */
+  identityRepository: IdentityRepository;
+  /** Social account ownership and Facebook Page credentials. */
+  socialConnectionRepository: SocialConnectionRepository;
   /** Single-use, expiring OAuth attempts shared across application instances. */
   oauthStateRepository: OAuthStateRepository;
   /** PostgreSQL-backed connected-account persistence. */
@@ -78,6 +87,11 @@ export const createDatabase = (connectionString: string): Database => {
   const operationGate = createAsyncOperationGate();
 
   return {
+    identityRepository: serializeAsyncMethods(createPostgresIdentityRepository(sql), operationGate),
+    socialConnectionRepository: serializeAsyncMethods(
+      createPostgresSocialConnectionRepository(sql),
+      operationGate,
+    ),
     oauthStateRepository: serializeAsyncMethods(
       createPostgresOAuthStateRepository(sql),
       operationGate,

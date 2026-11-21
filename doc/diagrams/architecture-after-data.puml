@@ -1,0 +1,114 @@
+@startuml
+title ReplyKit after refactor — user and connection data model
+
+hide circle
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam entity {
+  BackgroundColor #ECFDF5
+  BorderColor #059669
+  FontColor #064E3B
+}
+
+entity "users" as users {
+  * id : uuid <<PK>>
+}
+entity "login_identities" as identities {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  provider : instagram | facebook
+  external_user_id : text
+  display_name : text
+}
+entity "sessions" as sessions {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  token_hash : text
+  expires_at : timestamp
+}
+entity "social_connections" as connections {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  provider : instagram | facebook
+  external_account_id : text
+  display_name / connection_status
+}
+entity "instagram_accounts" as instagram {
+  * id : uuid <<PK, FK>>
+  --
+  instagram_user_id : text
+  encrypted token / expiry / refresh state
+}
+entity "facebook_pages" as facebook {
+  * connection_id : uuid <<PK, FK>>
+  --
+  encrypted Page token
+}
+entity "pending_page_selections" as pending {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  authorized Pages / expiry
+}
+entity "automations" as automations {
+  * id : uuid <<PK>>
+  --
+  connection_id : uuid <<FK, unique>>
+  media_id / trigger / delivery mode
+  public and private text
+  quick_reply_options
+}
+entity "executions" as executions {
+  * id : uuid <<PK>>
+  --
+  automation_id : uuid <<FK>>
+  external comment id / channel
+  status / lease / provider result
+  quick-reply snapshot
+}
+entity "inbound_dm_answers" as answers {
+  * id : uuid <<PK>>
+  --
+  connection_id : uuid <<FK>>
+  execution_id : uuid <<FK, optional>>
+  provider_message_id / selected choice
+}
+entity "dm_followups" as followups {
+  * id : uuid <<PK>>
+  --
+  connection_id : uuid <<FK>>
+  answer_id : uuid <<FK, unique>>
+  message / status / retry / lease
+}
+
+users ||--o{ identities : signs in with
+users ||--o{ sessions : owns
+users ||--o{ connections : connects
+users ||--o{ pending : selects from
+connections ||--o| instagram : Instagram detail
+connections ||--o| facebook : Page detail
+connections ||--o| automations : configures
+automations ||--o{ executions : records
+connections ||--o{ answers : receives
+executions |o--o| answers : prompted
+connections ||--o{ followups : sends
+answers ||--o| followups : selects
+
+note right of connections
+  The UI permits one active connection now.
+  The owner relationship supports more later.
+end note
+
+note bottom of executions
+  Deduplication is scoped to an automation,
+  external comment ID and delivery channel.
+  Legacy Instagram column names remain in SQL.
+end note
+
+@enduml

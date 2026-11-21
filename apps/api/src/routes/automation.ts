@@ -12,6 +12,10 @@ import { InstagramMediaError } from '../instagram/media-client.js';
 import type { InstagramWebhookClient } from '../instagram/webhook-client.js';
 import { InstagramWebhookError } from '../instagram/webhook-client.js';
 import type { Logger } from '../logging/logger.js';
+import type { FacebookPageClient } from '../facebook/page-client.js';
+import { FacebookClientError } from '../facebook/http.js';
+import type { SocialConnectionRepository } from '../database/identity-repositories.js';
+import { RECOVERY_KIND } from '../automation/recovery.js';
 import { toSafeErrorContext } from '../logging/logger.js';
 import {
   createRequireSessionMiddleware,
@@ -128,6 +132,10 @@ const getAutomationRoute = createRoute({
       description: 'No active application session.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
+    409: {
+      description: 'A social account must be connected before configuring automation.',
+      content: { 'application/json': { schema: errorResponseSchema } },
+    },
     503: {
       description: 'Automation storage is unavailable.',
       content: { 'application/json': { schema: errorResponseSchema } },
@@ -152,6 +160,10 @@ const saveAutomationRoute = createRoute({
       description: 'No active application session.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
+    409: {
+      description: 'A social account must be connected before configuring automation.',
+      content: { 'application/json': { schema: errorResponseSchema } },
+    },
     503: {
       description: 'Automation storage is unavailable.',
       content: { 'application/json': { schema: errorResponseSchema } },
@@ -165,6 +177,13 @@ const saveAutomationRoute = createRoute({
 
 /** Dependencies for authenticated automation configuration routes. */
 export interface AutomationRouteDependencies extends SessionMiddlewareDependencies {
+  /** Facebook Page post validation and event subscription. */
+  facebookPageClient?: Pick<FacebookPageClient, 'listRecentPosts' | 'subscribeToEvents'>;
+  /** Resolves encrypted Facebook Page tokens. */
+  socialConnectionRepository?: Pick<
+    SocialConnectionRepository,
+    'findFacebookPageByPageId' | 'markReconnectRequired'
+  >;
   /** Account-scoped automation storage. */
   automationRepository: Pick<AutomationRepository, 'findByAccountId' | 'saveAutomation'>;
 
@@ -202,9 +221,14 @@ export const registerAutomationRoutes = (
 ): void => {
   app.use('/api/automation', createRequireSessionMiddleware(dependencies));
   app.openapi(getAutomationRoute, async (context) => {
+    const { connection } = context.get('authenticatedSession');
+    if (!connection)
+      return context.json(
+        { error: { code: 'CONNECTION_REQUIRED', message: 'Connect a social account first.' } },
+        409,
+      );
     try {
-      const { account } = context.get('authenticatedSession');
-      const automation = await dependencies.automationRepository.findByAccountId(account.id);
+      const automation = await dependencies.automationRepository.findByAccountId(connection.id);
       return context.json(
         { automation: automation ? toAutomationResponse(automation) : null },
         200,
@@ -250,15 +274,38 @@ export const registerAutomationRoutes = (
       );
     }
 
-    const { account } = context.get('authenticatedSession');
+    const { account, connection } = context.get('authenticatedSession');
+    if (!connection)
+      return context.json(
+        { error: { code: 'CONNECTION_REQUIRED', message: 'Connect a social account first.' } },
+        409,
+      );
     let accessToken: string;
     try {
-      accessToken = dependencies.tokenProtector.decrypt(account.accessTokenCiphertext);
-      const media = await dependencies.instagramMediaClient.listRecentMedia({
-        accessToken,
-        instagramUserId: account.instagramUserId,
-        limit: 12,
-      });
+      const media =
+        connection.provider === 'facebook'
+          ? await (async () => {
+              const page = await dependencies.socialConnectionRepository?.findFacebookPageByPageId(
+                connection.externalAccountId,
+              );
+              if (!page || !dependencies.facebookPageClient)
+                throw new Error('Facebook Page adapter unavailable');
+              accessToken = dependencies.tokenProtector.decrypt(page.accessTokenCiphertext);
+              return dependencies.facebookPageClient.listRecentPosts({
+                pageId: page.externalAccountId,
+                pageAccessToken: accessToken,
+                limit: 12,
+              });
+            })()
+          : await (async () => {
+              if (!account) throw new Error('Instagram account unavailable');
+              accessToken = dependencies.tokenProtector.decrypt(account.accessTokenCiphertext);
+              return dependencies.instagramMediaClient.listRecentMedia({
+                accessToken,
+                instagramUserId: account.instagramUserId,
+                limit: 12,
+              });
+            })();
       if (!media.some((item) => item.id === parsedInput.data.mediaId)) {
         return context.json(
           {
@@ -272,14 +319,20 @@ export const registerAutomationRoutes = (
       }
     } catch (error) {
       dependencies.logger.error(
-        'Instagram media validation failed',
+        'Social media validation failed',
         error instanceof InstagramMediaError ? error.toLogContext() : toSafeErrorContext(error),
       );
       return context.json(
         {
           error: {
-            code: 'INSTAGRAM_MEDIA_UNAVAILABLE',
-            message: 'Instagram media is unavailable. Please try again.',
+            code:
+              connection.provider === 'instagram'
+                ? 'INSTAGRAM_MEDIA_UNAVAILABLE'
+                : 'FACEBOOK_MEDIA_UNAVAILABLE',
+            message:
+              connection.provider === 'instagram'
+                ? 'Instagram media is unavailable. Please try again.'
+                : 'Facebook Page posts are unavailable. Please try again.',
           },
         },
         502,
@@ -288,24 +341,46 @@ export const registerAutomationRoutes = (
 
     if (parsedInput.data.enabled) {
       try {
-        await dependencies.instagramWebhookClient.subscribeToComments({
-          accessToken,
-          instagramUserId: account.instagramUserId,
-          includeMessages: parsedInput.data.quickReplyOptions.length > 0,
-        });
+        if (connection.provider === 'facebook') {
+          if (!dependencies.facebookPageClient)
+            throw new Error('Facebook Page adapter unavailable');
+          await dependencies.facebookPageClient.subscribeToEvents({
+            pageId: connection.externalAccountId,
+            pageAccessToken: accessToken!,
+            includeMessages: parsedInput.data.quickReplyOptions.length > 0,
+          });
+        } else {
+          if (!account) throw new Error('Instagram account unavailable');
+          await dependencies.instagramWebhookClient.subscribeToComments({
+            accessToken: accessToken!,
+            instagramUserId: account.instagramUserId,
+            includeMessages: parsedInput.data.quickReplyOptions.length > 0,
+          });
+        }
       } catch (error) {
         const authenticationRejected =
-          error instanceof InstagramWebhookError && error.authenticationRejected;
+          (error instanceof InstagramWebhookError && error.authenticationRejected) ||
+          (error instanceof FacebookClientError &&
+            error.recoveryKind() === RECOVERY_KIND.AUTHENTICATION);
         dependencies.logger.error(
-          'Instagram comment subscription failed while saving automation',
-          error instanceof InstagramWebhookError ? error.toLogContext() : toSafeErrorContext(error),
+          'Social comment subscription failed while saving automation',
+          error instanceof InstagramWebhookError || error instanceof FacebookClientError
+            ? error.toLogContext()
+            : toSafeErrorContext(error),
         );
         if (authenticationRejected) {
           try {
-            await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
-              account.id,
-              'TOKEN_REJECTED',
-            );
+            if (connection.provider === 'facebook') {
+              await dependencies.socialConnectionRepository?.markReconnectRequired(
+                connection.id,
+                'TOKEN_REJECTED',
+              );
+            } else if (account) {
+              await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
+                account.id,
+                'TOKEN_REJECTED',
+              );
+            }
           } catch (persistenceError) {
             dependencies.logger.error(
               'Instagram reconnect state update failed',
@@ -315,8 +390,11 @@ export const registerAutomationRoutes = (
           return context.json(
             {
               error: {
-                code: 'INSTAGRAM_RECONNECT_REQUIRED',
-                message: 'Reconnect Instagram before enabling this automation.',
+                code:
+                  connection.provider === 'instagram'
+                    ? 'INSTAGRAM_RECONNECT_REQUIRED'
+                    : 'FACEBOOK_RECONNECT_REQUIRED',
+                message: `Reconnect ${connection.provider === 'instagram' ? 'Instagram' : 'Facebook'} before enabling this automation.`,
               },
             },
             502,
@@ -325,7 +403,10 @@ export const registerAutomationRoutes = (
         return context.json(
           {
             error: {
-              code: 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE',
+              code:
+                connection.provider === 'instagram'
+                  ? 'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE'
+                  : 'FACEBOOK_COMMENT_SUBSCRIPTION_UNAVAILABLE',
               message: 'Comment delivery could not be enabled. Your changes were not saved.',
             },
           },
@@ -336,7 +417,7 @@ export const registerAutomationRoutes = (
 
     try {
       const automation = await dependencies.automationRepository.saveAutomation({
-        accountId: account.id,
+        accountId: connection.id,
         ...parsedInput.data,
       });
       return context.json({ automation: toAutomationResponse(automation) }, 200);

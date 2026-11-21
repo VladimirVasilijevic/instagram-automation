@@ -20,6 +20,15 @@ const counts = {
   tokenRefreshedCount: 0,
 };
 const authenticatedSession: AuthenticatedSession = {
+  user: { id: 'user-id', createdAt: now },
+  connection: {
+    id: '24e76a49-b1c7-4351-bc24-c4c7ad7a8a1f',
+    userId: 'user-id',
+    provider: 'instagram',
+    externalAccountId: 'instagram-user-id',
+    displayName: 'owner',
+    connectionStatus: 'active',
+  },
   account: {
     accessTokenCiphertext: 'protected-token' as ProtectedToken,
     connectionStatus: 'active',
@@ -34,6 +43,7 @@ const authenticatedSession: AuthenticatedSession = {
     username: 'owner',
   },
   session: {
+    userId: 'user-id',
     accountId: '24e76a49-b1c7-4351-bc24-c4c7ad7a8a1f',
     createdAt: now,
     expiresAt: new Date('2026-09-30T10:00:00.000Z'),

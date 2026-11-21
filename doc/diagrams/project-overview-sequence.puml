@@ -1,0 +1,79 @@
+@startuml
+title ReplyKit — comment, DM and recovery flow
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+autonumber
+
+actor "Account owner" as Owner
+participant "React dashboard" as Web
+participant "Hono API" as Api
+participant "Meta Instagram" as Meta
+participant "Webhook routes" as Webhook
+participant "Automation services" as Automation
+database "PostgreSQL" as Db
+participant "Maintenance" as Maintenance
+actor "Supabase Cron" as Cron
+
+group Connect and configure
+  Owner -> Web : Connect Instagram
+  Web -> Api : GET /api/auth/instagram/start
+  Api -> Db : Save browser-bound OAuth state
+  Api -> Meta : Redirect to authorization
+  Meta -> Api : Callback with authorization code
+  Api -> Db : Consume state, save encrypted token and session
+  Api -> Web : Session cookie; redirect to dashboard
+  Web -> Api : GET /api/media; PUT /api/automation
+  Api -> Meta : List media; subscribe to comments\nand optionally messages
+  Api -> Db : Save selected rule and quick replies
+end
+
+group Comment delivery
+  Meta -> Webhook : Signed comment event
+  Webhook -> Webhook : Verify signature and normalize event
+  Webhook -> Automation : processComment(event)
+  Automation -> Db : Find account and enabled media rule
+  Automation -> Automation : Check top-level comment and trigger
+  alt Matching rule
+    Automation -> Db : Atomically claim public/private executions
+    loop Each newly claimed channel
+      Automation -> Db : Mark dispatch started
+      Automation -> Meta : Send public reply or private DM
+      Meta --> Automation : Provider result
+      Automation -> Db : Save success, retry, failure or uncertainty
+    end
+  else Ineligible or duplicate
+    Automation --> Webhook : Ignore or deduplicate
+  end
+  Webhook --> Meta : Acknowledge delivery
+end
+
+opt Private quick reply selected or typed DM received
+  Meta -> Webhook : Signed messaging event
+  Webhook -> Automation : processIncomingMessage(event)
+  Automation -> Db : Deduplicate and record answer
+  opt Selected choice has a follow-up
+    Automation -> Db : Claim one follow-up
+    Automation -> Meta : Send recipient-addressed DM
+    Automation -> Db : Save delivery outcome
+  end
+  Webhook --> Meta : Acknowledge delivery
+end
+
+group Scheduled recovery
+  Cron -> Api : POST /api/internal/maintenance
+  Api -> Maintenance : runMaintenance()
+  Maintenance -> Db : Claim due token refreshes and safe retries
+  Maintenance -> Meta : Refresh tokens; retry eligible replies and follow-ups
+  Maintenance -> Db : Save outcomes and heartbeat
+end
+
+Owner -> Web : Review recent activity and health
+Web -> Api : GET /api/executions, /api/dm-answers,\n/api/maintenance-health
+Api -> Db : Read account-scoped activity
+Api --> Web : Safe status and counts
+
+@enduml

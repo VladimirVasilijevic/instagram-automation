@@ -8,6 +8,7 @@ import {
   loadTestAppSecret,
   loadTestEncryptionKey,
   loadTestSessionCookieName,
+  knownApplicationDatabaseUrls,
   requireIsolatedLoadTestDatabase,
   toSafeLoadTestError,
 } from './load-testing/config.js';
@@ -31,7 +32,7 @@ const main = (): void => {
   const databaseUrl = requireIsolatedLoadTestDatabase(
     process.env.LOAD_TEST_DATABASE_URL,
     process.env.LOAD_TEST_CONFIRM_ISOLATED,
-    [process.env.DATABASE_URL, process.env.DATABASE_MIGRATION_URL],
+    knownApplicationDatabaseUrls(),
   );
   const port = integer('LOAD_TEST_PORT', process.env.LOAD_TEST_PORT, 3400, 1, 65_535);
   const slowDelayMs = integer(
@@ -59,7 +60,7 @@ const main = (): void => {
     database,
     docsEnabled: false,
     instagramAuth: {
-      accountRepository: database.accountRepository,
+      identityRepository: database.identityRepository,
       appBaseUrl: `http://127.0.0.1:${port}`,
       instagramClient: {
         authorizationUrl: () => 'https://invalid.load-test.local/',

@@ -17,12 +17,24 @@ const meRoute = createRoute({
       content: {
         'application/json': {
           schema: z.object({
-            account: z.object({
-              id: z.string().uuid(),
-              instagramUserId: z.string(),
-              connectionStatus: z.enum(['active', 'reconnect_required']),
-              username: z.string(),
-            }),
+            user: z.object({ id: z.string().uuid() }),
+            connection: z
+              .object({
+                id: z.string().uuid(),
+                provider: z.enum(['instagram', 'facebook']),
+                externalAccountId: z.string(),
+                displayName: z.string(),
+                connectionStatus: z.enum(['active', 'reconnect_required']),
+              })
+              .nullable(),
+            account: z
+              .object({
+                id: z.string().uuid(),
+                instagramUserId: z.string(),
+                connectionStatus: z.enum(['active', 'reconnect_required']),
+                username: z.string(),
+              })
+              .nullable(),
           }),
         },
       },
@@ -45,15 +57,27 @@ export const registerMeRoute = (
 ): void => {
   app.use('/api/me', createRequireSessionMiddleware(dependencies));
   app.openapi(meRoute, (context) => {
-    const { account } = context.get('authenticatedSession');
+    const { user, connection, account } = context.get('authenticatedSession');
     return context.json(
       {
-        account: {
-          id: account.id,
-          instagramUserId: account.instagramUserId,
-          connectionStatus: account.connectionStatus,
-          username: account.username,
-        },
+        user: { id: user.id },
+        connection: connection
+          ? {
+              id: connection.id,
+              provider: connection.provider,
+              externalAccountId: connection.externalAccountId,
+              displayName: connection.displayName,
+              connectionStatus: account?.connectionStatus ?? connection.connectionStatus,
+            }
+          : null,
+        account: account
+          ? {
+              id: account.id,
+              instagramUserId: account.instagramUserId,
+              connectionStatus: account.connectionStatus,
+              username: account.username,
+            }
+          : null,
       },
       200,
     );

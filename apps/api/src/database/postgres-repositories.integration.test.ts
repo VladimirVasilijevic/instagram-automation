@@ -18,10 +18,6 @@ import {
 
 const integrationTestsEnabled = process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
 
-if (integrationTestsEnabled) {
-  process.loadEnvFile(resolve(import.meta.dirname, '../../../../.env.local'));
-}
-
 const describeDatabase = integrationTestsEnabled ? describe : describe.skip;
 const multichannelMigrationPath = resolve(
   import.meta.dirname,
@@ -68,7 +64,7 @@ const ensureAutomationSchema = async (transactionSql: postgres.TransactionSql) =
 
 describeDatabase('PostgreSQL repositories', () => {
   const rollbackSignal = new Error('rollback integration transaction');
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.TEST_DATABASE_URL;
   let sql: ReturnType<typeof postgres>;
 
   beforeAll(() => {
@@ -76,8 +72,12 @@ describeDatabase('PostgreSQL repositories', () => {
       throw new Error('Repository integration tests must not run in production');
     }
 
-    if (!databaseUrl) {
-      throw new Error('DATABASE_URL is required for repository integration tests');
+    if (
+      !databaseUrl ||
+      databaseUrl === process.env.DATABASE_URL ||
+      databaseUrl === process.env.DATABASE_MIGRATION_URL
+    ) {
+      throw new Error('A separate non-production TEST_DATABASE_URL is required');
     }
 
     sql = postgres(databaseUrl, {
@@ -160,7 +160,16 @@ describeDatabase('PostgreSQL repositories', () => {
         expect(activeSession.accountId).toBe(firstAccount.id);
         await expect(
           sessionRepository.findActiveByTokenHash(activeSessionToken.tokenHash),
-        ).resolves.toEqual({ account: refreshedAccount, session: activeSession });
+        ).resolves.toEqual({
+          user: expect.objectContaining({ id: firstAccount.id }),
+          connection: expect.objectContaining({
+            id: firstAccount.id,
+            userId: firstAccount.id,
+            provider: 'instagram',
+          }),
+          account: refreshedAccount,
+          session: activeSession,
+        });
         await expect(
           sessionRepository.findActiveByTokenHash(expiredSessionToken.tokenHash),
         ).resolves.toBeNull();
@@ -444,7 +453,11 @@ describeDatabase('PostgreSQL repositories', () => {
             leaseExpiresAt: new Date(Date.now() + 120_000),
             messageText: 'Other reply',
           }),
-        ).resolves.toBeNull();
+        ).resolves.toMatchObject({
+          automationId: otherAutomation.id,
+          instagramCommentId: firstCommentId,
+          deliveryChannel: 'public',
+        });
 
         if (!firstExecution) {
           throw new Error('First execution claim unexpectedly returned null');

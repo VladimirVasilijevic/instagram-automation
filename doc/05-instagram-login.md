@@ -123,9 +123,9 @@ a single successful consumer under concurrent callbacks. It cleans up its own st
 not load `.env.local` or fall back to `DATABASE_URL`. Its create operation removes expired state
 rows, so the database must be dedicated to testing.
 
-The existing `test:integration` command still loads `.env.local`; do not run that suite against the
-shared production database. Both integration files remain skipped by `pnpm test`; this is the only
-remaining verification limitation and is separate from the completed production acceptance.
+The `test:integration` command also requires a separate `TEST_DATABASE_URL`; do not run it against
+the shared production database. Both integration files remain skipped by `pnpm test`; this is the
+only remaining verification limitation and is separate from the completed production acceptance.
 
 ## Release and real-login acceptance — complete
 

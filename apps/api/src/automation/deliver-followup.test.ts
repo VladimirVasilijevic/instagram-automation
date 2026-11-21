@@ -34,6 +34,9 @@ const createFixture = () => {
     updatedAt: now,
   };
   const claim: DmFollowupClaim = {
+    provider: 'instagram',
+    connectionId: followup.accountId,
+    externalAccountId: 'business-id',
     followup,
     accessTokenCiphertext: 'encrypted-token' as ProtectedToken,
     instagramUserId: 'business-id',

@@ -1,0 +1,77 @@
+@startuml
+title ReplyKit after refactor — Facebook Page comment and quick-reply flow
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+autonumber
+
+actor "ReplyKit user" as Owner
+participant "React UI" as Web
+participant "Hono API" as Api
+participant "Facebook adapter" as Adapter
+participant "Shared application/domain" as Logic
+database "PostgreSQL adapter" as Db
+participant "Meta Facebook / Messenger" as Meta
+actor "Supabase Cron" as Cron
+
+group Sign in and connect a Page
+  Owner -> Web : Sign in with Facebook
+  Web -> Api : GET /api/auth/facebook/start
+  Api -> Db : Store browser-bound OAuth state
+  Api -> Meta : Redirect for Facebook Login
+  Meta -> Api : OAuth callback
+  Api -> Db : Link verified identity to user; create session
+  Api --> Web : Redirect to workspace
+  Owner -> Web : Connect Facebook Page
+  Web -> Api : GET /api/connections/facebook/start
+  Api -> Meta : Request Page access
+  Meta -> Api : OAuth callback
+  Api -> Adapter : List authorized Pages
+  Adapter -> Meta : Read managed Pages
+  Api -> Db : Store encrypted, expiring Page choices
+  Api --> Web : Redirect with selection ID
+  Web -> Api : GET pending Pages
+  Owner -> Web : Choose one Page
+  Web -> Api : POST select Page ID
+  Api -> Db : Attach selected Page to current user
+end
+
+group Public, private, or both
+  Owner -> Web : Save automation and quick replies
+  Web -> Api : PUT /api/automation
+  Api -> Db : Save Page rule
+  Meta -> Api : Signed Page feed comment event
+  Api -> Adapter : Normalize Page comment
+  Api -> Logic : Evaluate safety and trigger
+  Logic -> Db : Claim delivery channels once
+  loop Each selected channel
+    Logic -> Db : Mark dispatch started
+    alt Public
+      Logic -> Adapter : Reply below comment
+    else Private
+      Logic -> Adapter : Message commenter with quick replies
+    end
+    Adapter -> Meta : Provider request
+    Logic -> Db : Save delivery outcome
+  end
+  Api --> Meta : Acknowledge webhook
+end
+
+opt Commenter chooses a quick reply
+  Meta -> Api : Signed Messenger event
+  Api -> Adapter : Normalize answer
+  Api -> Db : Deduplicate answer and queue follow-up
+  Logic -> Db : Claim follow-up
+  Logic -> Adapter : Send follow-up message
+  Adapter -> Meta : Messenger send
+  Logic -> Db : Save outcome
+end
+
+Cron -> Api : Scheduled maintenance
+Api -> Logic : Retry only safe, due work
+Logic -> Db : Lease and record recovery
+
+@enduml

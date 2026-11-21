@@ -90,32 +90,32 @@ describe('automation API client', () => {
     ).rejects.toThrow('could not be saved');
   });
 
-  it.each(['INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE', 'INSTAGRAM_RECONNECT_REQUIRED'] as const)(
-    'returns the safe %s save failure code',
-    async (code) => {
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({ error: { code, message: 'application-owned message' } }),
-              { status: 502 },
-            ),
-          ),
-      );
-
-      await expect(
-        saveAutomation({
-          deliveryMode: 'public',
-          enabled: true,
-          mediaId: 'media',
-          privateReplyText: null,
-          replyText: 'Reply',
-          triggerMode: 'exact',
-          triggerText: '#Hello',
+  it.each([
+    'INSTAGRAM_COMMENT_SUBSCRIPTION_UNAVAILABLE',
+    'INSTAGRAM_RECONNECT_REQUIRED',
+    'FACEBOOK_COMMENT_SUBSCRIPTION_UNAVAILABLE',
+    'FACEBOOK_MEDIA_UNAVAILABLE',
+    'FACEBOOK_RECONNECT_REQUIRED',
+  ] as const)('returns the safe %s save failure code', async (code) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code, message: 'application-owned message' } }), {
+          status: 502,
         }),
-      ).rejects.toEqual(new AutomationSaveError(code));
-    },
-  );
+      ),
+    );
+
+    await expect(
+      saveAutomation({
+        deliveryMode: 'public',
+        enabled: true,
+        mediaId: 'media',
+        privateReplyText: null,
+        replyText: 'Reply',
+        triggerMode: 'exact',
+        triggerText: '#Hello',
+      }),
+    ).rejects.toEqual(new AutomationSaveError(code));
+  });
 });

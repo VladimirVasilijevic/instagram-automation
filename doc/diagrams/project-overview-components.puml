@@ -1,0 +1,106 @@
+@startuml
+title ReplyKit — project components
+
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam database {
+  BackgroundColor #ECFDF5
+  BorderColor #059669
+  FontColor #064E3B
+}
+skinparam cloud {
+  BackgroundColor #FFF7ED
+  BorderColor #EA580C
+  FontColor #7C2D12
+}
+
+actor "Account owner" as owner
+actor "Instagram user" as visitor
+
+node "Browser" {
+  package "apps/web — React" {
+    component "AccountPage\nDashboard and account" as accountPage
+    component "AutomationEditor\nRecentActivity\nMaintenanceHealthCard" as widgets
+    component "StatusPage\nPrivacyPage" as otherPages
+    component "Same-origin API clients" as webClient
+    accountPage --> widgets
+    accountPage --> webClient
+    otherPages --> webClient
+  }
+}
+
+node "Application host" {
+  package "apps/api — Hono" {
+    component "createRuntime / createApp" as runtime
+    component "Auth, account and session routes" as authRoutes
+    component "Media, automation and activity routes" as ownerRoutes
+    component "Health and API docs routes" as healthRoutes
+    component "Signed Instagram webhook routes" as webhookRoutes
+    component "Internal maintenance and health routes" as maintenanceRoutes
+    component "Comment matching and reply delivery" as commentFlow
+    component "Incoming answers and follow-up delivery" as dmFlow
+    component "Token refresh and retry maintenance" as maintenanceFlow
+    component "Instagram clients\nlogin, media, subscription, replies, DM" as metaClients
+    component "Session and token security" as security
+    component "PostgreSQL repositories" as repositories
+  }
+}
+
+package "packages/contracts" {
+  component "Shared delivery, trigger and execution types" as contracts
+}
+
+database "Supabase PostgreSQL\napp_private schema" as postgres
+cloud "Meta Instagram\nOAuth, Graph API and webhooks" as instagram
+cloud "Supabase Cron" as cron
+
+owner --> accountPage : configures automation
+visitor --> instagram : comments or replies to DM
+webClient --> authRoutes : /api/auth, /api/me
+webClient --> ownerRoutes : /api/media, /api/automation,\n/api/executions, /api/dm-answers
+webClient --> healthRoutes : /api/health
+webClient --> maintenanceRoutes : /api/maintenance-health
+instagram --> webhookRoutes : signed comments and messages
+cron --> maintenanceRoutes : POST /api/internal/maintenance
+runtime ..> authRoutes : registers
+runtime ..> ownerRoutes : registers
+runtime ..> webhookRoutes : registers
+runtime ..> maintenanceRoutes : registers
+authRoutes --> security
+authRoutes --> metaClients : OAuth exchange
+ownerRoutes --> security
+ownerRoutes --> metaClients : media and subscription
+webhookRoutes --> commentFlow
+webhookRoutes --> dmFlow
+commentFlow --> metaClients : public/private reply
+dmFlow --> metaClients : follow-up DM
+maintenanceRoutes --> maintenanceFlow
+maintenanceFlow --> metaClients : token refresh and retries
+authRoutes --> repositories
+ownerRoutes --> repositories
+healthRoutes --> repositories : database check
+commentFlow --> repositories
+dmFlow --> repositories
+maintenanceFlow --> repositories
+maintenanceRoutes --> repositories : heartbeat
+repositories --> postgres : SQL
+metaClients --> instagram : HTTPS
+ownerRoutes ..> contracts
+commentFlow ..> contracts
+webClient ..> contracts
+
+note bottom of runtime
+  Vercel routes /api/* to the API service and other paths to the web service.
+  The local server uses the same application runtime.
+end note
+
+@enduml

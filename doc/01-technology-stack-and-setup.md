@@ -236,16 +236,16 @@ then expires the cookie. Missing, malformed, and already-revoked credentials are
 idempotent logouts. A storage failure returns a sanitized `503` without clearing the cookie so the
 server-side revocation can be retried.
 
-Normal unit tests skip external database access. Run the explicitly enabled rollback-only repository
+Normal unit tests skip external database access. Set `TEST_DATABASE_URL` to a dedicated,
+non-production database with the migrations applied, then run the rollback-only repository
 integration test with:
 
 ```bash
 pnpm --filter @instagram-automation/api test:integration
 ```
 
-The integration test loads the ignored local environment, performs its assertions through the
-configured runtime database connection, deliberately aborts each transaction, and confirms that no
-test account, session, automation, or execution remains.
+The integration test does not load `.env.local` or use `DATABASE_URL`. It deliberately aborts each
+transaction and confirms that no test account, session, automation, or execution remains.
 
 ## Vercel
 

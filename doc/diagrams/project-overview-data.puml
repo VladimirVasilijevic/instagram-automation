@@ -1,0 +1,109 @@
+@startuml
+title ReplyKit — persisted data model
+
+hide circle
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam entity {
+  BackgroundColor #ECFDF5
+  BorderColor #059669
+  FontColor #064E3B
+}
+
+entity "instagram_accounts" as accounts {
+  * id : uuid <<PK>>
+  --
+  instagram_user_id : text <<unique>>
+  username : text
+  access_token_ciphertext : text
+  token_expires_at : timestamp
+  connection_status : text
+}
+entity "oauth_states" as states {
+  * state_hash : text <<PK>>
+  --
+  browser_binding_hash : text
+  expires_at : timestamp
+}
+entity "sessions" as sessions {
+  * id : uuid <<PK>>
+  --
+  account_id : uuid <<FK>>
+  token_hash : text <<unique>>
+  expires_at : timestamp
+}
+entity "automations" as automations {
+  * id : uuid <<PK>>
+  --
+  account_id : uuid <<FK, unique>>
+  media_id : text
+  trigger_mode / trigger_text
+  delivery_mode / reply texts
+  quick_reply_options : jsonb
+  enabled : boolean
+}
+entity "executions" as executions {
+  * id : uuid <<PK>>
+  --
+  automation_id : uuid <<FK>>
+  instagram_comment_id : text
+  delivery_channel : text
+  status / attempt_count
+  message_text / quick_reply_options
+  recipient_igsid : text
+  retry / lease / provider result
+}
+entity "inbound_dm_answers" as answers {
+  * id : uuid <<PK>>
+  --
+  account_id : uuid <<FK>>
+  execution_id : uuid <<FK, nullable, unique>>
+  provider_message_id : text
+  sender_igsid : text
+  option_id / text
+  sent_at / received_at
+}
+entity "dm_followups" as followups {
+  * id : uuid <<PK>>
+  --
+  account_id : uuid <<FK>>
+  answer_id : uuid <<FK, unique>>
+  recipient_igsid / message_text
+  expires_at / status
+  retry / lease / provider result
+}
+entity "maintenance_health" as maintenance {
+  * singleton : boolean <<PK>>
+  --
+  last_succeeded_at
+  last_failed_at / last_failure_code
+  aggregate counters
+}
+
+accounts ||--o{ sessions : owns
+accounts ||--o| automations : configures
+automations ||--o{ executions : records
+accounts ||--o{ answers : receives
+executions |o--o| answers : answered by
+accounts ||--o{ followups : sends
+answers ||--o| followups : selects
+
+note right of states
+  Browser-bound OAuth attempts expire.
+  No account foreign key.
+end note
+
+note right of maintenance
+  Durable scheduler heartbeat and counts.
+  No account foreign key.
+end note
+
+note bottom of accounts
+  All tables live in app_private.
+  Fields are summarized; see db/migrations for the full schema.
+end note
+
+@enduml

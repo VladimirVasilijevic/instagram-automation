@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import postgres from 'postgres';
 
 import {
@@ -5,6 +7,7 @@ import {
   type DeliveryChannel,
   type DeliveryMode,
   type ExecutionStatus,
+  type SocialProvider,
   type TriggerMode,
 } from '@instagram-automation/contracts';
 import { RECOVERY_KIND, type RecoveryKind } from '../automation/recovery.js';
@@ -54,14 +57,15 @@ interface AccountRow {
 }
 
 interface SessionRow {
-  account_id: string;
+  account_id: string | null;
+  user_id: string;
   created_at: Date;
   expires_at: Date;
   id: string;
 }
 
 interface AutomationRow {
-  account_id: string;
+  connection_id: string;
   created_at: Date;
   delivery_mode: DeliveryMode;
   enabled: boolean;
@@ -103,7 +107,7 @@ interface ExecutionRow {
 
 interface InboundDmAnswerRow {
   id: string;
-  account_id: string;
+  connection_id: string;
   execution_id: string | null;
   provider_message_id: string;
   sender_igsid: string;
@@ -121,7 +125,7 @@ interface InboundDmAnswerActivityRow extends InboundDmAnswerRow {
 
 interface DmFollowupRow {
   id: string;
-  account_id: string;
+  connection_id: string;
   answer_id: string;
   recipient_igsid: string;
   message_text: string;
@@ -142,20 +146,15 @@ interface DmFollowupRow {
 
 interface DmFollowupClaimRow extends DmFollowupRow {
   access_token_ciphertext: string;
-  instagram_user_id: string;
+  provider: SocialProvider;
+  external_account_id: string;
 }
 
 interface ExecutionRetryRow extends ExecutionRow {
-  account_id: string;
+  connection_id: string;
   access_token_ciphertext: string;
-  instagram_user_id: string;
-}
-
-interface AuthenticatedSessionRow extends AccountRow {
-  session_account_id: string;
-  session_created_at: Date;
-  session_expires_at: Date;
-  session_id: string;
+  provider: SocialProvider;
+  external_account_id: string;
 }
 
 interface MaintenanceHealthRow {
@@ -190,13 +189,14 @@ const toInstagramAccount = (row: AccountRow): InstagramAccount => ({
 
 const toSession = (row: SessionRow): Session => ({
   accountId: row.account_id,
+  userId: row.user_id,
   createdAt: row.created_at,
   expiresAt: row.expires_at,
   id: row.id,
 });
 
 const toAutomation = (row: AutomationRow): Automation => ({
-  accountId: row.account_id,
+  accountId: row.connection_id,
   createdAt: row.created_at,
   deliveryMode: row.delivery_mode,
   enabled: row.enabled,
@@ -238,7 +238,7 @@ const toExecution = (row: ExecutionRow): Execution => ({
 
 const toInboundDmAnswer = (row: InboundDmAnswerRow): InboundDmAnswer => ({
   id: row.id,
-  accountId: row.account_id,
+  accountId: row.connection_id,
   executionId: row.execution_id,
   providerMessageId: row.provider_message_id,
   senderIgsid: row.sender_igsid,
@@ -250,7 +250,7 @@ const toInboundDmAnswer = (row: InboundDmAnswerRow): InboundDmAnswer => ({
 
 const toDmFollowup = (row: DmFollowupRow): DmFollowup => ({
   id: row.id,
-  accountId: row.account_id,
+  accountId: row.connection_id,
   answerId: row.answer_id,
   recipientIgsid: row.recipient_igsid,
   messageText: row.message_text,
@@ -272,7 +272,10 @@ const toDmFollowup = (row: DmFollowupRow): DmFollowup => ({
 const toDmFollowupClaim = (row: DmFollowupClaimRow): DmFollowupClaim => ({
   followup: toDmFollowup(row),
   accessTokenCiphertext: row.access_token_ciphertext as ProtectedToken,
-  instagramUserId: row.instagram_user_id,
+  provider: row.provider,
+  connectionId: row.connection_id,
+  externalAccountId: row.external_account_id,
+  instagramUserId: row.external_account_id,
 });
 
 const toMaintenanceHealth = (row: MaintenanceHealthRow): MaintenanceHealth => ({
@@ -316,48 +319,79 @@ export const createPostgresAccountRepository = (sql: PostgresQueryClient): Accou
   },
 
   async upsertConnectedAccount(input: UpsertConnectedAccountInput): Promise<InstagramAccount> {
-    const rows = await sql<AccountRow[]>`
-      insert into app_private.instagram_accounts (
-        instagram_user_id,
-        username,
-        access_token_ciphertext,
-        token_expires_at
-      ) values (
-        ${input.instagramUserId},
-        ${input.username},
-        ${input.accessTokenCiphertext},
-        ${input.tokenExpiresAt}
-      )
-      on conflict (instagram_user_id) do update
-      set
-        username = excluded.username,
-        access_token_ciphertext = excluded.access_token_ciphertext,
-        token_expires_at = excluded.token_expires_at,
-        connection_status = 'active',
-        token_refresh_failure_code = null,
-        token_refresh_next_attempt_at = null,
-        token_refresh_lease_id = null,
-        token_refresh_lease_until = null
-      returning
-        id,
-        instagram_user_id,
-        username,
-        access_token_ciphertext,
-        connection_status,
-        token_expires_at,
-        token_refresh_last_succeeded_at,
-        token_refresh_next_attempt_at,
-        token_refresh_failure_code,
-        created_at,
-        updated_at
-    `;
-    const account = rows[0];
-
-    if (!account) {
-      throw new Error('Account upsert returned no row');
-    }
-
-    return toInstagramAccount(account);
+    const upsert = async (tx: PostgresQueryClient): Promise<InstagramAccount> => {
+      await tx`
+        select pg_advisory_xact_lock(hashtextextended(${`instagram:${input.instagramUserId}`}, 0))
+      `;
+      const existing = await tx<{ id: string; user_id: string }[]>`
+        select id, user_id from app_private.social_connections
+        where provider = 'instagram' and external_account_id = ${input.instagramUserId}
+        for update
+      `;
+      let connectionId = existing[0]?.id;
+      let userId = existing[0]?.user_id;
+      if (!connectionId || !userId) {
+        const legacy = await tx<{ id: string }[]>`
+          select id from app_private.instagram_accounts
+          where instagram_user_id = ${input.instagramUserId}
+        `;
+        connectionId = legacy[0]?.id ?? randomUUID();
+        userId = connectionId;
+        await tx`
+          insert into app_private.users (id) values (${userId}) on conflict (id) do nothing
+        `;
+        await tx`
+          insert into app_private.social_connections
+            (id, user_id, provider, external_account_id, display_name)
+          values (${connectionId}, ${userId}, 'instagram', ${input.instagramUserId}, ${input.username})
+        `;
+      } else {
+        await tx`
+          update app_private.social_connections
+          set display_name = ${input.username}, connection_status = 'active',
+            connection_failure_code = null
+          where id = ${connectionId}
+        `;
+      }
+      const identities = await tx<{ id: string }[]>`
+        insert into app_private.login_identities
+          (user_id, provider, external_user_id, display_name)
+        values (${userId}, 'instagram', ${input.instagramUserId}, ${input.username})
+        on conflict (provider, external_user_id) do update
+          set display_name = excluded.display_name
+          where login_identities.user_id = excluded.user_id
+        returning id
+      `;
+      if (!identities[0]) throw new Error('Instagram identity owner mismatch');
+      const rows = await tx<AccountRow[]>`
+        insert into app_private.instagram_accounts (
+          id, instagram_user_id, username, access_token_ciphertext, token_expires_at
+        ) values (
+          ${connectionId}, ${input.instagramUserId}, ${input.username},
+          ${input.accessTokenCiphertext}, ${input.tokenExpiresAt}
+        )
+        on conflict (instagram_user_id) do update
+        set
+          username = excluded.username,
+          access_token_ciphertext = excluded.access_token_ciphertext,
+          token_expires_at = excluded.token_expires_at,
+          connection_status = 'active',
+          token_refresh_failure_code = null,
+          token_refresh_next_attempt_at = null,
+          token_refresh_lease_id = null,
+          token_refresh_lease_until = null
+        returning id, instagram_user_id, username, access_token_ciphertext,
+          connection_status, token_expires_at, token_refresh_last_succeeded_at,
+          token_refresh_next_attempt_at, token_refresh_failure_code, created_at, updated_at
+      `;
+      const account = rows[0];
+      if (!account || account.id !== connectionId) {
+        throw new Error('Instagram account and social connection differ');
+      }
+      return toInstagramAccount(account);
+    };
+    const connection = sql as postgres.Sql;
+    return typeof connection.begin === 'function' ? connection.begin(upsert) : upsert(sql);
   },
 });
 
@@ -551,10 +585,19 @@ export const createPostgresMaintenanceHealthRepository = (
 /** Creates PostgreSQL-backed application session persistence operations. */
 export const createPostgresSessionRepository = (sql: PostgresQueryClient): SessionRepository => ({
   async createSession(input: CreateSessionInput): Promise<Session> {
+    const users = input.userId
+      ? [{ id: input.userId }]
+      : await sql<{ id: string }[]>`
+          select user_id as id from app_private.social_connections
+          where id = ${input.accountId ?? null}
+          limit 1
+        `;
+    const userId = users[0]?.id;
+    if (!userId) throw new Error('Session requires an existing user');
     const rows = await sql<SessionRow[]>`
-      insert into app_private.sessions (account_id, token_hash, expires_at)
-      values (${input.accountId}, ${input.tokenHash}, ${input.expiresAt})
-      returning id, account_id, expires_at, created_at
+      insert into app_private.sessions (user_id, account_id, token_hash, expires_at)
+      values (${userId}, ${input.accountId ?? null}, ${input.tokenHash}, ${input.expiresAt})
+      returning id, user_id, account_id, expires_at, created_at
     `;
     const session = rows[0];
 
@@ -576,25 +619,13 @@ export const createPostgresSessionRepository = (sql: PostgresQueryClient): Sessi
   },
 
   async findActiveByTokenHash(tokenHash): Promise<AuthenticatedSession | null> {
-    const rows = await sql<AuthenticatedSessionRow[]>`
+    const rows = await sql<(SessionRow & { user_created_at: Date })[]>`
       select
-        account.id,
-        account.instagram_user_id,
-        account.username,
-        account.access_token_ciphertext,
-        account.connection_status,
-        account.token_expires_at,
-        account.token_refresh_last_succeeded_at,
-        account.token_refresh_next_attempt_at,
-        account.token_refresh_failure_code,
-        account.created_at,
-        account.updated_at,
-        session.id as session_id,
-        session.account_id as session_account_id,
-        session.expires_at as session_expires_at,
-        session.created_at as session_created_at
+        session.id, session.user_id, session.account_id,
+        session.expires_at, session.created_at,
+        app_user.created_at as user_created_at
       from app_private.sessions as session
-      inner join app_private.instagram_accounts as account on account.id = session.account_id
+      inner join app_private.users as app_user on app_user.id = session.user_id
       where session.token_hash = ${tokenHash}
         and session.expires_at > now()
       limit 1
@@ -605,14 +636,47 @@ export const createPostgresSessionRepository = (sql: PostgresQueryClient): Sessi
       return null;
     }
 
+    const connections = await sql<
+      {
+        id: string;
+        user_id: string;
+        provider: 'instagram' | 'facebook';
+        external_account_id: string;
+        display_name: string;
+        connection_status: 'active' | 'reconnect_required';
+      }[]
+    >`
+      select id, user_id, provider, external_account_id, display_name, connection_status
+      from app_private.social_connections
+      where user_id = ${row.user_id}
+      order by case when id = ${row.account_id} then 0 else 1 end, created_at, id
+      limit 1
+    `;
+    const selected = connections[0];
+    const accountRows =
+      selected?.provider === 'instagram'
+        ? await sql<AccountRow[]>`
+          select id, instagram_user_id, username, access_token_ciphertext,
+            connection_status, token_expires_at, token_refresh_last_succeeded_at,
+            token_refresh_next_attempt_at, token_refresh_failure_code, created_at, updated_at
+          from app_private.instagram_accounts where id = ${selected.id}
+          limit 1
+        `
+        : [];
     return {
-      account: toInstagramAccount(row),
-      session: toSession({
-        account_id: row.session_account_id,
-        created_at: row.session_created_at,
-        expires_at: row.session_expires_at,
-        id: row.session_id,
-      }),
+      user: { id: row.user_id, createdAt: row.user_created_at },
+      session: toSession(row),
+      connection: selected
+        ? {
+            id: selected.id,
+            userId: selected.user_id,
+            provider: selected.provider,
+            externalAccountId: selected.external_account_id,
+            displayName: selected.display_name,
+            connectionStatus: selected.connection_status,
+          }
+        : null,
+      account: accountRows[0] ? toInstagramAccount(accountRows[0]) : null,
     };
   },
 });
@@ -623,10 +687,10 @@ export const createPostgresAutomationRepository = (
 ): AutomationRepository => ({
   async findByAccountId(accountId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+      select id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled, created_at, updated_at
       from app_private.automations
-      where account_id = ${accountId}
+      where connection_id = ${accountId}
       limit 1
     `;
 
@@ -635,10 +699,10 @@ export const createPostgresAutomationRepository = (
 
   async findEnabledByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+      select id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled, created_at, updated_at
       from app_private.automations
-      where account_id = ${accountId}
+      where connection_id = ${accountId}
         and media_id = ${mediaId}
         and enabled = true
       limit 1
@@ -650,14 +714,15 @@ export const createPostgresAutomationRepository = (
   async saveAutomation(input: SaveAutomationInput): Promise<Automation> {
     const rows = await sql<AutomationRow[]>`
       insert into app_private.automations (
-        account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+        account_id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled
       ) values (
+        (select id from app_private.instagram_accounts where id = ${input.accountId}),
         ${input.accountId}, ${input.mediaId}, ${input.triggerMode}, ${input.triggerText},
         ${input.deliveryMode}, ${input.replyText}, ${input.privateReplyText},
         ${sql.json(input.quickReplyOptions ?? [])}, ${input.enabled}
       )
-      on conflict (account_id) do update
+      on conflict (connection_id) do update
       set
         media_id = excluded.media_id,
         trigger_mode = excluded.trigger_mode,
@@ -667,7 +732,7 @@ export const createPostgresAutomationRepository = (
         private_reply_text = excluded.private_reply_text,
         quick_reply_options = excluded.quick_reply_options,
         enabled = excluded.enabled
-      returning id, account_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+      returning id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled, created_at, updated_at
     `;
     const automation = rows[0];
@@ -740,7 +805,7 @@ export const createPostgresExecutionRepository = (
         comment_text text,
         lease_expires_at timestamptz
       )
-      on conflict (instagram_comment_id, delivery_channel) do nothing
+      on conflict (automation_id, instagram_comment_id, delivery_channel) do nothing
       returning *
     `;
     return rows.map(toExecution);
@@ -775,7 +840,7 @@ export const createPostgresExecutionRepository = (
         gen_random_uuid(),
         ${input.leaseExpiresAt}
       )
-      on conflict (instagram_comment_id, delivery_channel) do nothing
+      on conflict (automation_id, instagram_comment_id, delivery_channel) do nothing
       returning *
     `;
 
@@ -792,7 +857,7 @@ export const createPostgresExecutionRepository = (
         select execution.instagram_comment_id, max(execution.created_at) as created_at
         from app_private.executions as execution
         inner join app_private.automations as automation on automation.id = execution.automation_id
-        where automation.account_id = ${accountId}
+        where automation.connection_id = ${accountId}
           and (${mediaId ?? null}::text is null or execution.media_id = ${mediaId ?? null})
         group by execution.instagram_comment_id
         order by created_at desc, execution.instagram_comment_id desc
@@ -803,7 +868,7 @@ export const createPostgresExecutionRepository = (
       from app_private.executions as execution
       inner join app_private.automations as automation on automation.id = execution.automation_id
       inner join recent_comments on recent_comments.instagram_comment_id = execution.instagram_comment_id
-      where automation.account_id = ${accountId}
+      where automation.connection_id = ${accountId}
         and (${mediaId ?? null}::text is null or execution.media_id = ${mediaId ?? null})
       order by recent_comments.created_at desc, execution.instagram_comment_id desc,
         execution.delivery_channel desc
@@ -821,9 +886,17 @@ export const createPostgresExecutionRepository = (
         from app_private.executions as execution
         inner join app_private.automations as automation
           on automation.id = execution.automation_id
-        inner join app_private.instagram_accounts as account
-          on account.id = automation.account_id
-        where account.connection_status = 'active'
+        inner join app_private.social_connections as connection
+          on connection.id = automation.connection_id
+        left join app_private.instagram_accounts as instagram
+          on instagram.id = connection.id and connection.provider = 'instagram'
+        left join app_private.facebook_pages as page
+          on page.connection_id = connection.id and connection.provider = 'facebook'
+        where (
+            (connection.provider = 'instagram' and instagram.connection_status = 'active')
+            or (connection.provider = 'facebook' and connection.connection_status = 'active'
+              and page.connection_id is not null)
+          )
           and execution.attempt_count < 3
           and (
             (
@@ -857,18 +930,28 @@ export const createPostgresExecutionRepository = (
       )
       select
         claimed.*,
-        automation.account_id,
-        account.instagram_user_id,
-        account.access_token_ciphertext
+        connection.id as connection_id,
+        connection.provider,
+        connection.external_account_id,
+        coalesce(instagram.access_token_ciphertext, page.access_token_ciphertext)
+          as access_token_ciphertext
       from claimed
       inner join app_private.automations as automation on automation.id = claimed.automation_id
-      inner join app_private.instagram_accounts as account on account.id = automation.account_id
+      inner join app_private.social_connections as connection
+        on connection.id = automation.connection_id
+      left join app_private.instagram_accounts as instagram
+        on instagram.id = connection.id and connection.provider = 'instagram'
+      left join app_private.facebook_pages as page
+        on page.connection_id = connection.id and connection.provider = 'facebook'
     `;
     return rows.map((row) => ({
-      accountId: row.account_id,
+      accountId: row.connection_id,
+      connectionId: row.connection_id,
+      provider: row.provider,
+      externalAccountId: row.external_account_id,
       accessTokenCiphertext: row.access_token_ciphertext as ProtectedToken,
       execution: toExecution(row),
-      instagramUserId: row.instagram_user_id,
+      instagramUserId: row.external_account_id,
     }));
   },
 
@@ -1017,7 +1100,7 @@ export const createPostgresDmConversationRepository = (
   async recordInboundAnswer(input) {
     const alreadyRecorded = await sql<InboundDmAnswerRow[]>`
       select * from app_private.inbound_dm_answers
-      where account_id = ${input.accountId}
+      where connection_id = ${input.accountId}
         and provider_message_id = ${input.providerMessageId}
       limit 1
     `;
@@ -1035,7 +1118,7 @@ export const createPostgresDmConversationRepository = (
       select execution.id
       from app_private.executions as execution
       inner join app_private.automations as automation on automation.id = execution.automation_id
-      where automation.account_id = ${input.accountId}
+      where automation.connection_id = ${input.accountId}
         and execution.delivery_channel = 'private'
         and execution.status = ${EXECUTION_STATUS.SUCCEEDED}
         and execution.recipient_igsid = ${input.senderIgsid}
@@ -1067,7 +1150,7 @@ export const createPostgresDmConversationRepository = (
           count(*) over () as match_count
         from app_private.executions as execution
         inner join app_private.automations as automation on automation.id = execution.automation_id
-        where automation.account_id = ${input.accountId}
+        where automation.connection_id = ${input.accountId}
           and execution.delivery_channel = 'private'
           and execution.status = ${EXECUTION_STATUS.SUCCEEDED}
           and execution.recipient_igsid = ${input.senderIgsid}
@@ -1097,9 +1180,10 @@ export const createPostgresDmConversationRepository = (
         select id from possible where match_count = 1
       ), inserted as (
         insert into app_private.inbound_dm_answers (
-          account_id, execution_id, provider_message_id, sender_igsid,
+          account_id, connection_id, execution_id, provider_message_id, sender_igsid,
           option_id, text, sent_at, received_at
         ) values (
+          (select id from app_private.instagram_accounts where id = ${input.accountId}),
           ${input.accountId},
           (select id from selected),
           ${input.providerMessageId},
@@ -1113,9 +1197,9 @@ export const createPostgresDmConversationRepository = (
         returning *
       ), queued as (
         insert into app_private.dm_followups (
-          account_id, answer_id, recipient_igsid, message_text, expires_at
+          account_id, connection_id, answer_id, recipient_igsid, message_text, expires_at
         )
-        select answer.account_id, answer.id, answer.sender_igsid,
+        select answer.account_id, answer.connection_id, answer.id, answer.sender_igsid,
           option_value->>'followUpText', answer.sent_at + interval '24 hours'
         from inserted as answer
         inner join app_private.executions as execution on execution.id = answer.execution_id
@@ -1132,7 +1216,7 @@ export const createPostgresDmConversationRepository = (
     if (!answer) {
       const existing = await sql<InboundDmAnswerRow[]>`
         select * from app_private.inbound_dm_answers
-        where account_id = ${input.accountId}
+        where connection_id = ${input.accountId}
           and provider_message_id = ${input.providerMessageId}
         limit 1
       `;
@@ -1142,12 +1226,13 @@ export const createPostgresDmConversationRepository = (
     if (!answer) {
       const unmatched = await sql<InboundDmAnswerRow[]>`
         insert into app_private.inbound_dm_answers (
-          account_id, provider_message_id, sender_igsid, text, sent_at, received_at
+          account_id, connection_id, provider_message_id, sender_igsid, text, sent_at, received_at
         ) values (
+          (select id from app_private.instagram_accounts where id = ${input.accountId}),
           ${input.accountId}, ${input.providerMessageId}, ${input.senderIgsid},
           ${input.text}, ${input.sentAt}, ${input.receivedAt}
         )
-        on conflict (account_id, provider_message_id) do nothing
+        on conflict (connection_id, provider_message_id) do nothing
         returning *
       `;
       answer = unmatched[0];
@@ -1155,7 +1240,7 @@ export const createPostgresDmConversationRepository = (
     if (!answer) {
       const existing = await sql<InboundDmAnswerRow[]>`
         select * from app_private.inbound_dm_answers
-        where account_id = ${input.accountId}
+        where connection_id = ${input.accountId}
           and provider_message_id = ${input.providerMessageId}
         limit 1
       `;
@@ -1178,11 +1263,20 @@ export const createPostgresDmConversationRepository = (
       with candidate as (
         select followup.id
         from app_private.dm_followups as followup
-        inner join app_private.instagram_accounts as account on account.id = followup.account_id
+        inner join app_private.social_connections as connection
+          on connection.id = followup.connection_id
+        left join app_private.instagram_accounts as instagram
+          on instagram.id = connection.id and connection.provider = 'instagram'
+        left join app_private.facebook_pages as page
+          on page.connection_id = connection.id and connection.provider = 'facebook'
         where followup.id = ${id}
           and followup.status = 'pending'
           and followup.expires_at > ${leaseUntil}
-          and account.connection_status = 'active'
+          and (
+            (connection.provider = 'instagram' and instagram.connection_status = 'active')
+            or (connection.provider = 'facebook' and connection.connection_status = 'active'
+              and page.connection_id is not null)
+          )
         for update of followup skip locked
       ), claimed as (
         update app_private.dm_followups as followup
@@ -1194,9 +1288,15 @@ export const createPostgresDmConversationRepository = (
         where followup.id = candidate.id
         returning followup.*
       )
-      select claimed.*, account.access_token_ciphertext, account.instagram_user_id
+      select claimed.*, connection.provider, connection.external_account_id,
+        coalesce(instagram.access_token_ciphertext, page.access_token_ciphertext)
+          as access_token_ciphertext
       from claimed
-      inner join app_private.instagram_accounts as account on account.id = claimed.account_id
+      inner join app_private.social_connections as connection on connection.id = claimed.connection_id
+      left join app_private.instagram_accounts as instagram
+        on instagram.id = connection.id and connection.provider = 'instagram'
+      left join app_private.facebook_pages as page
+        on page.connection_id = connection.id and connection.provider = 'facebook'
     `;
     return rows[0] ? toDmFollowupClaim(rows[0]) : null;
   },
@@ -1208,8 +1308,17 @@ export const createPostgresDmConversationRepository = (
       with candidates as (
         select followup.id
         from app_private.dm_followups as followup
-        inner join app_private.instagram_accounts as account on account.id = followup.account_id
-        where account.connection_status = 'active'
+        inner join app_private.social_connections as connection
+          on connection.id = followup.connection_id
+        left join app_private.instagram_accounts as instagram
+          on instagram.id = connection.id and connection.provider = 'instagram'
+        left join app_private.facebook_pages as page
+          on page.connection_id = connection.id and connection.provider = 'facebook'
+        where (
+            (connection.provider = 'instagram' and instagram.connection_status = 'active')
+            or (connection.provider = 'facebook' and connection.connection_status = 'active'
+              and page.connection_id is not null)
+          )
           and followup.expires_at > ${leaseUntil}
           and followup.attempt_count < 3
           and (
@@ -1239,9 +1348,15 @@ export const createPostgresDmConversationRepository = (
         where followup.id = candidates.id
         returning followup.*
       )
-      select claimed.*, account.access_token_ciphertext, account.instagram_user_id
+      select claimed.*, connection.provider, connection.external_account_id,
+        coalesce(instagram.access_token_ciphertext, page.access_token_ciphertext)
+          as access_token_ciphertext
       from claimed
-      inner join app_private.instagram_accounts as account on account.id = claimed.account_id
+      inner join app_private.social_connections as connection on connection.id = claimed.connection_id
+      left join app_private.instagram_accounts as instagram
+        on instagram.id = connection.id and connection.provider = 'instagram'
+      left join app_private.facebook_pages as page
+        on page.connection_id = connection.id and connection.provider = 'facebook'
     `;
     return rows.map(toDmFollowupClaim);
   },
@@ -1384,7 +1499,7 @@ export const createPostgresDmConversationRepository = (
         ) as choice_title
       from app_private.inbound_dm_answers as answer
       left join app_private.executions as execution on execution.id = answer.execution_id
-      where answer.account_id = ${accountId}
+      where answer.connection_id = ${accountId}
         and (${mediaId ?? null}::text is null or execution.media_id = ${mediaId ?? null})
       order by answer.received_at desc, answer.id desc
       limit ${limit}

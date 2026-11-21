@@ -36,8 +36,12 @@ const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDep
     appBaseUrl: 'https://app.example',
     redirectUri: 'https://app.example/api/auth/instagram/callback',
     instagramClient: { authorizationUrl: vi.fn(), completeLogin: vi.fn() },
-    accountRepository: { upsertConnectedAccount: vi.fn(), findByInstagramUserId: vi.fn() },
-    oauthStateRepository: { createState: vi.fn(), consumeState: vi.fn() },
+    identityRepository: { completeInstagramLogin: vi.fn() },
+    oauthStateRepository: {
+      createState: vi.fn(),
+      consumeState: vi.fn(),
+      consumeStateDetails: vi.fn(),
+    },
     tokenProtector: new AesGcmTokenProtector(Buffer.alloc(32, 1).toString('base64')),
   },
   instagramMedia: {

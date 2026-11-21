@@ -7,6 +7,7 @@ import {
   toSafeMigrationError,
 } from './migration-runner.js';
 import {
+  knownApplicationDatabaseUrls,
   LoadTestConfigurationError,
   requireIsolatedLoadTestDatabase,
   toSafeLoadTestError,
@@ -21,7 +22,7 @@ const main = async (): Promise<void> => {
   const databaseUrl = requireIsolatedLoadTestDatabase(
     process.env.LOAD_TEST_DATABASE_MIGRATION_URL,
     process.env.LOAD_TEST_CONFIRM_ISOLATED,
-    [process.env.DATABASE_URL, process.env.DATABASE_MIGRATION_URL],
+    knownApplicationDatabaseUrls(),
   );
   await executeMigrationCommand(
     parseCommand(process.argv[2]),

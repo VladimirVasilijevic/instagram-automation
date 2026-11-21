@@ -57,4 +57,37 @@ describeDatabase('PostgreSQL OAuth state', () => {
       await first`delete from app_private.oauth_states where state_hash in (${state.tokenHash}, ${expired.tokenHash})`;
     }
   });
+
+  it('returns the bound provider and user only once for a Page connection attempt', async () => {
+    const repository = createPostgresOAuthStateRepository(first);
+    const state = createSessionToken();
+    const binding = createSessionToken();
+    const userRows = await first<{ id: string }[]>`
+      insert into app_private.users default values returning id
+    `;
+    const userId = userRows[0]!.id;
+    try {
+      await repository.createState({
+        stateHash: state.tokenHash,
+        browserBindingHash: binding.tokenHash,
+        provider: 'facebook',
+        intent: 'connect_page',
+        intendedUserId: userId,
+        expiresAt: new Date(Date.now() + 600_000),
+      });
+      await expect(
+        repository.consumeStateDetails(state.tokenHash, binding.tokenHash),
+      ).resolves.toEqual({
+        provider: 'facebook',
+        intent: 'connect_page',
+        intendedUserId: userId,
+      });
+      await expect(
+        repository.consumeStateDetails(state.tokenHash, binding.tokenHash),
+      ).resolves.toBeNull();
+    } finally {
+      await first`delete from app_private.oauth_states where state_hash = ${state.tokenHash}`;
+      await first`delete from app_private.users where id = ${userId}`;
+    }
+  });
 });

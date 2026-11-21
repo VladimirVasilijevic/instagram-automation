@@ -20,6 +20,15 @@ const account: InstagramAccount = {
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
 };
+const user = { id: 'user-id', createdAt: new Date('2026-09-01T00:00:00.000Z') };
+const connection = {
+  id: account.id,
+  userId: user.id,
+  provider: 'instagram' as const,
+  externalAccountId: account.instagramUserId,
+  displayName: account.username,
+  connectionStatus: account.connectionStatus,
+};
 const media = [
   {
     id: '17841400000000002',
@@ -36,6 +45,7 @@ const createFixture = () => {
   const sessionToken = createSessionToken();
   const session: Session = {
     id: 'session-id',
+    userId: user.id,
     accountId: account.id,
     expiresAt: new Date('2026-12-01T00:00:00.000Z'),
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
@@ -44,7 +54,7 @@ const createFixture = () => {
     createSession: vi.fn(),
     deleteByTokenHash: vi.fn(),
     findActiveByTokenHash: vi.fn(async (tokenHash: string) =>
-      tokenHash === sessionToken.tokenHash ? { account, session } : null,
+      tokenHash === sessionToken.tokenHash ? { user, connection, account, session } : null,
     ),
   };
   const instagramMediaClient = { listRecentMedia: vi.fn().mockResolvedValue(media) };
@@ -69,8 +79,12 @@ const createFixture = () => {
       appBaseUrl: 'https://app.example',
       redirectUri: 'https://app.example/api/auth/instagram/callback',
       instagramClient: { authorizationUrl: vi.fn(), completeLogin: vi.fn() },
-      accountRepository: { upsertConnectedAccount: vi.fn(), findByInstagramUserId: vi.fn() },
-      oauthStateRepository: { createState: vi.fn(), consumeState: vi.fn() },
+      identityRepository: { completeInstagramLogin: vi.fn() },
+      oauthStateRepository: {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+        consumeStateDetails: vi.fn(),
+      },
       tokenProtector,
     },
     instagramMedia: { instagramMediaClient, tokenProtector },
@@ -165,7 +179,7 @@ describe('recent Instagram media route', () => {
     });
     expect(body).not.toContain('private-instagram-token');
     expect(f.logger.error).toHaveBeenCalledWith(
-      'Instagram media request failed',
+      'Social media request failed',
       expect.objectContaining({
         stage: 'media',
         reason: 'http_error',

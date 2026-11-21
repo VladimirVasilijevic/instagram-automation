@@ -6,6 +6,9 @@ import type {
   DmFollowupClaim,
   TokenRefreshRepository,
 } from '../database/repositories.js';
+import type { SocialConnectionRepository } from '../database/identity-repositories.js';
+import type { FacebookDirectMessageClient } from '../facebook/direct-message-client.js';
+import { FacebookClientError } from '../facebook/http.js';
 import {
   InstagramDirectMessageError,
   type InstagramDirectMessageClient,
@@ -29,6 +32,10 @@ export interface FollowupDeliveryDependencies {
   >;
   /** Provider adapter used to send the message. */
   instagramDirectMessageClient: InstagramDirectMessageClient;
+  /** Facebook Page Messenger adapter for selected quick replies. */
+  facebookDirectMessageClient?: FacebookDirectMessageClient;
+  /** Reconnection state for Facebook Pages. */
+  socialConnectionRepository?: Pick<SocialConnectionRepository, 'markReconnectRequired'>;
   /** Safe application logger. */
   logger: Logger;
   /** Decrypts the account token immediately before delivery. */
@@ -70,10 +77,10 @@ export const deliverFollowup = async (
     accessToken = dependencies.tokenProtector.decrypt(claim.accessTokenCiphertext);
   } catch (error) {
     dependencies.logger.error(
-      'Instagram follow-up token decryption failed',
+      'Social follow-up token decryption failed',
       toSafeErrorContext(error),
     );
-    return fail('TOKEN_DECRYPTION_FAILED', 'The Instagram connection must be repaired.');
+    return fail('TOKEN_DECRYPTION_FAILED', 'The social connection must be repaired.');
   }
 
   if (
@@ -86,12 +93,20 @@ export const deliverFollowup = async (
     throw new Error('Follow-up lease ownership was lost before dispatch');
 
   try {
-    const sent = await dependencies.instagramDirectMessageClient.sendDirectMessage({
-      accessToken,
-      instagramUserId: claim.instagramUserId,
-      recipientId: followup.recipientIgsid,
-      message: followup.messageText,
-    });
+    const sent =
+      claim.provider === 'facebook'
+        ? await dependencies.facebookDirectMessageClient!.sendDirectMessage({
+            pageAccessToken: accessToken,
+            pageId: claim.externalAccountId,
+            recipientId: followup.recipientIgsid,
+            message: followup.messageText,
+          })
+        : await dependencies.instagramDirectMessageClient.sendDirectMessage({
+            accessToken,
+            instagramUserId: claim.instagramUserId,
+            recipientId: followup.recipientIgsid,
+            message: followup.messageText,
+          });
     const completed = await dependencies.dmConversationRepository.markFollowupSucceeded(
       followup.id,
       leaseId,
@@ -100,36 +115,47 @@ export const deliverFollowup = async (
     if (!completed) throw new Error('Follow-up lease ownership was lost after success');
     return EXECUTION_STATUS.SUCCEEDED;
   } catch (error) {
-    const providerError = error instanceof InstagramDirectMessageError ? error : null;
+    const providerError =
+      error instanceof InstagramDirectMessageError || error instanceof FacebookClientError
+        ? error
+        : null;
     const recoveryKind = providerError ? providerError.recoveryKind() : RECOVERY_KIND.UNCERTAIN;
     dependencies.logger.error(
-      'Instagram follow-up failed',
+      'Social follow-up failed',
       providerError ? providerError.toLogContext() : toSafeErrorContext(error),
     );
     if (recoveryKind === RECOVERY_KIND.AUTHENTICATION) {
-      await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
-        followup.accountId,
-        'TOKEN_REJECTED',
-      );
+      if (claim.provider === 'facebook')
+        await dependencies.socialConnectionRepository?.markReconnectRequired(
+          claim.connectionId,
+          'TOKEN_REJECTED',
+        );
+      else
+        await dependencies.tokenRefreshRepository.markAccountReconnectRequired(
+          followup.accountId,
+          'TOKEN_REJECTED',
+        );
     }
+    const providerName = claim.provider === 'facebook' ? 'Facebook' : 'Instagram';
+    const providerCode = claim.provider === 'facebook' ? 'FACEBOOK' : 'INSTAGRAM';
 
     const failure = {
       errorCode:
         recoveryKind === RECOVERY_KIND.UNCERTAIN
           ? 'FOLLOWUP_OUTCOME_UNKNOWN'
           : recoveryKind === RECOVERY_KIND.AUTHENTICATION
-            ? 'INSTAGRAM_RECONNECT_REQUIRED'
+            ? `${providerCode}_RECONNECT_REQUIRED`
             : recoveryKind === RECOVERY_KIND.RETRYABLE
-              ? 'INSTAGRAM_FOLLOWUP_RETRY_SCHEDULED'
-              : 'INSTAGRAM_FOLLOWUP_REJECTED',
+              ? `${providerCode}_FOLLOWUP_RETRY_SCHEDULED`
+              : `${providerCode}_FOLLOWUP_REJECTED`,
       errorMessage:
         recoveryKind === RECOVERY_KIND.UNCERTAIN
           ? 'Delivery requires manual review to prevent a duplicate message.'
           : recoveryKind === RECOVERY_KIND.AUTHENTICATION
-            ? 'Reconnect Instagram before this message can be retried.'
+            ? `Reconnect ${providerName} before this message can be retried.`
             : recoveryKind === RECOVERY_KIND.RETRYABLE
-              ? 'Instagram temporarily rejected the message.'
-              : 'Instagram rejected the follow-up message.',
+              ? `${providerName} temporarily rejected the message.`
+              : `${providerName} rejected the follow-up message.`,
       failureKind: recoveryKind,
     } as const;
     let completed: DmFollowup | null;

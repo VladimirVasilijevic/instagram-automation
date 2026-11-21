@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { APP_NAME } from '../../brand.js';
 
 type AccountMenu = {
-  username: string;
+  label: string;
   loggingOut: boolean;
   onLogout: () => void;
 };
@@ -61,7 +61,7 @@ export const PageShell = ({
   accountMenu?: AccountMenu;
 }) => {
   const path = window.location.pathname;
-  const usernameMark = accountMenu?.username.slice(0, 2).toUpperCase() || '';
+  const accountMark = accountMenu?.label.slice(0, 2).toUpperCase() || '';
 
   return (
     <div className="app-page">
@@ -83,14 +83,14 @@ export const PageShell = ({
             {accountMenu && (
               <details className="group relative z-30 shrink-0">
                 <summary
-                  aria-label={`Account menu for @${accountMenu.username}`}
+                  aria-label={`Account menu for ${accountMenu.label}`}
                   className="ui-focus flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border border-[var(--app-border)] bg-white px-2.5 py-1.5 shadow-sm [&::-webkit-details-marker]:hidden"
                 >
                   <span
                     aria-hidden="true"
                     className="grid size-8 place-items-center rounded-full bg-[#eee7f8] text-xs font-bold text-[#432487]"
                   >
-                    {usernameMark}
+                    {accountMark}
                   </span>
                   <svg
                     aria-hidden="true"
@@ -106,9 +106,9 @@ export const PageShell = ({
                 <div className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-white py-1 shadow-lg">
                   <div className="border-b border-[var(--app-border)] px-4 py-3">
                     <p className="truncate text-sm font-semibold text-[#292638]">
-                      @{accountMenu.username}
+                      {accountMenu.label}
                     </p>
-                    <p className="mt-0.5 text-xs text-[#625b6e]">Instagram account</p>
+                    <p className="mt-0.5 text-xs text-[#625b6e]">ReplyKit account</p>
                   </div>
                   <a
                     className="ui-focus flex min-h-11 items-center px-4 text-sm text-[#403a49] hover:bg-[#f5f2ed]"

@@ -1,9 +1,6 @@
-import {
-  DELIVERY_CHANNEL,
-  DELIVERY_MODE,
-  EXECUTION_STATUS,
-  TRIGGER_MODE,
-} from '@instagram-automation/contracts';
+import { selectCommentDeliveries } from '@instagram-automation/application';
+import { EXECUTION_STATUS } from '@instagram-automation/contracts';
+import { evaluateComment, getCommentSafetyExclusion } from '@instagram-automation/domain';
 
 import type {
   AccountRepository,
@@ -125,16 +122,16 @@ export const processComment = async (
   if (account.connectionStatus !== 'active') {
     return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'connection_inactive' };
   }
-  if (event.parentCommentId) {
-    return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'nested_comment' };
-  }
-  if (
-    event.commenterId === account.instagramUserId ||
-    event.username?.toLowerCase() === account.username.toLowerCase()
-  ) {
-    return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'own_comment' };
-  }
-
+  const ruleComment = {
+    authorExternalId: event.commenterId,
+    authorName: event.username,
+    connectionExternalId: event.instagramAccountId,
+    parentCommentId: event.parentCommentId,
+    text: event.text,
+  };
+  const ruleOwner = { externalId: account.instagramUserId, name: account.username };
+  const safetyExclusion = getCommentSafetyExclusion(ruleComment, ruleOwner);
+  if (safetyExclusion) return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: safetyExclusion };
   const automation = await dependencies.automationRepository.findEnabledByAccountAndMedia(
     account.id,
     event.mediaId,
@@ -142,41 +139,13 @@ export const processComment = async (
   if (!automation) {
     return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'no_enabled_automation' };
   }
-  const normalizedText = event.text.trim().toLowerCase();
-  const normalizedTrigger = automation.triggerText?.toLowerCase() ?? null;
-  const commentTokens: string[] = normalizedText.match(/#[\p{L}\p{N}_]+|[\p{L}\p{N}_]+/gu) ?? [];
-  const triggerMatched =
-    automation.triggerMode === TRIGGER_MODE.ALL ||
-    (automation.triggerMode === TRIGGER_MODE.EXACT && normalizedText === normalizedTrigger) ||
-    (automation.triggerMode === TRIGGER_MODE.CONTAINS &&
-      normalizedTrigger !== null &&
-      commentTokens.includes(normalizedTrigger));
-  if (!triggerMatched) {
-    return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'trigger_not_matched' };
-  }
+  const exclusion = evaluateComment(ruleComment, ruleOwner, {
+    mode: automation.triggerMode,
+    text: automation.triggerText,
+  });
+  if (exclusion) return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: exclusion };
 
-  const deliveryRequests = [
-    ...(automation.deliveryMode === DELIVERY_MODE.PUBLIC ||
-    automation.deliveryMode === DELIVERY_MODE.BOTH
-      ? [
-          {
-            deliveryChannel: DELIVERY_CHANNEL.PUBLIC,
-            messageText: automation.replyText,
-            quickReplyOptions: [],
-          },
-        ]
-      : []),
-    ...(automation.deliveryMode === DELIVERY_MODE.PRIVATE ||
-    automation.deliveryMode === DELIVERY_MODE.BOTH
-      ? [
-          {
-            deliveryChannel: DELIVERY_CHANNEL.PRIVATE,
-            messageText: automation.privateReplyText!,
-            quickReplyOptions: automation.quickReplyOptions ?? [],
-          },
-        ]
-      : []),
-  ];
+  const deliveryRequests = selectCommentDeliveries(automation);
   const executions = await dependencies.executionRepository.claimExecutions(
     deliveryRequests.map((delivery) => ({
       automationId: automation.id,

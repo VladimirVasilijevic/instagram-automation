@@ -23,6 +23,15 @@ const account: InstagramAccount = {
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
 };
+const user = { id: 'user-id', createdAt: new Date('2026-09-01T00:00:00.000Z') };
+const connection = {
+  id: account.id,
+  userId: user.id,
+  provider: 'instagram' as const,
+  externalAccountId: account.instagramUserId,
+  displayName: account.username,
+  connectionStatus: account.connectionStatus,
+};
 const commentPayload = {
   object: 'instagram',
   entry: [
@@ -59,6 +68,7 @@ const createFixture = () => {
   const sessionToken = createSessionToken();
   const session: Session = {
     id: 'session-id',
+    userId: user.id,
     accountId: account.id,
     expiresAt: new Date('2026-12-01T00:00:00.000Z'),
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
@@ -67,7 +77,7 @@ const createFixture = () => {
     createSession: vi.fn(),
     deleteByTokenHash: vi.fn(),
     findActiveByTokenHash: vi.fn(async (tokenHash: string) =>
-      tokenHash === sessionToken.tokenHash ? { account, session } : null,
+      tokenHash === sessionToken.tokenHash ? { user, connection, account, session } : null,
     ),
   };
   const logger = { error: vi.fn(), info: vi.fn() };
@@ -114,8 +124,12 @@ const createFixture = () => {
       appBaseUrl: 'https://app.example',
       redirectUri: 'https://app.example/api/auth/instagram/callback',
       instagramClient: { authorizationUrl: vi.fn(), completeLogin: vi.fn() },
-      accountRepository: { findByInstagramUserId: vi.fn(), upsertConnectedAccount: vi.fn() },
-      oauthStateRepository: { consumeState: vi.fn(), createState: vi.fn() },
+      identityRepository: { completeInstagramLogin: vi.fn() },
+      oauthStateRepository: {
+        consumeState: vi.fn(),
+        createState: vi.fn(),
+        consumeStateDetails: vi.fn(),
+      },
       tokenProtector,
     },
     instagramMedia: { instagramMediaClient: { listRecentMedia: vi.fn() }, tokenProtector },

@@ -35,6 +35,10 @@ const route = createRoute({
       description: 'No active application session.',
       content: { 'application/json': { schema: errorResponseSchema } },
     },
+    409: {
+      description: 'No connected social account.',
+      content: { 'application/json': { schema: errorResponseSchema } },
+    },
     400: {
       description: 'The requested post filter is invalid.',
       content: { 'application/json': { schema: errorResponseSchema } },
@@ -70,10 +74,15 @@ export const registerDmAnswerRoutes = (
         400,
       );
     }
-    const { account } = context.get('authenticatedSession');
+    const { connection } = context.get('authenticatedSession');
+    if (!connection)
+      return context.json(
+        { error: { code: 'CONNECTION_REQUIRED', message: 'Connect a social account first.' } },
+        409,
+      );
     try {
       const rows = await dependencies.dmConversationRepository.listRecentAnswersByAccountId(
-        account.id,
+        connection.id,
         50,
         parsedMediaId?.success ? parsedMediaId.data : undefined,
       );

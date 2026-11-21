@@ -151,6 +151,22 @@ describe('automation editor', () => {
     );
   });
 
+  it('offers Facebook Page reconnection for a Facebook credential rejection', async () => {
+    vi.mocked(saveAutomation).mockRejectedValue(
+      new AutomationSaveError('FACEBOOK_RECONNECT_REQUIRED'),
+    );
+    render(<AutomationEditor provider="facebook" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First post' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Reconnect Facebook Page');
+    expect(screen.getByRole('link', { name: 'Reconnect Facebook Page' })).toHaveAttribute(
+      'href',
+      '/api/connections/facebook/start',
+    );
+  });
+
   it('saves separate public and private messages in both mode', async () => {
     vi.mocked(saveAutomation).mockResolvedValue({
       deliveryMode: 'both',

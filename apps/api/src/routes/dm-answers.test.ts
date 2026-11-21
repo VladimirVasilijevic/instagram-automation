@@ -24,11 +24,21 @@ const account: InstagramAccount = {
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
   username: 'owner',
 };
+const user = { id: 'user-id', createdAt: new Date('2026-09-01T00:00:00.000Z') };
+const connection = {
+  id: account.id,
+  userId: user.id,
+  provider: 'instagram' as const,
+  externalAccountId: account.instagramUserId,
+  displayName: account.username,
+  connectionStatus: account.connectionStatus,
+};
 
 describe('DM answer activity route', () => {
   it('returns only safe account-owned answer fields after session authentication', async () => {
     const token = createSessionToken();
     const session: Session = {
+      userId: user.id,
       accountId: account.id,
       createdAt: new Date('2026-09-01T00:00:00.000Z'),
       expiresAt: new Date('2026-12-01T00:00:00.000Z'),
@@ -80,7 +90,7 @@ describe('DM answer activity route', () => {
       logger: { error: vi.fn(), info: vi.fn() },
       sessionCookie: { name: 'igauto_session', secure: false, ttlSeconds: 3600 },
       sessionRepository: {
-        findActiveByTokenHash: vi.fn().mockResolvedValue({ account, session }),
+        findActiveByTokenHash: vi.fn().mockResolvedValue({ user, connection, account, session }),
       },
     });
 

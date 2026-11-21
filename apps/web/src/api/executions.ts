@@ -1,8 +1,8 @@
 /** Safe automation activity returned for the signed-in account. */
 export interface ExecutionActivity {
-  /** Instagram username when available in the comment event. */
+  /** Commenter display name when available in the event. */
   commenterUsername: string | null;
-  /** Instagram media identifier when it was captured for the execution. */
+  /** Provider post or media identifier captured for the execution. */
   mediaId: string | null;
   /** Original comment text. */
   commentText: string;

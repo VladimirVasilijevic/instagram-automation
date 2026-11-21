@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReplyKit UML architecture comparison</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, sans-serif;
+        color: #0f172a;
+        background: #f8fafc;
+      }
+      body {
+        margin: 0;
+        padding: 1.25rem;
+      }
+      main {
+        max-width: 120rem;
+        margin: auto;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin: 1.5rem 0;
+      }
+      a {
+        color: #1d4ed8;
+      }
+      section {
+        margin: 2.5rem 0 4rem;
+      }
+      .comparison {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .diagram {
+        min-width: 0;
+        padding: 1rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.75rem;
+        background: white;
+      }
+      .viewport {
+        overflow: auto;
+        max-height: 70vh;
+        border: 1px solid #e2e8f0;
+      }
+      .viewport img {
+        display: block;
+        width: 100%;
+        min-width: 40rem;
+        height: auto;
+      }
+      .note {
+        margin: 0 0 1rem;
+        color: #475569;
+      }
+      @media (max-width: 60rem) {
+        .comparison {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ReplyKit: before and after UML</h1>
+      <p>
+        Compare the original Instagram-centered architecture with the user, connection, and provider
+        boundaries introduced by the refactor. Open each SVG for full-size viewing.
+      </p>
+      <nav aria-label="Diagram navigation">
+        <a href="#components">Components</a>
+        <a href="#data">Data model</a>
+        <a href="#sequence">Main flow</a>
+      </nav>
+
+      <section id="components" aria-labelledby="components-title">
+        <h2 id="components-title">Components</h2>
+        <p class="note">
+          After: ReplyKit users and social connections are separate; shared comment rules and
+          delivery selection sit between the API and Instagram/Facebook adapters. PostgreSQL remains
+          the current persistence implementation.
+        </p>
+        <div class="comparison">
+          <div class="diagram">
+            <h3>Before</h3>
+            <div class="viewport">
+              <img
+                src="project-overview-components.svg"
+                alt="Original Instagram-centered component UML"
+              />
+            </div>
+            <p><a href="project-overview-components.svg">Open original SVG</a></p>
+          </div>
+          <div class="diagram">
+            <h3>After</h3>
+            <div class="viewport">
+              <img
+                src="architecture-after-components.svg"
+                alt="New user, provider, business logic and persistence component UML"
+              />
+            </div>
+            <p>
+              <a href="architecture-after-components.svg">Open new SVG</a> ·
+              <a href="architecture-after-components.puml">PlantUML source</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="data" aria-labelledby="data-title">
+        <h2 id="data-title">Data model</h2>
+        <p class="note">
+          After: sessions belong to users; login identities and social connections are distinct;
+          automations and message activity are scoped to a connection. Legacy Instagram-specific SQL
+          fields remain during migration.
+        </p>
+        <div class="comparison">
+          <div class="diagram">
+            <h3>Before</h3>
+            <div class="viewport">
+              <img
+                src="project-overview-data.svg"
+                alt="Original Instagram account and automation data model"
+              />
+            </div>
+            <p><a href="project-overview-data.svg">Open original SVG</a></p>
+          </div>
+          <div class="diagram">
+            <h3>After</h3>
+            <div class="viewport">
+              <img
+                src="architecture-after-data.svg"
+                alt="New user, social connection, Facebook Page and provider-scoped automation data model"
+              />
+            </div>
+            <p>
+              <a href="architecture-after-data.svg">Open new SVG</a> ·
+              <a href="architecture-after-data.puml">PlantUML source</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="sequence" aria-labelledby="sequence-title">
+        <h2 id="sequence-title">Main flow</h2>
+        <p class="note">
+          After: Facebook sign-in, explicit Page selection, public/private delivery, quick-reply
+          answers, and follow-ups use the shared processing path. The original diagram shows the
+          Instagram flow.
+        </p>
+        <div class="comparison">
+          <div class="diagram">
+            <h3>Before</h3>
+            <div class="viewport">
+              <img
+                src="project-overview-sequence.svg"
+                alt="Original Instagram comment and DM sequence"
+              />
+            </div>
+            <p><a href="project-overview-sequence.svg">Open original SVG</a></p>
+          </div>
+          <div class="diagram">
+            <h3>After</h3>
+            <div class="viewport">
+              <img
+                src="architecture-after-sequence.svg"
+                alt="New Facebook Page reply, quick-reply and follow-up sequence"
+              />
+            </div>
+            <p>
+              <a href="architecture-after-sequence.svg">Open new SVG</a> ·
+              <a href="architecture-after-sequence.puml">PlantUML source</a>
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

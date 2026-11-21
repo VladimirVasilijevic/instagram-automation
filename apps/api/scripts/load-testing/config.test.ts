@@ -1,6 +1,12 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  knownApplicationDatabaseUrls,
   loadTestBaseUrl,
   loadTestRunId,
   requireIsolatedLoadTestDatabase,
@@ -22,6 +28,27 @@ describe('load-test safety configuration', () => {
         ['postgres://application:two@test.example:6543/postgres'],
       ),
     ).toThrowError(/must differ/);
+  });
+
+  it('compares the ignored application environment file without loading its secrets', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'replykit-load-env-'));
+    const file = join(directory, '.env.local');
+    writeFileSync(file, 'DATABASE_URL=postgres://owner:secret@production.example:6543/postgres\n');
+    try {
+      const knownUrls = knownApplicationDatabaseUrls(pathToFileURL(file));
+      expect(() =>
+        requireIsolatedLoadTestDatabase(
+          'postgres://load:other@production.example:6543/postgres',
+          'I_UNDERSTAND_THIS_DATABASE_WILL_BE_MUTATED',
+          knownUrls,
+        ),
+      ).toThrowError(/must differ/);
+      expect(process.env.DATABASE_URL).not.toBe(
+        'postgres://owner:secret@production.example:6543/postgres',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('accepts an explicitly isolated PostgreSQL database', () => {

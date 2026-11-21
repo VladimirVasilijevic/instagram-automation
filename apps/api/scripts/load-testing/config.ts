@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
+
 const isolationConfirmation = 'I_UNDERSTAND_THIS_DATABASE_WILL_BE_MUTATED';
 const runIdPattern = /^[a-z0-9][a-z0-9-]{2,39}$/;
 
@@ -55,6 +58,26 @@ export const requireIsolatedLoadTestDatabase = (
     throw new LoadTestConfigurationError('Load-test tools cannot run in a production environment');
   }
   return selectedUrl;
+};
+
+/** Reads configured application database URLs without loading them into the test process. */
+export const knownApplicationDatabaseUrls = (
+  localEnvironmentPath: URL = new URL('../../../../.env.local', import.meta.url),
+): Array<string | undefined> => {
+  let localEnvironment: Record<string, string | undefined> = {};
+  try {
+    localEnvironment = parseEnv(readFileSync(localEnvironmentPath, 'utf8'));
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+      throw new LoadTestConfigurationError('Application environment file could not be read');
+    }
+  }
+  return [
+    process.env.DATABASE_URL,
+    process.env.DATABASE_MIGRATION_URL,
+    localEnvironment.DATABASE_URL,
+    localEnvironment.DATABASE_MIGRATION_URL,
+  ];
 };
 
 /** Returns a short identifier safe for fixture keys and targeted cleanup. */

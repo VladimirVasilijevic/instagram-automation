@@ -1,12 +1,12 @@
 /** A recent media item returned by the authenticated application API. */
 export interface RecentMedia {
-  /** Opaque Instagram media identifier. */
+  /** Opaque provider post or media identifier. */
   id: string;
-  /** Optional Instagram caption. */
+  /** Optional post caption or message. */
   caption: string | null;
-  /** Optional canonical Instagram URL. */
+  /** Optional canonical provider URL. */
   permalink: string | null;
-  /** Instagram media type, such as IMAGE or VIDEO. */
+  /** Provider media type, such as IMAGE or VIDEO. */
   mediaType: string;
   /** Optional media asset URL. */
   mediaUrl: string | null;

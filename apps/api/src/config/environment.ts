@@ -8,6 +8,21 @@ export interface Environment {
   /** Bearer secret required by the Supabase Cron maintenance request. */
   CRON_SECRET: string;
 
+  /** Facebook Login app ID, when Facebook integration is configured. */
+  FACEBOOK_APP_ID?: string;
+
+  /** Server-only Facebook Login app secret. */
+  FACEBOOK_APP_SECRET?: string;
+
+  /** Explicit Graph API version for Facebook Pages. */
+  FACEBOOK_API_VERSION?: string;
+
+  /** Exact Facebook OAuth callback registered with Meta. */
+  FACEBOOK_REDIRECT_URI?: string;
+
+  /** Secret used only for the Facebook Page webhook verification handshake. */
+  FACEBOOK_WEBHOOK_VERIFY_TOKEN?: string;
+
   /** Instagram Login client ID from the Instagram product settings. */
   META_APP_ID: string;
 
@@ -68,6 +83,20 @@ const environmentSchema: z.ZodType<Environment> = z
       'Must be a site origin',
     ),
     CRON_SECRET: z.string().trim().min(32, 'CRON_SECRET must contain at least 32 characters'),
+    FACEBOOK_APP_ID: z.string().trim().regex(/^\d+$/).optional(),
+    FACEBOOK_APP_SECRET: z.string().trim().min(1).optional(),
+    FACEBOOK_API_VERSION: z
+      .string()
+      .trim()
+      .regex(/^v\d+\.0$/)
+      .optional(),
+    FACEBOOK_REDIRECT_URI: webUrl
+      .refine(
+        (value) => new URL(value).pathname === '/api/auth/facebook/callback',
+        'Must use the /api/auth/facebook/callback path',
+      )
+      .optional(),
+    FACEBOOK_WEBHOOK_VERIFY_TOKEN: z.string().trim().min(1).optional(),
     META_APP_ID: z.string().trim().regex(/^\d+$/, 'Must be a numeric Instagram app ID'),
     META_APP_SECRET: z.string().trim().min(1, 'META_APP_SECRET is required'),
     META_API_VERSION: z
@@ -105,6 +134,31 @@ const environmentSchema: z.ZodType<Environment> = z
       ),
   })
   .superRefine((value, context) => {
+    const facebookKeys = [
+      'FACEBOOK_APP_ID',
+      'FACEBOOK_APP_SECRET',
+      'FACEBOOK_API_VERSION',
+      'FACEBOOK_REDIRECT_URI',
+      'FACEBOOK_WEBHOOK_VERIFY_TOKEN',
+    ] as const;
+    const configured = facebookKeys.filter((key) => Boolean(value[key]));
+    if (configured.length > 0 && configured.length !== facebookKeys.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['FACEBOOK_APP_ID'],
+        message: 'All FACEBOOK_* settings are required when Facebook is enabled',
+      });
+    }
+    if (
+      value.FACEBOOK_REDIRECT_URI &&
+      new URL(value.FACEBOOK_REDIRECT_URI).origin !== new URL(value.APP_BASE_URL).origin
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['FACEBOOK_REDIRECT_URI'],
+        message: 'Facebook callback and frontend must share an origin',
+      });
+    }
     if (value.NODE_ENV !== 'production') return;
     if (!URL.canParse(value.APP_BASE_URL) || !URL.canParse(value.META_REDIRECT_URI)) return;
     if (
@@ -124,6 +178,13 @@ const environmentSchema: z.ZodType<Environment> = z
         message: 'Production callback and frontend must share an origin',
       });
     }
+    if (value.FACEBOOK_REDIRECT_URI && !value.FACEBOOK_REDIRECT_URI.startsWith('https://')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['FACEBOOK_REDIRECT_URI'],
+        message: 'Production Facebook callback requires HTTPS',
+      });
+    }
   });
 
 /**
@@ -134,7 +195,14 @@ const environmentSchema: z.ZodType<Environment> = z
  * @throws When a required variable is missing or a configured value is invalid.
  */
 export const parseEnvironment = (input: NodeJS.ProcessEnv): Environment => {
-  const result = environmentSchema.safeParse(input);
+  const result = environmentSchema.safeParse({
+    ...input,
+    FACEBOOK_APP_ID: input.FACEBOOK_APP_ID || undefined,
+    FACEBOOK_APP_SECRET: input.FACEBOOK_APP_SECRET || undefined,
+    FACEBOOK_API_VERSION: input.FACEBOOK_API_VERSION || undefined,
+    FACEBOOK_REDIRECT_URI: input.FACEBOOK_REDIRECT_URI || undefined,
+    FACEBOOK_WEBHOOK_VERIFY_TOKEN: input.FACEBOOK_WEBHOOK_VERIFY_TOKEN || undefined,
+  });
 
   if (result.success) {
     return result.data;

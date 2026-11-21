@@ -8,6 +8,10 @@ import type {
   MaintenanceCounts,
   TokenRefreshRepository,
 } from '../database/repositories.js';
+import type { SocialConnectionRepository } from '../database/identity-repositories.js';
+import type { FacebookCommentReplyClient } from '../facebook/comment-reply-client.js';
+import type { FacebookDirectMessageClient } from '../facebook/direct-message-client.js';
+import type { FacebookPrivateReplyClient } from '../facebook/private-reply-client.js';
 import type { InstagramCommentReplyClient } from '../instagram/comment-reply-client.js';
 import type { InstagramDirectMessageClient } from '../instagram/direct-message-client.js';
 import type { InstagramPrivateReplyClient } from '../instagram/private-reply-client.js';
@@ -57,6 +61,10 @@ export const runMaintenance = async (
     instagramCommentReplyClient: InstagramCommentReplyClient;
     instagramDirectMessageClient: InstagramDirectMessageClient;
     instagramPrivateReplyClient: InstagramPrivateReplyClient;
+    facebookCommentReplyClient?: FacebookCommentReplyClient;
+    facebookPrivateReplyClient?: FacebookPrivateReplyClient;
+    facebookDirectMessageClient?: FacebookDirectMessageClient;
+    socialConnectionRepository?: Pick<SocialConnectionRepository, 'markReconnectRequired'>;
     instagramTokenRefreshClient: InstagramTokenRefreshClient;
     logger: Logger;
     tokenProtector: TokenProtector;
@@ -89,11 +97,12 @@ export const runMaintenance = async (
   for (const claim of claims) {
     const outcome = await deliverReply(
       {
+        provider: claim.provider,
         accountId: claim.accountId,
         accessTokenCiphertext: claim.accessTokenCiphertext,
         commentId: claim.execution.instagramCommentId,
         execution: claim.execution,
-        instagramUserId: claim.instagramUserId,
+        instagramUserId: claim.externalAccountId,
         message: claim.execution.messageText,
       },
       dependencies,

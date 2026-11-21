@@ -8,7 +8,8 @@ database, a Vercel deployment, or the real Meta API.
 
 Use a dedicated Supabase test project. The scripts require a separate `LOAD_TEST_DATABASE_URL`, an
 explicit isolation confirmation, and a non-production runtime. They also reject a database endpoint
-that matches `DATABASE_URL` or `DATABASE_MIGRATION_URL` when either is present.
+that matches `DATABASE_URL` or `DATABASE_MIGRATION_URL` in the shell or local `.env.local` file.
+Confirm that the isolated project differs from any deployed database not listed locally.
 
 Copy `load-tests/env.example` to `.env.load-test.local` and add only test-project credentials. The
 transaction pooler belongs in `LOAD_TEST_DATABASE_URL`; the session pooler belongs in

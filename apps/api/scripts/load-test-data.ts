@@ -11,6 +11,7 @@ import {
   loadTestAppSecret,
   loadTestBaseUrl,
   loadTestEncryptionKey,
+  knownApplicationDatabaseUrls,
   loadTestRunId,
   loadTestSessionCookieName,
   requireIsolatedLoadTestDatabase,
@@ -43,7 +44,7 @@ const databaseUrl = (): string =>
   requireIsolatedLoadTestDatabase(
     process.env.LOAD_TEST_DATABASE_URL,
     process.env.LOAD_TEST_CONFIRM_ISOLATED,
-    [process.env.DATABASE_URL, process.env.DATABASE_MIGRATION_URL],
+    knownApplicationDatabaseUrls(),
   );
 
 const readGeneratedConfiguration = async (): Promise<GeneratedConfiguration> => {
@@ -186,6 +187,30 @@ const cleanup = async (): Promise<void> => {
         delete from app_private.instagram_accounts
         where id in ${sql(accountIds)} and instagram_user_id = ${configuration.accountInstagramId}
         returning id
+      `;
+      await transaction`
+        delete from app_private.login_identities
+        where user_id in ${sql(accountIds)}
+          and provider = 'instagram'
+          and external_user_id = ${configuration.accountInstagramId}
+      `;
+      await transaction`
+        delete from app_private.social_connections
+        where id in ${sql(accountIds)}
+          and provider = 'instagram'
+          and external_account_id = ${configuration.accountInstagramId}
+      `;
+      await transaction`
+        delete from app_private.users as app_user
+        where app_user.id in ${sql(accountIds)}
+          and not exists (
+            select 1 from app_private.login_identities as identity
+            where identity.user_id = app_user.id
+          )
+          and not exists (
+            select 1 from app_private.social_connections as connection
+            where connection.user_id = app_user.id
+          )
       `;
       return {
         accounts: accounts.length,

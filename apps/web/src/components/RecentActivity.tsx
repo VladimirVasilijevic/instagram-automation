@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { DELIVERY_CHANNEL, EXECUTION_STATUS } from '@instagram-automation/contracts';
+import type { SocialProvider } from '@instagram-automation/contracts';
 
 import {
   getRecentExecutions,
@@ -38,8 +39,10 @@ const formatTimestamp = (createdAt: string): string =>
 /** Renders safe, account-owned automation results with a manual refresh control. */
 export const RecentActivity = ({
   selectedMediaId,
+  provider = 'instagram',
 }: {
   selectedMediaId: string | null | undefined;
+  provider?: SocialProvider;
 }) => {
   const [state, setState] = useState<ActivityState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -214,8 +217,12 @@ export const RecentActivity = ({
                 <div className="min-w-0">
                   <p className="font-semibold break-words text-[#292638]">
                     {execution.commenterUsername
-                      ? `@${execution.commenterUsername}`
-                      : 'Instagram user'}
+                      ? provider === 'instagram'
+                        ? `@${execution.commenterUsername}`
+                        : execution.commenterUsername
+                      : provider === 'instagram'
+                        ? 'Instagram user'
+                        : 'Facebook user'}
                   </p>
                   {execution.commenterUsername && (
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -228,14 +235,16 @@ export const RecentActivity = ({
                           ? 'Username copied'
                           : 'Copy username'}
                       </button>
-                      <a
-                        className="ui-button-secondary w-full sm:w-auto"
-                        href={`https://www.instagram.com/${encodeURIComponent(execution.commenterUsername)}/`}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Open Instagram profile
-                      </a>
+                      {provider === 'instagram' && (
+                        <a
+                          className="ui-button-secondary w-full sm:w-auto"
+                          href={`https://www.instagram.com/${encodeURIComponent(execution.commenterUsername)}/`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Open Instagram profile
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>
@@ -304,7 +313,13 @@ export const RecentActivity = ({
                     className="rounded-xl border border-[var(--app-border)] bg-[#faf9f6] p-4"
                   >
                     <p className="font-semibold text-[#292638]">
-                      {answer.commenterUsername ? `@${answer.commenterUsername}` : 'Instagram user'}
+                      {answer.commenterUsername
+                        ? provider === 'instagram'
+                          ? `@${answer.commenterUsername}`
+                          : answer.commenterUsername
+                        : provider === 'instagram'
+                          ? 'Instagram user'
+                          : 'Facebook user'}
                     </p>
                     <p className="mt-2 break-words text-sm text-[#433d50]">
                       {answer.choiceTitle
