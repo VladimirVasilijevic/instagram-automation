@@ -1,5 +1,12 @@
 # Private-message automation activation
 
+## Flow diagrams
+
+Open the [UML module diagram](diagrams/instagram-comment-dm-uml.html) or the
+[comment and DM call sequence](diagrams/instagram-comment-dm-call-sequence.html) directly in a
+browser. Both pages use local SVG files and work offline. Editable PlantUML sources are in the same
+directory.
+
 ## Implemented behavior
 
 One automation is configured for one recent Instagram post. Its trigger can match the complete

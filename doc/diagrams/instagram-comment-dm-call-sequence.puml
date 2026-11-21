@@ -1,0 +1,124 @@
+@startuml
+title Instagram comment, private DM, and answer follow-up — implemented call sequence
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam sequence {
+  ParticipantBackgroundColor #EFF6FF
+  ParticipantBorderColor #2563EB
+  ParticipantFontColor #0F172A
+  LifeLineBorderColor #64748B
+}
+
+actor "Instagram user" as User
+participant "Meta Instagram" as Meta
+participant "Webhook route" as Route
+participant "WebhookEvents" as Events
+participant "ProcessComment" as Processor
+participant "ProcessIncomingMessage" as Incoming
+database "Repositories" as Repos
+participant "DeliverReply" as Delivery
+participant "DeliverFollowup" as Followup
+participant "Public reply client" as PublicClient
+participant "Private reply client" as PrivateClient
+participant "Direct message client" as DirectClient
+participant "Maintenance" as Maintenance
+
+User -> Meta: comment on selected post
+Meta -> Route: POST /api/webhooks/instagram
+Route -> Route: verify SHA-256 signature and parse JSON
+alt invalid signature or payload
+  Route --> Meta: 401 or 400
+else valid signed delivery
+  Route -> Events: normalizeCommentEvents(payload)
+  Events --> Route: normalized comment event(s)
+  loop for each comment event
+      Route -> Processor: processComment(event)
+      Processor -> Repos: find connected account and enabled automation
+      alt ineligible account, nested/own comment, or trigger mismatch
+        Repos --> Processor: no eligible delivery
+        Processor --> Route: ignored
+      else eligible comment
+        Processor -> Repos: claimExecutions(comment ID, delivery channel)
+        alt already claimed
+          Repos --> Processor: no new executions
+          Processor --> Route: duplicate
+        else one or two newly claimed channels
+          Repos --> Processor: leased executions with message snapshots
+          par public channel when selected
+            Processor -> Delivery: deliverReply(public execution)
+            Delivery -> Repos: markDispatchStarted()
+            Delivery -> PublicClient: replyToComment(comment ID, text)
+            PublicClient -> Meta: POST /{commentId}/replies
+            Meta --> PublicClient: reply ID or error
+            PublicClient --> Delivery: result
+            Delivery -> Repos: record outcome
+          else private channel when selected
+            Processor -> Delivery: deliverReply(private execution)
+            Delivery -> Repos: markDispatchStarted()
+            Delivery -> PrivateClient: sendPrivateReply(comment ID, text, optional choices)
+            PrivateClient -> Meta: POST /{igUserId}/messages\nrecipient.comment_id = comment ID
+            Meta --> PrivateClient: message ID or error
+            PrivateClient --> Delivery: result
+            Delivery -> Repos: record outcome
+          end
+          note over Delivery, Repos
+            Outcomes: succeeded, retry pending, failed, or uncertain.
+            Uncertain sends require manual review to avoid duplicates.
+          end note
+          Processor --> Route: aggregate channel outcome
+        end
+      end
+  end
+  Route --> Meta: 200 EVENT_RECEIVED
+end
+
+opt later, user taps a quick reply or sends text
+  User -> Meta: send answer
+  Meta -> Route: POST /api/webhooks/instagram
+  Route -> Route: verify SHA-256 signature and parse JSON
+  Route -> Events: normalizeCommentEvents(payload)
+  Events --> Route: supported DMs and unsupported counts
+  loop for each supported incoming DM
+    Route -> Incoming: processIncomingMessage(event)
+    Incoming -> Repos: find connected recipient account
+    Incoming -> Repos: recordInboundAnswer(message ID, text or choice payload)
+    alt duplicate or unmatched answer
+      Repos --> Incoming: no new follow-up
+    else typed answer
+      Repos --> Incoming: answer saved for review
+    else matched quick-reply choice
+      Repos --> Incoming: answer saved and follow-up queued
+      Incoming -> Repos: claimFollowup()
+      Incoming -> Followup: deliverFollowup(claim)
+      Followup -> Repos: markFollowupDispatchStarted()
+      Followup -> DirectClient: sendDirectMessage(recipient, follow-up text)
+      DirectClient -> Meta: POST /{igUserId}/messages\nrecipient.id = sender ID
+      Meta --> DirectClient: message ID or error
+      DirectClient --> Followup: result
+      Followup -> Repos: record follow-up outcome
+    end
+  end
+  note over Events, Route
+    Unsupported signed messaging events are counted.
+    They do not create answers or follow-ups.
+  end note
+  Route --> Meta: 200 EVENT_RECEIVED
+end
+
+opt later, for eligible retry-pending execution
+  Maintenance -> Repos: claim retry lease
+  Maintenance -> Delivery: deliverReply(saved execution)
+  Delivery -> Repos: record retry outcome
+end
+
+opt later, for eligible retry-pending follow-up
+  Maintenance -> Repos: claim due follow-up lease
+  Maintenance -> Followup: deliverFollowup(saved follow-up)
+  Followup -> Repos: record follow-up outcome
+end
+
+@enduml
