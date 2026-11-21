@@ -1,0 +1,117 @@
+@startuml
+title Instagram comment and DM automation — implemented modules
+
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam ArrowColor #334155
+skinparam class {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+
+class "InstagramWebhookRoutes" as Routes <<HTTP routes>> {
+  +GET /api/webhooks/instagram
+  +POST /api/webhooks/instagram
+  +POST /api/webhooks/instagram/subscription
+  +verifyWebhookSignature(rawBody, signature)
+}
+
+class "WebhookEvents" as Events <<normalizer>> {
+  +normalizeCommentEvents(payload)
+}
+
+class "ProcessIncomingMessage" as Incoming <<automation>> {
+  +processIncomingMessage(event, dependencies)
+}
+
+class "ProcessComment" as Processor <<automation>> {
+  +processComment(event, dependencies)
+}
+
+class "DeliverReply" as Delivery <<automation>> {
+  +deliverReply(input, dependencies)
+}
+
+class "AccountRepository" as Accounts <<persistence>> {
+  +findByInstagramUserId(id)
+}
+
+class "AutomationRepository" as Automations <<persistence>> {
+  +findEnabledByAccountAndMedia(accountId, mediaId)
+}
+
+class "ExecutionRepository" as Executions <<persistence>> {
+  +claimExecutions(deliveries)
+  +markDispatchStarted(id, leaseId)
+  +markSucceeded(id, leaseId, replyId)
+  +markRetryPending(id, leaseId, failure)
+  +markFailed(id, leaseId, failure)
+  +markUncertain(id, leaseId, failure)
+}
+
+class "DmConversationRepository" as Conversations <<persistence>> {
+  +recordInboundAnswer(answer)
+  +claimFollowup(id, now, leaseUntil)
+  +claimDueFollowups(now, leaseUntil, limit)
+  +markFollowupSucceeded(id, leaseId, replyId)
+}
+
+class "TokenProtector" as Tokens <<security>> {
+  +decrypt(ciphertext)
+}
+
+class "InstagramCommentReplyClient" as PublicClient <<Meta adapter>> {
+  +replyToComment(input)
+}
+
+class "InstagramPrivateReplyClient" as PrivateClient <<Meta adapter>> {
+  +sendPrivateReply(input)
+}
+
+class "DeliverFollowup" as Followup <<automation>> {
+  +deliverFollowup(claim, dependencies)
+}
+
+class "InstagramDirectMessageClient" as DirectClient <<Meta adapter>> {
+  +sendDirectMessage(input)
+}
+
+class "InstagramWebhookClient" as Subscription <<Meta adapter>> {
+  +subscribeToComments(input)
+}
+
+class "Maintenance" as Maintenance <<scheduled>> {
+  +runMaintenance(dependencies)
+}
+
+Routes --> Events : normalizes signed delivery
+Routes --> Processor : each comment event
+Routes --> Incoming : each supported inbound DM
+Routes --> Subscription : enables comments and optional messages
+Processor --> Accounts : finds account
+Processor --> Automations : finds matching rule
+Processor --> Executions : claims channel executions
+Processor --> Delivery : dispatches claimed executions
+Incoming --> Accounts : finds recipient account
+Incoming --> Conversations : saves answer and claims follow-up
+Incoming --> Followup : dispatches claimed follow-up
+Delivery --> Tokens : decrypts token
+Delivery --> Executions : records attempt and outcome
+Delivery --> PublicClient : public channel
+Delivery --> PrivateClient : private channel, optional quick replies
+Followup --> Tokens : decrypts token
+Followup --> Conversations : records attempt and outcome
+Followup --> DirectClient : recipient-addressed DM
+Maintenance --> Delivery : retries eligible executions
+Maintenance --> Followup : retries eligible follow-ups
+
+note bottom of Events
+  Supported inbound text and quick-reply messages are processed.
+  Other signed messaging events are counted as unsupported.
+end note
+
+@enduml
