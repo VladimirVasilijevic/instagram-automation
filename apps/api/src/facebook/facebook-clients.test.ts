@@ -110,7 +110,7 @@ describe('Facebook Page adapter', () => {
     expect((init?.body as URLSearchParams).get('subscribed_fields')).toBe('feed,messages');
   });
 
-  it('lists recent Page posts without exposing the Page token in the URL', async () => {
+  it('reads Page-owned posts from /posts without exposing the Page token in the URL', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       response({
         data: [
@@ -125,7 +125,11 @@ describe('Facebook Page adapter', () => {
       { id: 'page-1_42', message: 'New post', permalinkUrl: 'https://facebook.com/post/42' },
     ]);
     const [url, init] = fetcher.mock.calls[0]!;
-    expect(String(url)).toContain('/page-1/feed');
+    const requestUrl = new URL(String(url));
+    expect(requestUrl.origin).toBe('https://graph.facebook.com');
+    expect(requestUrl.pathname).toBe('/v24.0/page-1/posts');
+    expect(requestUrl.searchParams.get('fields')).toBe('id,message,permalink_url');
+    expect(requestUrl.searchParams.get('limit')).toBe('12');
     expect(String(url)).not.toContain('page-secret');
     expect(init?.headers).toMatchObject({ Authorization: 'Bearer page-secret' });
   });

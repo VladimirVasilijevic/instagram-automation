@@ -124,7 +124,7 @@ export const createFacebookPageClient = (
   },
   async listRecentPosts({ pageId, pageAccessToken, limit }) {
     const url = new URL(
-      `https://graph.facebook.com/${config.apiVersion}/${encodeURIComponent(pageId)}/feed`,
+      `https://graph.facebook.com/${config.apiVersion}/${encodeURIComponent(pageId)}/posts`,
     );
     url.searchParams.set('fields', 'id,message,permalink_url');
     url.searchParams.set('limit', String(Math.max(1, Math.min(100, Math.trunc(limit)))));
