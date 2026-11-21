@@ -131,6 +131,7 @@ export const createRuntime = (input: NodeJS.ProcessEnv = process.env): AppRuntim
             identityRepository: database.identityRepository,
             facebookLoginClient: createFacebookLoginClient({
               appId: environment.FACEBOOK_APP_ID!,
+              configId: environment.FACEBOOK_LOGIN_CONFIG_ID,
               appSecret: environment.FACEBOOK_APP_SECRET!,
               apiVersion: environment.FACEBOOK_API_VERSION!,
               redirectUri: environment.FACEBOOK_REDIRECT_URI!,

@@ -133,6 +133,35 @@ describe('parseEnvironment', () => {
     ).toThrow('share an origin');
   });
 
+  it.each(['3019408061751454', '', '   ', 'invalid-id'])(
+    'validates optional Facebook Business Login configuration %j',
+    (configId) => {
+      const input = {
+        ...requiredEnvironment,
+        FACEBOOK_APP_ID: '1234',
+        FACEBOOK_APP_SECRET: 'secret',
+        FACEBOOK_API_VERSION: 'v24.0',
+        FACEBOOK_REDIRECT_URI: requiredEnvironment.META_REDIRECT_URI.replace(
+          '/instagram/',
+          '/facebook/',
+        ),
+        FACEBOOK_WEBHOOK_VERIFY_TOKEN: 'verify-token',
+        FACEBOOK_LOGIN_CONFIG_ID: configId,
+      };
+      if (configId === 'invalid-id') {
+        expect(() => parseEnvironment(input)).toThrow('FACEBOOK_LOGIN_CONFIG_ID');
+      } else {
+        expect(parseEnvironment(input).FACEBOOK_LOGIN_CONFIG_ID).toBe(configId.trim() || undefined);
+      }
+    },
+  );
+
+  it('rejects a Business Login configuration without Facebook credentials', () => {
+    expect(() =>
+      parseEnvironment({ ...requiredEnvironment, FACEBOOK_LOGIN_CONFIG_ID: '1234' }),
+    ).toThrow('All FACEBOOK_* settings are required');
+  });
+
   it('rejects a missing database URL without including other environment values', () => {
     expect(() =>
       parseEnvironment({

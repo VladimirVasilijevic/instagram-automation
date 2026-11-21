@@ -43,6 +43,8 @@ export interface FacebookLoginClient {
 export interface FacebookLoginConfig {
   /** Numeric Meta app ID. */
   appId: string;
+  /** Optional Business Login configuration; Meta owns its permissions. */
+  configId?: string | undefined;
   /** Meta app secret; never expose to the browser. */
   appSecret: string;
   /** Explicit Graph API version. */
@@ -72,7 +74,13 @@ export const createFacebookLoginClient = (
       client_id: config.appId,
       redirect_uri: config.redirectUri,
       response_type: 'code',
-      scope: (intent === 'connect_page' ? facebookPageScopes : facebookSignInScopes).join(','),
+      ...(config.configId
+        ? { config_id: config.configId }
+        : {
+            scope: (intent === 'connect_page' ? facebookPageScopes : facebookSignInScopes).join(
+              ',',
+            ),
+          }),
       state,
     }).toString();
     return url.toString();

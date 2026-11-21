@@ -11,6 +11,9 @@ export interface Environment {
   /** Facebook Login app ID, when Facebook integration is configured. */
   FACEBOOK_APP_ID?: string;
 
+  /** Optional Meta Business Login configuration controlling permissions and token type. */
+  FACEBOOK_LOGIN_CONFIG_ID?: string;
+
   /** Server-only Facebook Login app secret. */
   FACEBOOK_APP_SECRET?: string;
 
@@ -84,6 +87,7 @@ const environmentSchema: z.ZodType<Environment> = z
     ),
     CRON_SECRET: z.string().trim().min(32, 'CRON_SECRET must contain at least 32 characters'),
     FACEBOOK_APP_ID: z.string().trim().regex(/^\d+$/).optional(),
+    FACEBOOK_LOGIN_CONFIG_ID: z.string().trim().regex(/^\d+$/).optional(),
     FACEBOOK_APP_SECRET: z.string().trim().min(1).optional(),
     FACEBOOK_API_VERSION: z
       .string()
@@ -142,7 +146,10 @@ const environmentSchema: z.ZodType<Environment> = z
       'FACEBOOK_WEBHOOK_VERIFY_TOKEN',
     ] as const;
     const configured = facebookKeys.filter((key) => Boolean(value[key]));
-    if (configured.length > 0 && configured.length !== facebookKeys.length) {
+    if (
+      (configured.length > 0 || value.FACEBOOK_LOGIN_CONFIG_ID) &&
+      configured.length !== facebookKeys.length
+    ) {
       context.addIssue({
         code: 'custom',
         path: ['FACEBOOK_APP_ID'],
@@ -198,6 +205,7 @@ export const parseEnvironment = (input: NodeJS.ProcessEnv): Environment => {
   const result = environmentSchema.safeParse({
     ...input,
     FACEBOOK_APP_ID: input.FACEBOOK_APP_ID || undefined,
+    FACEBOOK_LOGIN_CONFIG_ID: input.FACEBOOK_LOGIN_CONFIG_ID?.trim() || undefined,
     FACEBOOK_APP_SECRET: input.FACEBOOK_APP_SECRET || undefined,
     FACEBOOK_API_VERSION: input.FACEBOOK_API_VERSION || undefined,
     FACEBOOK_REDIRECT_URI: input.FACEBOOK_REDIRECT_URI || undefined,

@@ -51,6 +51,25 @@ describe('Facebook Login adapter', () => {
     expect(tokenUrl.searchParams.get('client_secret')).toBe('test-secret');
     expect(fetcher.mock.calls[1]?.[1]?.headers).toEqual({ Authorization: 'Bearer user-token' });
   });
+
+  it.each(['sign_in', 'connect_page'] as const)(
+    'uses Business Login configuration for %s without overriding its permissions',
+    (intent) => {
+      const fetcher = vi.fn();
+      const client = createFacebookLoginClient(
+        { ...config, configId: '3019408061751454' },
+        fetcher,
+      );
+      const url = new URL(client.authorizationUrl('browser-bound-state', intent));
+      expect(url.searchParams.get('config_id')).toBe('3019408061751454');
+      expect(url.searchParams.has('scope')).toBe(false);
+      expect(url.searchParams.get('client_id')).toBe(config.appId);
+      expect(url.searchParams.get('redirect_uri')).toBe(config.redirectUri);
+      expect(url.searchParams.get('response_type')).toBe('code');
+      expect(url.searchParams.get('state')).toBe('browser-bound-state');
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('Facebook Page adapter', () => {
