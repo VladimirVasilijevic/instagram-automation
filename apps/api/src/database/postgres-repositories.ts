@@ -65,6 +65,7 @@ interface SessionRow {
 }
 
 interface AutomationRow {
+  trigger_kind: 'comment' | 'story_reply';
   connection_id: string;
   created_at: Date;
   delivery_mode: DeliveryMode;
@@ -80,6 +81,8 @@ interface AutomationRow {
 }
 
 interface ExecutionRow {
+  reply_window_expires_at: Date | null;
+  trigger_kind: 'comment' | 'story_reply';
   attempt_count: number;
   automation_id: string;
   media_id: string | null;
@@ -196,6 +199,7 @@ const toSession = (row: SessionRow): Session => ({
 });
 
 const toAutomation = (row: AutomationRow): Automation => ({
+  triggerKind: row.trigger_kind,
   accountId: row.connection_id,
   createdAt: row.created_at,
   deliveryMode: row.delivery_mode,
@@ -211,6 +215,8 @@ const toAutomation = (row: AutomationRow): Automation => ({
 });
 
 const toExecution = (row: ExecutionRow): Execution => ({
+  replyWindowExpiresAt: row.reply_window_expires_at,
+  triggerKind: row.trigger_kind,
   attemptCount: row.attempt_count,
   automationId: row.automation_id,
   mediaId: row.media_id,
@@ -687,19 +693,35 @@ export const createPostgresAutomationRepository = (
 ): AutomationRepository => ({
   async findByAccountId(accountId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+      select id, connection_id, media_id, trigger_kind, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled, created_at, updated_at
-      from app_private.automations
-      where connection_id = ${accountId}
-      limit 1
+      from app_private.automations where connection_id = ${accountId} limit 2
     `;
+    return rows.length === 1 ? toAutomation(rows[0]!) : null;
+  },
 
+  async listByAccountId(accountId): Promise<Automation[]> {
+    const rows = await sql<AutomationRow[]>`
+      select id, connection_id, media_id, trigger_kind, trigger_mode, trigger_text, delivery_mode, reply_text,
+        private_reply_text, quick_reply_options, enabled, created_at, updated_at
+      from app_private.automations where connection_id = ${accountId}
+      order by created_at, id
+    `;
+    return rows.map(toAutomation);
+  },
+
+  async findByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
+    const rows = await sql<AutomationRow[]>`
+      select id, connection_id, media_id, trigger_kind, trigger_mode, trigger_text, delivery_mode, reply_text,
+        private_reply_text, quick_reply_options, enabled, created_at, updated_at
+      from app_private.automations where connection_id = ${accountId} and media_id = ${mediaId}
+    `;
     return rows[0] ? toAutomation(rows[0]) : null;
   },
 
   async findEnabledByAccountAndMedia(accountId, mediaId): Promise<Automation | null> {
     const rows = await sql<AutomationRow[]>`
-      select id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+      select id, connection_id, media_id, trigger_kind, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled, created_at, updated_at
       from app_private.automations
       where connection_id = ${accountId}
@@ -714,17 +736,17 @@ export const createPostgresAutomationRepository = (
   async saveAutomation(input: SaveAutomationInput): Promise<Automation> {
     const rows = await sql<AutomationRow[]>`
       insert into app_private.automations (
-        account_id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+        account_id, connection_id, media_id, trigger_kind, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled
       ) values (
         (select id from app_private.instagram_accounts where id = ${input.accountId}),
-        ${input.accountId}, ${input.mediaId}, ${input.triggerMode}, ${input.triggerText},
+        ${input.accountId}, ${input.mediaId}, ${input.triggerKind ?? 'comment'}, ${input.triggerMode}, ${input.triggerText},
         ${input.deliveryMode}, ${input.replyText}, ${input.privateReplyText},
         ${sql.json(input.quickReplyOptions ?? [])}, ${input.enabled}
       )
-      on conflict (connection_id) do update
+      on conflict (connection_id, media_id) do update
       set
-        media_id = excluded.media_id,
+        trigger_kind = excluded.trigger_kind,
         trigger_mode = excluded.trigger_mode,
         trigger_text = excluded.trigger_text,
         delivery_mode = excluded.delivery_mode,
@@ -732,7 +754,7 @@ export const createPostgresAutomationRepository = (
         private_reply_text = excluded.private_reply_text,
         quick_reply_options = excluded.quick_reply_options,
         enabled = excluded.enabled
-      returning id, connection_id, media_id, trigger_mode, trigger_text, delivery_mode, reply_text,
+      returning id, connection_id, media_id, trigger_kind, trigger_mode, trigger_text, delivery_mode, reply_text,
         private_reply_text, quick_reply_options, enabled, created_at, updated_at
     `;
     const automation = rows[0];
@@ -754,6 +776,8 @@ export const createPostgresExecutionRepository = (
       throw new RangeError('Execution claim must contain one or two delivery channels');
     }
     const payload = inputs.map((input) => ({
+      trigger_kind: input.triggerKind ?? 'comment',
+      reply_window_expires_at: input.replyWindowExpiresAt?.toISOString() ?? null,
       automation_id: input.automationId,
       media_id: input.mediaId,
       comment_text: input.commentText,
@@ -768,6 +792,8 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       insert into app_private.executions (
         automation_id,
+        trigger_kind,
+        reply_window_expires_at,
         media_id,
         instagram_comment_id,
         delivery_channel,
@@ -782,6 +808,8 @@ export const createPostgresExecutionRepository = (
       )
       select
         requested.automation_id,
+        requested.trigger_kind,
+        requested.reply_window_expires_at,
         requested.media_id,
         requested.instagram_comment_id,
         requested.delivery_channel,
@@ -795,6 +823,8 @@ export const createPostgresExecutionRepository = (
         requested.lease_expires_at
       from jsonb_to_recordset(${sql.json(payload)}::jsonb) as requested(
         automation_id uuid,
+        trigger_kind text,
+        reply_window_expires_at timestamptz,
         media_id text,
         instagram_comment_id text,
         delivery_channel text,
@@ -815,6 +845,8 @@ export const createPostgresExecutionRepository = (
     const rows = await sql<ExecutionRow[]>`
       insert into app_private.executions (
         automation_id,
+        trigger_kind,
+        reply_window_expires_at,
         media_id,
         instagram_comment_id,
         delivery_channel,
@@ -828,6 +860,8 @@ export const createPostgresExecutionRepository = (
         lease_expires_at
       ) values (
         ${input.automationId},
+        ${input.triggerKind ?? 'comment'},
+        ${input.replyWindowExpiresAt ?? null},
         ${input.mediaId},
         ${input.instagramCommentId},
         ${input.deliveryChannel},

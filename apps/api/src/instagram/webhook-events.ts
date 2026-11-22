@@ -22,6 +22,8 @@ export interface CommentEvent {
 
 /** One inbound Instagram DM, with content kept out of logs. */
 export interface IncomingMessageEvent {
+  /** Story being replied to; absent on ordinary Direct messages and quick-reply answers. */
+  storyId?: string;
   /** Instagram professional account that received the message. */
   instagramAccountId: string;
   /** Meta message identifier used to deduplicate webhook retries. */
@@ -60,6 +62,7 @@ const incomingMessageSchema = z.object({
     is_echo: z.boolean().optional(),
     mid: identifier,
     quick_reply: z.object({ payload: z.string().min(1).max(1_000) }).optional(),
+    reply_to: z.object({ story: z.object({ id: identifier }).optional() }).optional(),
     text: z.string().max(2_200).optional(),
   }),
 });
@@ -144,6 +147,7 @@ export const normalizeCommentEvents = (
         return;
       }
       messageEvents.push({
+        ...(message.reply_to?.story ? { storyId: message.reply_to.story.id } : {}),
         instagramAccountId: entry.id,
         messageId: message.mid,
         quickReplyPayload: message.quick_reply?.payload ?? null,

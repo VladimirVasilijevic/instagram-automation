@@ -98,3 +98,26 @@ export const isExecutionStatus = (value: unknown): value is ExecutionStatus =>
 export const isMaintenanceStatus = (value: unknown): value is MaintenanceStatus =>
   typeof value === 'string' &&
   Object.values(MAINTENANCE_STATUS).includes(value as MaintenanceStatus);
+
+/** Owner-selectable social content category. */
+export type SocialContentKind = 'post' | 'reel' | 'story';
+
+/** Provider-neutral media displayed and selected for comment automation. */
+export interface SocialMediaItem {
+  /** Provider identifier preserved verbatim for comment matching. */
+  id: string;
+  /** Optional owner-supplied caption. */
+  caption: string | null;
+  /** Media format supplied by the provider. */
+  mediaType: string;
+  /** Published content category. */
+  contentKind: SocialContentKind;
+  /** Optional media asset URL. */
+  mediaUrl: string | null;
+  /** Optional public canonical link. */
+  permalink: string | null;
+  /** Optional preview asset. */
+  thumbnailUrl: string | null;
+  /** Optional publication timestamp. */
+  timestamp: string | null;
+}

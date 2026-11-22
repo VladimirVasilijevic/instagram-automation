@@ -16,6 +16,11 @@ export interface SendDirectMessageInput {
   recipientId: string;
   /** Owner-configured follow-up text. */
   message: string;
+  /** Choices offered with an initial Story reply, if configured. */
+  quickReplies?: readonly {
+    /** Visible title. */ title: string;
+    /** Opaque answer reference. */ payload: string;
+  }[];
 }
 
 /** Confirmed Meta response from one direct message. */
@@ -118,7 +123,18 @@ export const createInstagramDirectMessageClient = (
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: { text: input.message },
+          message: {
+            text: input.message,
+            ...(input.quickReplies?.length
+              ? {
+                  quick_replies: input.quickReplies.map((option) => ({
+                    content_type: 'text',
+                    title: option.title,
+                    payload: option.payload,
+                  })),
+                }
+              : {}),
+          },
           recipient: { id: input.recipientId },
         }),
         redirect: 'error',

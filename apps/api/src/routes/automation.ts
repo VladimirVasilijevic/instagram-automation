@@ -1,3 +1,5 @@
+import type { MediaCatalog } from '../media/catalog.js';
+
 import { createRoute, type OpenAPIHono, z } from '@hono/zod-openapi';
 import { DELIVERY_MODE, TRIGGER_MODE } from '@instagram-automation/contracts';
 
@@ -30,6 +32,7 @@ const quickReplyOptionSchema = z.object({
 });
 
 const automationSchema = z.object({
+  triggerKind: z.enum(['comment', 'story_reply']),
   deliveryMode: z.enum(DELIVERY_MODE),
   enabled: z.boolean(),
   mediaId: z.string(),
@@ -39,9 +42,13 @@ const automationSchema = z.object({
   triggerMode: z.enum(TRIGGER_MODE),
   triggerText: z.string().nullable(),
 });
-const automationResponseSchema = z.object({ automation: automationSchema.nullable() });
+const automationResponseSchema = z.object({
+  automation: automationSchema.nullable().optional(),
+  automations: z.array(automationSchema).optional(),
+});
 const saveAutomationSchema = z
   .object({
+    triggerKind: z.enum(['comment', 'story_reply']).optional(),
     deliveryMode: z.enum(DELIVERY_MODE),
     enabled: z.boolean(),
     mediaId: z.string().trim().min(1),
@@ -122,7 +129,8 @@ const getAutomationRoute = createRoute({
   method: 'get',
   path: '/api/automation',
   tags: ['Automation'],
-  summary: 'Get the signed-in account automation',
+  summary: 'List automations or load the selected post automation',
+  request: { query: z.object({ mediaId: z.string().trim().min(1).optional() }) },
   responses: {
     200: {
       description: 'The saved automation, or null when the account has not configured one.',
@@ -185,7 +193,13 @@ export interface AutomationRouteDependencies extends SessionMiddlewareDependenci
     'findFacebookPageByPageId' | 'markReconnectRequired'
   >;
   /** Account-scoped automation storage. */
-  automationRepository: Pick<AutomationRepository, 'findByAccountId' | 'saveAutomation'>;
+  automationRepository: Pick<
+    AutomationRepository,
+    'listByAccountId' | 'findByAccountAndMedia' | 'saveAutomation'
+  >;
+
+  /** Direct provider ownership lookup for current and historical media. */
+  mediaCatalog?: MediaCatalog;
 
   /** Logger receiving sanitized persistence failures only. */
   logger: Logger;
@@ -204,6 +218,7 @@ export interface AutomationRouteDependencies extends SessionMiddlewareDependenci
 }
 
 const toAutomationResponse = (automation: Automation) => ({
+  triggerKind: automation.triggerKind ?? 'comment',
   deliveryMode: automation.deliveryMode,
   enabled: automation.enabled,
   mediaId: automation.mediaId,
@@ -214,7 +229,7 @@ const toAutomationResponse = (automation: Automation) => ({
   triggerText: automation.triggerText,
 });
 
-/** Registers authenticated load and save operations for one comment automation per account. */
+/** Registers authenticated load and save operations for comment automations keyed by connection and media. */
 export const registerAutomationRoutes = (
   app: OpenAPIHono,
   dependencies: AutomationRouteDependencies,
@@ -228,11 +243,19 @@ export const registerAutomationRoutes = (
         409,
       );
     try {
-      const automation = await dependencies.automationRepository.findByAccountId(connection.id);
-      return context.json(
-        { automation: automation ? toAutomationResponse(automation) : null },
-        200,
-      );
+      const mediaId = context.req.valid('query').mediaId;
+      if (mediaId) {
+        const automation = await dependencies.automationRepository.findByAccountAndMedia(
+          connection.id,
+          mediaId,
+        );
+        return context.json(
+          { automation: automation ? toAutomationResponse(automation) : null },
+          200,
+        );
+      }
+      const automations = await dependencies.automationRepository.listByAccountId(connection.id);
+      return context.json({ automations: automations.map(toAutomationResponse) }, 200);
     } catch (error) {
       dependencies.logger.error('Automation load failed', toSafeErrorContext(error));
       return context.json(
@@ -281,37 +304,85 @@ export const registerAutomationRoutes = (
         409,
       );
     let accessToken: string;
+    let triggerKind: 'comment' | 'story_reply';
     try {
-      const media =
-        connection.provider === 'facebook'
-          ? await (async () => {
-              const page = await dependencies.socialConnectionRepository?.findFacebookPageByPageId(
-                connection.externalAccountId,
-              );
-              if (!page || !dependencies.facebookPageClient)
-                throw new Error('Facebook Page adapter unavailable');
-              accessToken = dependencies.tokenProtector.decrypt(page.accessTokenCiphertext);
-              return dependencies.facebookPageClient.listRecentPosts({
-                pageId: page.externalAccountId,
-                pageAccessToken: accessToken,
-                limit: 12,
-              });
-            })()
-          : await (async () => {
-              if (!account) throw new Error('Instagram account unavailable');
-              accessToken = dependencies.tokenProtector.decrypt(account.accessTokenCiphertext);
-              return dependencies.instagramMediaClient.listRecentMedia({
-                accessToken,
-                instagramUserId: account.instagramUserId,
-                limit: 12,
-              });
-            })();
+      const disablingExisting =
+        !parsedInput.data.enabled &&
+        (await dependencies.automationRepository.findByAccountAndMedia(
+          connection.id,
+          parsedInput.data.mediaId,
+        ));
+      const media = disablingExisting
+        ? [{ id: parsedInput.data.mediaId }]
+        : dependencies.mediaCatalog
+          ? [
+              await dependencies.mediaCatalog.findOwned({
+                connection,
+                account,
+                mediaId: parsedInput.data.mediaId,
+              }),
+            ].filter((item) => item !== null)
+          : connection.provider === 'facebook'
+            ? await (async () => {
+                const page =
+                  await dependencies.socialConnectionRepository?.findFacebookPageByPageId(
+                    connection.externalAccountId,
+                  );
+                if (!page || !dependencies.facebookPageClient)
+                  throw new Error('Facebook Page adapter unavailable');
+                accessToken = dependencies.tokenProtector.decrypt(page.accessTokenCiphertext);
+                return dependencies.facebookPageClient.listRecentPosts({
+                  pageId: page.externalAccountId,
+                  pageAccessToken: accessToken,
+                  limit: 12,
+                });
+              })()
+            : await (async () => {
+                if (!account) throw new Error('Instagram account unavailable');
+                accessToken = dependencies.tokenProtector.decrypt(account.accessTokenCiphertext);
+                return dependencies.instagramMediaClient.listRecentMedia({
+                  accessToken,
+                  instagramUserId: account.instagramUserId,
+                  limit: 12,
+                });
+              })();
       if (!media.some((item) => item.id === parsedInput.data.mediaId)) {
         return context.json(
           {
             error: {
               code: 'SELECTED_MEDIA_UNAVAILABLE',
               message: 'Select one of your current recent posts before saving.',
+            },
+          },
+          400,
+        );
+      }
+      const selectedMedia = media.find((item) => item.id === parsedInput.data.mediaId);
+      triggerKind = disablingExisting
+        ? (disablingExisting.triggerKind ?? 'comment')
+        : selectedMedia && 'contentKind' in selectedMedia && selectedMedia.contentKind === 'story'
+          ? 'story_reply'
+          : 'comment';
+      if (triggerKind === 'story_reply' && parsedInput.data.deliveryMode !== 'private') {
+        return context.json(
+          {
+            error: {
+              code: 'INVALID_AUTOMATION_INPUT',
+              message: 'Story replies support private messages only.',
+            },
+          },
+          400,
+        );
+      }
+      if (
+        connection.provider === 'facebook' &&
+        media.some((item) => 'contentKind' in item && item.contentKind === 'reel')
+      ) {
+        return context.json(
+          {
+            error: {
+              code: 'SELECTED_MEDIA_UNAVAILABLE',
+              message: 'Facebook Reels automation is not available yet.',
             },
           },
           400,
@@ -341,20 +412,34 @@ export const registerAutomationRoutes = (
 
     if (parsedInput.data.enabled) {
       try {
+        // Connections already grant messaging consent. Always retain this subscription
+        // so concurrent saves and answers to previously sent prompts cannot downgrade it.
+        if (dependencies.mediaCatalog) {
+          if (connection.provider === 'facebook') {
+            const page = await dependencies.socialConnectionRepository?.findFacebookPageByPageId(
+              connection.externalAccountId,
+            );
+            if (!page) throw new Error('Facebook Page adapter unavailable');
+            accessToken = dependencies.tokenProtector.decrypt(page.accessTokenCiphertext);
+          } else {
+            if (!account) throw new Error('Instagram account unavailable');
+            accessToken = dependencies.tokenProtector.decrypt(account.accessTokenCiphertext);
+          }
+        }
         if (connection.provider === 'facebook') {
           if (!dependencies.facebookPageClient)
             throw new Error('Facebook Page adapter unavailable');
           await dependencies.facebookPageClient.subscribeToEvents({
             pageId: connection.externalAccountId,
             pageAccessToken: accessToken!,
-            includeMessages: parsedInput.data.quickReplyOptions.length > 0,
+            includeMessages: true,
           });
         } else {
           if (!account) throw new Error('Instagram account unavailable');
           await dependencies.instagramWebhookClient.subscribeToComments({
             accessToken: accessToken!,
             instagramUserId: account.instagramUserId,
-            includeMessages: parsedInput.data.quickReplyOptions.length > 0,
+            includeMessages: true,
           });
         }
       } catch (error) {
@@ -419,6 +504,7 @@ export const registerAutomationRoutes = (
       const automation = await dependencies.automationRepository.saveAutomation({
         accountId: connection.id,
         ...parsedInput.data,
+        triggerKind,
       });
       return context.json({ automation: toAutomationResponse(automation) }, 200);
     } catch (error) {

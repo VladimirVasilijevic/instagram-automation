@@ -20,6 +20,8 @@ const createSessionRepository = (): SessionRepository => ({
 const createAppDependencies = (overrides: Partial<AppDependencies> = {}): AppDependencies => ({
   automationRepository: {
     findByAccountId: vi.fn(),
+    listByAccountId: vi.fn().mockResolvedValue([]),
+    findByAccountAndMedia: vi.fn().mockResolvedValue(null),
     findEnabledByAccountAndMedia: vi.fn(),
     saveAutomation: vi.fn(),
   },

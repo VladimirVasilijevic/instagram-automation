@@ -73,6 +73,8 @@ const createFixture = () => {
   const app = createApp({
     automationRepository: {
       findByAccountId: vi.fn(),
+      listByAccountId: vi.fn().mockResolvedValue([]),
+      findByAccountAndMedia: vi.fn().mockResolvedValue(null),
       findEnabledByAccountAndMedia: vi.fn(),
       saveAutomation: vi.fn(),
     },

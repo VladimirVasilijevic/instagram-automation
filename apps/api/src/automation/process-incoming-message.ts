@@ -21,6 +21,7 @@ export const processIncomingMessage = async (
     tokenRefreshRepository: Pick<TokenRefreshRepository, 'markAccountReconnectRequired'>;
   },
 ): Promise<'ignored' | 'duplicate' | 'recorded' | 'followup_started'> => {
+  if (event.storyId) return 'ignored';
   const account = await dependencies.accountRepository.findByInstagramUserId(
     event.instagramAccountId,
   );

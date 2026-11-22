@@ -274,6 +274,8 @@ export type QuickReplyOption = {
 
 /** Persisted automation configuration for one connected Instagram account. */
 export interface Automation {
+  /** Originating event category; legacy rows and callers default to comments. */
+  triggerKind?: 'comment' | 'story_reply';
   /** Internal account identifier that owns the automation. */
   accountId: string;
 
@@ -313,6 +315,8 @@ export interface Automation {
 
 /** Owner-controlled values used to create or replace an account's automation configuration. */
 export interface SaveAutomationInput {
+  /** Originating event category; legacy rows and callers default to comments. */
+  triggerKind?: 'comment' | 'story_reply';
   /** Internal account identifier that owns the automation. */
   accountId: string;
 
@@ -344,12 +348,18 @@ export interface SaveAutomationInput {
 /** Persistence operations required by automation configuration and comment processing. */
 export interface AutomationRepository {
   /**
-   * Finds the single automation configured for an account.
+   * Returns an automation only when the connection has exactly one saved rule.
    *
    * @param accountId - Internal owner account identifier.
    * @returns The account's automation, or `null` when none has been configured.
    */
   findByAccountId(accountId: string): Promise<Automation | null>;
+
+  /** Lists every automation belonging to the selected connection. */
+  listByAccountId(accountId: string): Promise<Automation[]>;
+
+  /** Finds the saved automation for an exact connection and media pair. */
+  findByAccountAndMedia(accountId: string, mediaId: string): Promise<Automation | null>;
 
   /**
    * Finds an enabled automation for an exact owner and media pair.
@@ -361,7 +371,7 @@ export interface AutomationRepository {
   findEnabledByAccountAndMedia(accountId: string, mediaId: string): Promise<Automation | null>;
 
   /**
-   * Creates or replaces the single automation configuration for an account.
+   * Creates or replaces the automation configuration for an exact connection and media pair.
    *
    * @param input - Owner, selected media, public reply, and enabled state.
    * @returns The inserted or updated automation while preserving its internal identifier.
@@ -371,6 +381,10 @@ export interface AutomationRepository {
 
 /** Persisted result of claiming and processing one Instagram comment. */
 export interface Execution {
+  /** Fixed expiry of the originating Story reply messaging window. */
+  replyWindowExpiresAt?: Date | null;
+  /** Originating event category; legacy rows and callers default to comments. */
+  triggerKind?: 'comment' | 'story_reply';
   /** Internal automation identifier that processed the comment. */
   automationId: string;
 
@@ -443,6 +457,10 @@ export interface Execution {
 
 /** Normalized comment values required to atomically claim an execution. */
 export interface ClaimExecutionInput {
+  /** Fixed expiry of the originating Story reply messaging window. */
+  replyWindowExpiresAt?: Date | null;
+  /** Originating event category; legacy rows and callers default to comments. */
+  triggerKind?: 'comment' | 'story_reply';
   /** Internal automation identifier selected for the comment. */
   automationId: string;
 

@@ -30,6 +30,30 @@ describe('load-test safety configuration', () => {
     ).toThrowError(/must differ/);
   });
 
+  it('recognizes Supabase project identity across direct/session/transaction endpoints', () => {
+    expect(() =>
+      requireIsolatedLoadTestDatabase(
+        'postgres://postgres.abcdefgh:secret@aws-0-eu.pooler.supabase.com:6543/postgres',
+        'I_UNDERSTAND_THIS_DATABASE_WILL_BE_MUTATED',
+        ['postgres://postgres:other@db.abcdefgh.supabase.co:5432/postgres'],
+      ),
+    ).toThrow(/must differ/);
+    expect(() =>
+      requireIsolatedLoadTestDatabase(
+        'postgres://postgres.abcdefgh:secret@aws-0-eu.pooler.supabase.com:5432/postgres',
+        'I_UNDERSTAND_THIS_DATABASE_WILL_BE_MUTATED',
+        ['postgres://postgres.abcdefgh:other@aws-0-eu.pooler.supabase.com:6543/postgres'],
+      ),
+    ).toThrow(/must differ/);
+    expect(
+      requireIsolatedLoadTestDatabase(
+        'postgres://postgres.testproject:secret@aws-0-eu.pooler.supabase.com:6543/postgres',
+        'I_UNDERSTAND_THIS_DATABASE_WILL_BE_MUTATED',
+        ['postgres://postgres.production:other@aws-0-eu.pooler.supabase.com:6543/postgres'],
+      ),
+    ).toContain('testproject');
+  });
+
   it('compares the ignored application environment file without loading its secrets', () => {
     const directory = mkdtempSync(join(tmpdir(), 'replykit-load-env-'));
     const file = join(directory, '.env.local');

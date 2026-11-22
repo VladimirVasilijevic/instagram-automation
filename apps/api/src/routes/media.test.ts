@@ -42,7 +42,7 @@ const media = [
   },
 ];
 
-const createFixture = (provider: 'instagram' | 'facebook' = 'instagram') => {
+const createFixture = (provider: 'instagram' | 'facebook' = 'instagram', withCatalog = false) => {
   const selectedConnection: SocialConnection =
     provider === 'facebook'
       ? { ...connection, provider, externalAccountId: 'page-id', displayName: 'Example Page' }
@@ -73,7 +73,21 @@ const createFixture = (provider: 'instagram' | 'facebook' = 'instagram') => {
         : null,
     ),
   };
-  const instagramMediaClient = { listRecentMedia: vi.fn().mockResolvedValue(media) };
+  const instagramMediaClient = {
+    listRecentMedia: vi.fn().mockResolvedValue(media),
+    ...(withCatalog
+      ? {
+          listStoriesPage: vi.fn().mockResolvedValue({
+            media: media.map((item) => ({ ...item, contentKind: 'story' as const })),
+            after: null,
+          }),
+          listMediaPage: vi.fn().mockResolvedValue({
+            media: media.map((item) => ({ ...item, contentKind: 'reel' as const })),
+            after: null,
+          }),
+        }
+      : {}),
+  };
   const facebookPageClient = {
     listManagedPages: vi.fn(),
     listRecentPosts: vi.fn(),
@@ -92,6 +106,8 @@ const createFixture = (provider: 'instagram' | 'facebook' = 'instagram') => {
   const app = createApp({
     automationRepository: {
       findByAccountId: vi.fn(),
+      listByAccountId: vi.fn().mockResolvedValue([]),
+      findByAccountAndMedia: vi.fn().mockResolvedValue(null),
       findEnabledByAccountAndMedia: vi.fn(),
       saveAutomation: vi.fn(),
     },
@@ -225,6 +241,12 @@ describe('recent Instagram media route', () => {
 });
 
 describe('recent Facebook Page media route', () => {
+  it('keeps Facebook Reels unavailable until provider ID matching is verified', async () => {
+    const f = createFixture('facebook', true);
+    const response = await f.app.request('/api/media?kind=reel', { headers: f.headers });
+    expect(response.status).toBe(409);
+    expect(f.facebookPageClient.listRecentPosts).not.toHaveBeenCalled();
+  });
   it.each(['https://cdn.example/facebook-post.jpg', null])(
     'returns the Page post preview %s without exposing its credentials',
     async (pictureUrl) => {
@@ -267,4 +289,69 @@ describe('recent Facebook Page media route', () => {
       expect(body).not.toContain(f.page.accessTokenCiphertext);
     },
   );
+});
+
+describe('shared media catalog route', () => {
+  it('returns a classified Instagram Reel page through runtime composition', async () => {
+    const f = createFixture('instagram', true);
+    const response = await f.app.request('/api/media?kind=reel', { headers: f.headers });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      media: media.map((item) => ({ ...item, contentKind: 'reel' })),
+      nextCursor: null,
+    });
+    expect(f.instagramMediaClient.listRecentMedia).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'kind=unknown',
+    'kind=reel&kind=post',
+    'kind=reel&limit=13',
+    'kind=reel&limit=2&limit=3',
+  ])('rejects invalid catalog query %s before provider requests', async (query) => {
+    const f = createFixture('instagram', true);
+    const response = await f.app.request(`/api/media?${query}`, { headers: f.headers });
+    expect(response.status).toBe(400);
+    expect(f.instagramMediaClient.listMediaPage).not.toHaveBeenCalled();
+  });
+
+  it('maps catalog failures to sanitized provider errors', async () => {
+    const f = createFixture('instagram', true);
+    f.instagramMediaClient.listMediaPage!.mockRejectedValue(new Error('private token detail'));
+    const response = await f.app.request('/api/media?kind=reel', { headers: f.headers });
+    expect(response.status).toBe(502);
+    const body = await response.text();
+    expect(JSON.parse(body)).toMatchObject({ error: { code: 'INSTAGRAM_MEDIA_UNAVAILABLE' } });
+    expect(body).not.toContain('private token detail');
+    expect(JSON.stringify(f.logger.error.mock.calls)).not.toContain('private token detail');
+  });
+
+  it('rejects malformed cursors before requesting provider data', async () => {
+    const f = createFixture('instagram', true);
+    const response = await f.app.request('/api/media?kind=reel&cursor=invalid', {
+      headers: f.headers,
+    });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('Story media route', () => {
+  it('returns Instagram Stories through the shared catalog', async () => {
+    const f = createFixture('instagram', true);
+    const response = await f.app.request('/api/media?kind=story', { headers: f.headers });
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.media[0].contentKind).toBe('story');
+    expect(payload.nextCursor).toBeNull();
+    expect(f.instagramMediaClient.listMediaPage).not.toHaveBeenCalled();
+  });
+  it('returns an explicit unavailable response for Facebook Stories', async () => {
+    const f = createFixture('facebook', true);
+    const response = await f.app.request('/api/media?kind=story', { headers: f.headers });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'FACEBOOK_STORIES_UNAVAILABLE' },
+    });
+    expect(f.facebookPageClient.listRecentPosts).not.toHaveBeenCalled();
+  });
 });

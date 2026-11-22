@@ -1,0 +1,16 @@
+@startuml
+title Previous: one automation per connection
+skinparam shadowing false
+class SocialConnection
+class Automation {
+  connection_id UNIQUE
+  media_id
+  trigger
+  delivery
+}
+SocialConnection "1" -- "0..1" Automation
+note right of Automation
+Saving another post replaced
+the connection's existing rule.
+end note
+@enduml

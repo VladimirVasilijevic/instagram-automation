@@ -31,7 +31,15 @@ const databaseIdentity = (value: string): string => {
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
     throw new LoadTestConfigurationError('Load-test database URL must use PostgreSQL');
   }
-  return `${url.hostname.toLowerCase()}:${url.port}/${url.pathname.replace(/^\//, '')}`;
+  const hostname = url.hostname.toLowerCase();
+  const directProject = /^db\.([a-z0-9]+)\.supabase\.co$/.exec(hostname)?.[1];
+  const poolerProject = hostname.endsWith('.pooler.supabase.com')
+    ? /\.([a-z0-9]+)$/.exec(decodeURIComponent(url.username))?.[1]
+    : undefined;
+  if (directProject || poolerProject)
+    return `supabase:${directProject ?? poolerProject}/${url.pathname.replace(/^\//, '')}`;
+  // Different ports or credentials still access the same generic database.
+  return `${hostname}/${url.pathname.replace(/^\//, '')}`;
 };
 
 /** Rejects load-test access unless the operator explicitly selected a distinct database. */

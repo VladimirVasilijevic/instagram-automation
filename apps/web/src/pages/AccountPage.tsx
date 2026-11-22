@@ -393,6 +393,7 @@ export const AccountPage = () => {
               ) : (
                 <>
                   <AutomationEditor
+                    key={connection.id}
                     provider={connection.provider}
                     onSelectedMediaChange={setSelectedMediaId}
                   />

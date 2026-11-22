@@ -102,9 +102,12 @@ const main = (): void => {
     sessionCookie: { name: loadTestSessionCookieName, secure: false, ttlSeconds: 86_400 },
     sessionRepository: database.sessionRepository,
   });
-  const server = serve({ fetch: app.fetch, port }, ({ port: listeningPort }) => {
-    console.info(`Load-test API listening on http://127.0.0.1:${listeningPort}`);
-  });
+  const server = serve(
+    { fetch: app.fetch, hostname: '127.0.0.1', port },
+    ({ port: listeningPort }) => {
+      console.info(`Load-test API listening on http://127.0.0.1:${listeningPort}`);
+    },
+  );
   let shuttingDown = false;
   const shutdown = (): void => {
     if (shuttingDown) return;

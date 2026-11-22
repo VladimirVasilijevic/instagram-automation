@@ -36,6 +36,25 @@ describe('Instagram recipient-addressed direct-message adapter', () => {
     });
   });
 
+  it('serializes Story answer choices as recipient-addressed quick replies', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message_id: 'message-id', recipient_id: input.recipientId })),
+      );
+    await createInstagramDirectMessageClient({ apiVersion: 'v24.0' }, fetcher).sendDirectMessage({
+      ...input,
+      quickReplies: [{ title: 'Yes', payload: 'qr:execution-id:yes' }],
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body))).toEqual({
+      recipient: { id: input.recipientId },
+      message: {
+        text: input.message,
+        quick_replies: [{ content_type: 'text', title: 'Yes', payload: 'qr:execution-id:yes' }],
+      },
+    });
+  });
+
   it('classifies errors without logging provider content', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ error: { code: 190, message: 'provider secret' } }), {

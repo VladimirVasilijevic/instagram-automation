@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../app.js';
 import type { Automation, InstagramAccount, Session } from '../database/repositories.js';
+import type { MediaCatalog } from '../media/catalog.js';
 import { InstagramMediaError } from '../instagram/media-client.js';
 import { InstagramWebhookError } from '../instagram/webhook-client.js';
 import { AesGcmTokenProtector } from '../security/aes-gcm-token-protector.js';
@@ -45,6 +46,7 @@ const automation: Automation = {
 };
 
 const responseAutomation = {
+  triggerKind: 'comment' as const,
   deliveryMode: automation.deliveryMode,
   enabled: automation.enabled,
   mediaId: automation.mediaId,
@@ -55,7 +57,7 @@ const responseAutomation = {
   triggerText: automation.triggerText,
 };
 
-const createFixture = () => {
+const createFixture = (mediaCatalog?: MediaCatalog) => {
   const sessionToken = createSessionToken();
   const session: Session = {
     id: 'session-id',
@@ -73,10 +75,19 @@ const createFixture = () => {
   };
   const automationRepository = {
     findByAccountId: vi.fn().mockResolvedValue(null),
+    listByAccountId: vi.fn().mockResolvedValue([]),
+    findByAccountAndMedia: vi.fn().mockResolvedValue(null),
     findEnabledByAccountAndMedia: vi.fn(),
     saveAutomation: vi.fn().mockResolvedValue(automation),
   };
   const instagramMediaClient = {
+    ...(mediaCatalog
+      ? {
+          listMediaPage: vi.fn(),
+          findOwnedMedia: async (input: { mediaId: string }) =>
+            mediaCatalog.findOwned({ connection, account, mediaId: input.mediaId }),
+        }
+      : {}),
     listRecentMedia: vi.fn().mockResolvedValue([
       {
         id: automation.mediaId,
@@ -89,7 +100,17 @@ const createFixture = () => {
       },
     ]),
   };
-  const instagramWebhookClient = { subscribeToComments: vi.fn().mockResolvedValue(undefined) };
+  const instagramWebhookClient = {
+    subscribeToComments: vi
+      .fn<
+        (input: {
+          accessToken: string;
+          instagramUserId: string;
+          includeMessages?: boolean;
+        }) => Promise<void>
+      >()
+      .mockResolvedValue(undefined),
+  };
   const tokenRefreshRepository = { markAccountReconnectRequired: vi.fn().mockResolvedValue(true) };
   const logger = { error: vi.fn(), info: vi.fn() };
   const app = createApp({
@@ -141,7 +162,7 @@ describe('automation configuration routes', () => {
     expect((await f.app.request('/api/automation', { method: 'PUT', body: '{}' })).status).toBe(
       401,
     );
-    expect(f.automationRepository.findByAccountId).not.toHaveBeenCalled();
+    expect(f.automationRepository.listByAccountId).not.toHaveBeenCalled();
     expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
   });
 
@@ -151,21 +172,204 @@ describe('automation configuration routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    await expect(response.json()).resolves.toEqual({ automation: null });
-    expect(f.automationRepository.findByAccountId).toHaveBeenCalledWith(account.id);
+    await expect(response.json()).resolves.toEqual({ automations: [] });
+    expect(f.automationRepository.listByAccountId).toHaveBeenCalledWith(account.id);
   });
 
-  it('returns a saved automation without internal account or persistence fields', async () => {
+  it('keeps messages subscribed when another post needs quick replies', async () => {
     const f = createFixture();
-    f.automationRepository.findByAccountId.mockResolvedValue(automation);
-    const response = await f.app.request('/api/automation', { headers: f.headers });
+    f.automationRepository.listByAccountId.mockResolvedValue([
+      {
+        ...automation,
+        mediaId: 'other-media',
+        enabled: true,
+        quickReplyOptions: [{ id: 'choice', title: 'Yes', followUpText: 'Details' }],
+      },
+    ]);
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: f.headers,
+      body: JSON.stringify({ ...responseAutomation, enabled: true }),
+    });
+    expect(response.status).toBe(200);
+    expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith(
+      expect.objectContaining({ includeMessages: true }),
+    );
+  });
 
+  it('preserves message subscriptions across concurrent saves with different delivery modes', async () => {
+    const f = createFixture();
+    const otherMediaId = '17841400000000003';
+    const [firstMedia] = await f.instagramMediaClient.listRecentMedia();
+    f.instagramMediaClient.listRecentMedia.mockResolvedValue([
+      firstMedia!,
+      { ...firstMedia!, id: otherMediaId },
+    ]);
+    let release!: () => void;
+    const bothSubscribed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let subscriptionCount = 0;
+    f.instagramWebhookClient.subscribeToComments.mockImplementation(async () => {
+      subscriptionCount += 1;
+      if (subscriptionCount === 2) release();
+      await bothSubscribed;
+    });
+    const quickReplyRule = {
+      ...responseAutomation,
+      deliveryMode: 'private',
+      privateReplyText: 'Choose an answer',
+      replyText: '',
+      quickReplyOptions: [
+        { id: '11111111-1111-4111-8111-111111111111', title: 'Yes', followUpText: 'Details' },
+      ],
+    };
+    const responses = await Promise.all(
+      [quickReplyRule, { ...responseAutomation, mediaId: otherMediaId }].map((rule) =>
+        f.app.request('/api/automation', {
+          method: 'PUT',
+          headers: f.headers,
+          body: JSON.stringify(rule),
+        }),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledTimes(2);
+    for (const [request] of f.instagramWebhookClient.subscribeToComments.mock.calls)
+      expect(request).toMatchObject({ includeMessages: true });
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads only the selected connection and media pair', async () => {
+    const f = createFixture();
+    f.automationRepository.findByAccountAndMedia.mockResolvedValue(automation);
+    const response = await f.app.request(`/api/automation?mediaId=${automation.mediaId}`, {
+      headers: f.headers,
+    });
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ automation: responseAutomation });
+    expect(f.automationRepository.findByAccountAndMedia).toHaveBeenCalledWith(
+      account.id,
+      automation.mediaId,
+    );
+    expect(f.automationRepository.listByAccountId).not.toHaveBeenCalled();
+  });
+
+  it('lists independent saved media rules without internal persistence fields', async () => {
+    const f = createFixture();
+    f.automationRepository.listByAccountId.mockResolvedValue([
+      automation,
+      { ...automation, id: 'second-id', mediaId: 'second-media', enabled: false },
+    ]);
+    const response = await f.app.request('/api/automation', { headers: f.headers });
+    await expect(response.json()).resolves.toEqual({
+      automations: [
+        responseAutomation,
+        { ...responseAutomation, mediaId: 'second-media', enabled: false },
+      ],
+    });
+  });
+
+  it.each(['public', 'both'])('rejects %s delivery on an owned Story', async (deliveryMode) => {
+    const mediaCatalog = {
+      list: vi.fn(),
+      findOwned: vi.fn().mockResolvedValue({ id: automation.mediaId, contentKind: 'story' }),
+    };
+    const f = createFixture(mediaCatalog);
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: f.headers,
+      body: JSON.stringify({
+        ...responseAutomation,
+        deliveryMode,
+        privateReplyText: deliveryMode === 'both' ? 'Private text' : null,
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(f.automationRepository.saveAutomation).not.toHaveBeenCalled();
+  });
+
+  it('derives Story kind from ownership and enables message subscriptions without quick replies', async () => {
+    const mediaCatalog = {
+      list: vi.fn(),
+      findOwned: vi.fn().mockResolvedValue({ id: automation.mediaId, contentKind: 'story' }),
+    };
+    const f = createFixture(mediaCatalog);
+    f.automationRepository.saveAutomation.mockResolvedValue({
+      ...automation,
+      triggerKind: 'story_reply',
+      deliveryMode: 'private',
+      privateReplyText: 'Story reply',
+      replyText: '',
+    });
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: f.headers,
+      body: JSON.stringify({
+        ...responseAutomation,
+        triggerKind: 'comment',
+        deliveryMode: 'private',
+        privateReplyText: 'Story reply',
+        replyText: '',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({ triggerKind: 'story_reply', deliveryMode: 'private' }),
+    );
+    expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith(
+      expect.objectContaining({ includeMessages: true }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      automation: { triggerKind: 'story_reply' },
+    });
+  });
+
+  it('preserves a known Story trigger when disabling expired content without a provider lookup', async () => {
+    const mediaCatalog = { list: vi.fn(), findOwned: vi.fn() };
+    const f = createFixture(mediaCatalog);
+    f.automationRepository.findByAccountAndMedia.mockResolvedValue({
+      ...automation,
+      triggerKind: 'story_reply',
+    });
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: f.headers,
+      body: JSON.stringify({
+        ...responseAutomation,
+        enabled: false,
+        deliveryMode: 'private',
+        privateReplyText: 'Story reply',
+        replyText: '',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({ triggerKind: 'story_reply', enabled: false }),
+    );
+    expect(mediaCatalog.findOwned).not.toHaveBeenCalled();
+  });
+
+  it('does not trust a client Story trigger declaration for a normal owned post', async () => {
+    const mediaCatalog = {
+      list: vi.fn(),
+      findOwned: vi.fn().mockResolvedValue({ id: automation.mediaId, contentKind: 'post' }),
+    };
+    const f = createFixture(mediaCatalog);
+    const response = await f.app.request('/api/automation', {
+      method: 'PUT',
+      headers: f.headers,
+      body: JSON.stringify({ ...responseAutomation, triggerKind: 'story_reply' }),
+    });
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({ triggerKind: 'comment' }),
+    );
   });
 
   it('returns a safe unavailable response when loading fails', async () => {
     const f = createFixture();
-    f.automationRepository.findByAccountId.mockRejectedValue(new Error('private database detail'));
+    f.automationRepository.listByAccountId.mockRejectedValue(new Error('private database detail'));
     const response = await f.app.request('/api/automation', { headers: f.headers });
     const body = await response.text();
 
@@ -200,6 +404,7 @@ describe('automation configuration routes', () => {
     await expect(response.json()).resolves.toEqual({ automation: responseAutomation });
     expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith({
       accountId: account.id,
+      triggerKind: 'comment',
       deliveryMode: 'public',
       mediaId: automation.mediaId,
       privateReplyText: null,
@@ -217,7 +422,7 @@ describe('automation configuration routes', () => {
     expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith({
       accessToken: 'private-instagram-token',
       instagramUserId: account.instagramUserId,
-      includeMessages: false,
+      includeMessages: true,
     });
     expect(f.instagramMediaClient.listRecentMedia.mock.invocationCallOrder[0]!).toBeLessThan(
       f.instagramWebhookClient.subscribeToComments.mock.invocationCallOrder[0]!,
@@ -257,6 +462,7 @@ describe('automation configuration routes', () => {
     expect(response.status).toBe(200);
     expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith({
       accountId: account.id,
+      triggerKind: 'comment',
       deliveryMode: 'both',
       enabled: true,
       mediaId: automation.mediaId,
@@ -366,6 +572,7 @@ describe('automation configuration routes', () => {
     expect(response.status).toBe(200);
     expect(f.automationRepository.saveAutomation).toHaveBeenCalledWith({
       accountId: account.id,
+      triggerKind: 'comment',
       deliveryMode: 'public',
       enabled: false,
       mediaId: automation.mediaId,

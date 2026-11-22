@@ -1,5 +1,9 @@
 # First Vertical Slice — Implementation Plan
 
+The multiple-automation and Instagram Reels extension is described in
+[the current extension notes](07-multiple-automations-and-reels.md). Earlier single-rule milestone
+descriptions below are historical.
+
 ## Instagram Login → Select Post → Hashtag Trigger → Public/Private Reply → Activity
 
 **Date:** 2026-09-01 **Status:** Ready to execute **Task system:** Simple checklist, no Beads

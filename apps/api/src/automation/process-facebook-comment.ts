@@ -76,7 +76,7 @@ export const processFacebookComment = async (
     page.id,
     event.postId,
   );
-  if (!automation)
+  if (!automation || automation.triggerKind === 'story_reply')
     return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'no_enabled_automation' };
   const mismatch = evaluateComment(comment, owner, {
     mode: automation.triggerMode,

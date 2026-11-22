@@ -14,6 +14,7 @@ import type {
   TokenRefreshRepository,
 } from './database/repositories.js';
 import type { Logger } from './logging/logger.js';
+import { createMediaCatalog } from './media/catalog.js';
 import { toSafeErrorContext } from './logging/logger.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import {
@@ -210,7 +211,16 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
     context.json({ facebookLoginEnabled: Boolean(dependencies.facebookAuth) }),
   );
   registerAuthRoutes(app, dependencies);
+  const mediaCatalog =
+    dependencies.instagramMedia.instagramMediaClient.listMediaPage ||
+    dependencies.facebookPage?.facebookPageClient.listPostPage
+      ? createMediaCatalog({
+          ...dependencies.instagramMedia,
+          ...dependencies.facebookPage,
+        })
+      : undefined;
   registerAutomationRoutes(app, {
+    ...(mediaCatalog ? { mediaCatalog } : {}),
     automationRepository: dependencies.automationRepository,
     ...dependencies.facebookPage,
     ...dependencies.instagramMedia,
@@ -255,6 +265,7 @@ export const createApp = (dependencies: AppDependencies): OpenAPIHono => {
   }
   registerMeRoute(app, dependencies);
   registerMediaRoute(app, {
+    ...(mediaCatalog ? { mediaCatalog } : {}),
     ...dependencies.instagramMedia,
     ...dependencies.facebookPage,
     logger: dependencies.logger,

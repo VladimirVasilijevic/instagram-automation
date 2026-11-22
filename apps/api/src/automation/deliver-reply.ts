@@ -24,6 +24,10 @@ import {
 import type { Logger } from '../logging/logger.js';
 import { toSafeErrorContext } from '../logging/logger.js';
 import type { ProtectedToken, TokenProtector } from '../security/token-protector.js';
+import {
+  InstagramDirectMessageError,
+  type InstagramDirectMessageClient,
+} from '../instagram/direct-message-client.js';
 import { RECOVERY_KIND, type RecoveryKind } from './recovery.js';
 
 /** Safe terminal or scheduled result of one leased reply attempt. */
@@ -47,6 +51,7 @@ export const deliverReply = async (
     >;
     instagramCommentReplyClient: InstagramCommentReplyClient;
     instagramPrivateReplyClient: InstagramPrivateReplyClient;
+    instagramDirectMessageClient?: InstagramDirectMessageClient;
     facebookCommentReplyClient?: FacebookCommentReplyClient;
     facebookPrivateReplyClient?: FacebookPrivateReplyClient;
     socialConnectionRepository?: Pick<SocialConnectionRepository, 'markReconnectRequired'>;
@@ -58,6 +63,23 @@ export const deliverReply = async (
 ): Promise<ReplyDeliveryOutcome> => {
   const leaseId = input.execution.leaseId;
   if (!leaseId) throw new Error('Reply execution has no active lease');
+  if (
+    input.execution.triggerKind === 'story_reply' &&
+    (input.provider === 'facebook' ||
+      input.execution.deliveryChannel !== 'private' ||
+      !input.execution.commenterInstagramId ||
+      !dependencies.instagramDirectMessageClient ||
+      !input.execution.replyWindowExpiresAt ||
+      now >= input.execution.replyWindowExpiresAt)
+  ) {
+    const failed = await dependencies.executionRepository.markFailed(input.execution.id, leaseId, {
+      errorCode: 'STORY_REPLY_UNAVAILABLE',
+      errorMessage: 'The Story reply cannot be delivered within its messaging window.',
+      failureKind: RECOVERY_KIND.PERMANENT,
+    });
+    if (!failed) throw new Error('Story reply execution lease ownership was lost');
+    return EXECUTION_STATUS.FAILED;
+  }
 
   let accessToken: string;
   try {
@@ -84,47 +106,62 @@ export const deliverReply = async (
   try {
     const provider = input.provider ?? 'instagram';
     const result =
-      input.execution.deliveryChannel === DELIVERY_CHANNEL.PUBLIC
-        ? provider === 'facebook'
-          ? await dependencies.facebookCommentReplyClient!.replyToComment({
-              pageAccessToken: accessToken,
-              commentId: input.commentId,
-              message: input.message,
-            })
-          : await dependencies.instagramCommentReplyClient.replyToComment({
-              accessToken,
-              commentId: input.commentId,
-              message: input.message,
-            })
-        : provider === 'facebook'
-          ? await dependencies.facebookPrivateReplyClient!.sendPrivateReply({
-              pageId: input.instagramUserId,
-              pageAccessToken: accessToken,
-              commentId: input.commentId,
-              message: input.message,
-              ...(input.execution.quickReplyOptions?.length
-                ? {
-                    quickReplies: input.execution.quickReplyOptions.map((option) => ({
-                      title: option.title,
-                      payload: `qr:${input.execution.id}:${option.id}`,
-                    })),
-                  }
-                : {}),
-            })
-          : await dependencies.instagramPrivateReplyClient.sendPrivateReply({
-              accessToken,
-              commentId: input.commentId,
-              instagramUserId: input.instagramUserId,
-              message: input.message,
-              ...(input.execution.quickReplyOptions?.length
-                ? {
-                    quickReplies: input.execution.quickReplyOptions.map((option) => ({
-                      title: option.title,
-                      payload: `qr:${input.execution.id}:${option.id}`,
-                    })),
-                  }
-                : {}),
-            });
+      input.execution.triggerKind === 'story_reply'
+        ? await dependencies.instagramDirectMessageClient!.sendDirectMessage({
+            accessToken,
+            instagramUserId: input.instagramUserId,
+            recipientId: input.execution.commenterInstagramId!,
+            message: input.message,
+            ...(input.execution.quickReplyOptions?.length
+              ? {
+                  quickReplies: input.execution.quickReplyOptions.map((option) => ({
+                    title: option.title,
+                    payload: `qr:${input.execution.id}:${option.id}`,
+                  })),
+                }
+              : {}),
+          })
+        : input.execution.deliveryChannel === DELIVERY_CHANNEL.PUBLIC
+          ? provider === 'facebook'
+            ? await dependencies.facebookCommentReplyClient!.replyToComment({
+                pageAccessToken: accessToken,
+                commentId: input.commentId,
+                message: input.message,
+              })
+            : await dependencies.instagramCommentReplyClient.replyToComment({
+                accessToken,
+                commentId: input.commentId,
+                message: input.message,
+              })
+          : provider === 'facebook'
+            ? await dependencies.facebookPrivateReplyClient!.sendPrivateReply({
+                pageId: input.instagramUserId,
+                pageAccessToken: accessToken,
+                commentId: input.commentId,
+                message: input.message,
+                ...(input.execution.quickReplyOptions?.length
+                  ? {
+                      quickReplies: input.execution.quickReplyOptions.map((option) => ({
+                        title: option.title,
+                        payload: `qr:${input.execution.id}:${option.id}`,
+                      })),
+                    }
+                  : {}),
+              })
+            : await dependencies.instagramPrivateReplyClient.sendPrivateReply({
+                accessToken,
+                commentId: input.commentId,
+                instagramUserId: input.instagramUserId,
+                message: input.message,
+                ...(input.execution.quickReplyOptions?.length
+                  ? {
+                      quickReplies: input.execution.quickReplyOptions.map((option) => ({
+                        title: option.title,
+                        payload: `qr:${input.execution.id}:${option.id}`,
+                      })),
+                    }
+                  : {}),
+              });
     const completed = await dependencies.executionRepository.markSucceeded(
       input.execution.id,
       leaseId,
@@ -139,6 +176,7 @@ export const deliverReply = async (
     const providerError =
       error instanceof InstagramCommentReplyError ||
       error instanceof InstagramPrivateReplyError ||
+      error instanceof InstagramDirectMessageError ||
       error instanceof FacebookClientError
         ? error
         : null;

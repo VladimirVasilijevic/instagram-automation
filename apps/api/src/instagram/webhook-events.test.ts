@@ -3,6 +3,61 @@ import { describe, expect, it } from 'vitest';
 import { normalizeCommentEvents } from './webhook-events.js';
 
 describe('normalizeCommentEvents', () => {
+  it('retains Story identity without retaining the Story URL', () => {
+    const result = normalizeCommentEvents({
+      object: 'instagram',
+      entry: [
+        {
+          id: 'business-id',
+          messaging: [
+            {
+              sender: { id: 'person-id' },
+              recipient: { id: 'business-id' },
+              timestamp: 1767000000000,
+              message: {
+                mid: 'story-message',
+                text: 'info',
+                reply_to: { story: { id: 'story-id', url: 'https://private.example/story' } },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success)
+      expect(result.messageEvents[0]).toMatchObject({
+        storyId: 'story-id',
+        messageId: 'story-message',
+      });
+    expect(JSON.stringify(result)).not.toContain('private.example');
+  });
+
+  it('does not reinterpret a malformed Story reference as an ordinary DM', () => {
+    const result = normalizeCommentEvents({
+      object: 'instagram',
+      entry: [
+        {
+          id: 'business-id',
+          messaging: [
+            {
+              sender: { id: 'person-id' },
+              recipient: { id: 'business-id' },
+              timestamp: 1767000000000,
+              message: {
+                mid: 'story-message',
+                text: 'Yes',
+                reply_to: { story: { url: 'https://example.com/story' } },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.messageEvents).toEqual([]);
+  });
+
   it('counts non-comment change events without retaining their payload', () => {
     const result = normalizeCommentEvents({
       object: 'instagram',
@@ -243,5 +298,61 @@ describe('normalizeCommentEvents', () => {
       ],
       unsupportedEventCounts: { messaging: 1, other_change: 0, other_entry: 0 },
     });
+  });
+});
+
+describe('Story message envelope variants', () => {
+  const message = {
+    sender: { id: 'person' },
+    recipient: { id: 'owner' },
+    timestamp: 1767000000000,
+    message: {
+      mid: 'story-message',
+      text: 'info',
+      reply_to: { story: { id: 'story-id', url: 'https://private.example/story' } },
+    },
+  };
+  it('normalizes a Story reply delivered through messages changes', () => {
+    const result = normalizeCommentEvents({
+      object: 'instagram',
+      entry: [{ id: 'owner', changes: [{ field: 'messages', value: message }] }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success)
+      expect(result.messageEvents).toMatchObject([
+        { messageId: 'story-message', storyId: 'story-id' },
+      ]);
+    expect(JSON.stringify(result)).not.toContain('private.example');
+  });
+
+  it.each([null, {}, { id: '' }, { id: 123 }])(
+    'does not turn malformed Story references into ordinary answers',
+    (story) => {
+      const result = normalizeCommentEvents({
+        object: 'instagram',
+        entry: [
+          {
+            id: 'owner',
+            messaging: [{ ...message, message: { ...message.message, reply_to: { story } } }],
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.messageEvents).toEqual([]);
+    },
+  );
+
+  it('ignores echoed Story replies before automation routing', () => {
+    const result = normalizeCommentEvents({
+      object: 'instagram',
+      entry: [
+        {
+          id: 'owner',
+          messaging: [{ ...message, message: { ...message.message, is_echo: true } }],
+        },
+      ],
+    });
+    if (result.success) expect(result.messageEvents).toEqual([]);
+    else throw new Error('Echo should be ignored safely');
   });
 });

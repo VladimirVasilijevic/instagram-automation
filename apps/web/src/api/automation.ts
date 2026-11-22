@@ -19,8 +19,10 @@ export interface QuickReplyOption {
   followUpText: string;
 }
 
-/** The single comment automation configured by the signed-in account. */
+/** One post’s comment automation configured by the signed-in account. */
 export interface Automation {
+  /** Event source retained for archived media. */
+  triggerKind?: 'comment' | 'story_reply';
   /** Selected reply channels. */
   deliveryMode: DeliveryMode;
   /** Whether a matching comment may trigger a reply. */
@@ -113,6 +115,10 @@ const readAutomation = (value: unknown): Automation => {
   const triggerMode = isRecord(value) ? value.triggerMode : undefined;
   if (
     !isRecord(value) ||
+    (value.triggerKind !== undefined &&
+      value.triggerKind !== 'comment' &&
+      value.triggerKind !== 'story_reply') ||
+    (value.triggerKind === 'story_reply' && deliveryMode !== DELIVERY_MODE.PRIVATE) ||
     !isDeliveryMode(deliveryMode) ||
     !isTriggerMode(triggerMode) ||
     typeof value.enabled !== 'boolean' ||
@@ -141,6 +147,7 @@ const readAutomation = (value: unknown): Automation => {
   }
   return {
     deliveryMode,
+    ...(value.triggerKind === undefined ? {} : { triggerKind: value.triggerKind }),
     enabled: value.enabled,
     mediaId: value.mediaId,
     privateReplyText: value.privateReplyText,
@@ -163,16 +170,14 @@ const readPayload = async (response: Response): Promise<unknown> => {
   }
 };
 
-/** Loads the saved automation, or null when the signed-in account has not configured one. */
-export const getAutomation = async (signal?: AbortSignal): Promise<Automation | null> => {
+/** Loads all saved rules for the selected connection. */
+export const getAutomations = async (signal?: AbortSignal): Promise<Automation[]> => {
   const response = await request('/api/automation', {}, signal);
   if (!response.ok) throw new Error('Automation service is unavailable. Please try again.');
   const payload = await readPayload(response);
-  if (!isRecord(payload) || !('automation' in payload))
-    throw new Error('Automation service returned an invalid response. Please try again.');
-  if (payload.automation === null) return null;
   try {
-    return readAutomation(payload.automation);
+    if (!isRecord(payload) || !Array.isArray(payload.automations)) throw new Error('Invalid list');
+    return payload.automations.map(readAutomation);
   } catch (error) {
     throw new Error('Automation service returned an invalid response. Please try again.', {
       cause: error,

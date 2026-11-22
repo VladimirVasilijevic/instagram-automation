@@ -306,7 +306,7 @@ describeDatabase('PostgreSQL repositories', () => {
           accountId: account.id,
           deliveryMode: 'public',
           enabled: false,
-          mediaId: 'first-media',
+          mediaId: 'selected-media',
           privateReplyText: null,
           replyText: 'First reply',
           triggerMode: 'exact',
@@ -419,9 +419,33 @@ describeDatabase('PostgreSQL repositories', () => {
           triggerMode: 'exact',
           triggerText: '#Hello',
         });
+        const secondMediaAutomation = await automationRepository.saveAutomation({
+          accountId: account.id,
+          deliveryMode: 'public',
+          enabled: true,
+          mediaId: 'second-media',
+          privateReplyText: null,
+          replyText: 'Second post reply',
+          triggerMode: 'all',
+          triggerText: null,
+        });
+        expect(secondMediaAutomation.id).not.toBe(enabledAutomation.id);
+        await expect(
+          automationRepository.findByAccountAndMedia(account.id, 'selected-media'),
+        ).resolves.toEqual(enabledAutomation);
+        await expect(
+          automationRepository.findByAccountAndMedia(account.id, 'second-media'),
+        ).resolves.toEqual(secondMediaAutomation);
+        await expect(
+          automationRepository.findByAccountAndMedia(otherAccount.id, 'second-media'),
+        ).resolves.toBeNull();
+        await expect(automationRepository.findByAccountId(account.id)).resolves.toBeNull();
+        expect(await automationRepository.listByAccountId(account.id)).toHaveLength(2);
+
         const firstExecution = await executionRepository.claimExecution({
           automationId: enabledAutomation.id,
-          mediaId: firstAutomation.mediaId,
+          // Preserve a historical media snapshot independently of current rule settings.
+          mediaId: 'first-media',
           commenterInstagramId: 'first-commenter-id',
           commenterUsername: 'first_commenter',
           commentText: '#Hello',
@@ -652,6 +676,40 @@ describeDatabase('PostgreSQL repositories', () => {
     });
   });
 
+  it('concurrent saves of the same connection/media retain one stable automation ID', async () => {
+    const peer = postgres(databaseUrl!, { connect_timeout: 10, max: 1, prepare: false });
+    const ownerId = randomUUID();
+    try {
+      await sql`insert into app_private.users (id) values (${ownerId})`;
+      await sql`insert into app_private.social_connections (id, user_id, provider, external_account_id, display_name)
+        values (${ownerId}, ${ownerId}, 'facebook', ${`race-page-${ownerId}`}, 'Concurrent save owner')`;
+      const input = {
+        accountId: ownerId,
+        deliveryMode: 'public' as const,
+        enabled: true,
+        mediaId: 'same-media',
+        privateReplyText: null,
+        replyText: 'Reply A',
+        triggerMode: 'all' as const,
+        triggerText: null,
+      };
+      const results = await Promise.all([
+        createPostgresAutomationRepository(sql).saveAutomation(input),
+        createPostgresAutomationRepository(peer).saveAutomation({ ...input, replyText: 'Reply B' }),
+      ]);
+      expect(results[0]!.id).toBe(results[1]!.id);
+      const saved = await createPostgresAutomationRepository(sql).listByAccountId(ownerId);
+      expect(saved).toHaveLength(1);
+      expect(saved[0]!.id).toBe(results[0]!.id);
+      expect(['Reply A', 'Reply B']).toContain(saved[0]!.replyText);
+    } finally {
+      await peer.end({ timeout: 5 });
+      await sql`delete from app_private.automations where connection_id = ${ownerId}`;
+      await sql`delete from app_private.social_connections where id = ${ownerId}`;
+      await sql`delete from app_private.users where id = ${ownerId}`;
+    }
+  });
+
   it('snapshots quick replies, deduplicates answers, and leases one follow-up', async () => {
     const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 7).toString('base64'));
     const optionId = randomUUID();
@@ -727,6 +785,60 @@ describeDatabase('PostgreSQL repositories', () => {
           (await executionRepository.listRecentByAccountId(account.id, 1))[0]?.quickReplyOptions,
         ).toEqual([option]);
 
+        const otherMediaRule = await automationRepository.saveAutomation({
+          accountId: account.id,
+          deliveryMode: 'private',
+          enabled: true,
+          mediaId: 'second-quick-reply-media',
+          privateReplyText: 'Another question',
+          quickReplyOptions: [{ ...option, followUpText: 'Other post follow-up' }],
+          replyText: '',
+          triggerMode: 'all',
+          triggerText: null,
+        });
+        const otherPrompt = await executionRepository.claimExecution({
+          automationId: otherMediaRule.id,
+          mediaId: otherMediaRule.mediaId,
+          commenterInstagramId: 'commenter-id',
+          commenterUsername: 'commenter',
+          commentText: 'Second post question',
+          deliveryChannel: 'private',
+          instagramCommentId: `comment-${randomUUID()}`,
+          leaseExpiresAt: new Date(now.getTime() + 120_000),
+          messageText: otherMediaRule.privateReplyText!,
+          quickReplyOptions: otherMediaRule.quickReplyOptions,
+        });
+        if (!otherPrompt?.leaseId) throw new Error('Second media prompt was not claimed');
+        await executionRepository.markSucceeded(
+          otherPrompt.id,
+          otherPrompt.leaseId,
+          'other-media-message',
+          'recipient-igsid',
+        );
+        await expect(
+          conversationRepository.recordInboundAnswer({
+            accountId: account.id,
+            providerMessageId: `ambiguous-${randomUUID()}`,
+            senderIgsid: 'recipient-igsid',
+            text: 'Yes',
+            quickReplyPayload: null,
+            sentAt: new Date(Date.now() + 1_000),
+            receivedAt: new Date(),
+          }),
+        ).resolves.toMatchObject({ answer: { executionId: null, optionId: null }, followup: null });
+        // Editing/disabling the current rule must not rewrite an already delivered prompt.
+        await automationRepository.saveAutomation({
+          accountId: account.id,
+          deliveryMode: 'private',
+          enabled: false,
+          mediaId: automation.mediaId,
+          privateReplyText: 'Disabled question',
+          quickReplyOptions: [{ ...option, followUpText: 'Disabled follow-up' }],
+          replyText: '',
+          triggerMode: 'all',
+          triggerText: null,
+        });
+
         const choiceInput = {
           accountId: account.id,
           providerMessageId: `inbound-${randomUUID()}`,
@@ -790,7 +902,7 @@ describeDatabase('PostgreSQL repositories', () => {
           ),
         ).toMatchObject({ status: 'succeeded', providerReplyId: 'follow-up-message' });
         await expect(
-          conversationRepository.listRecentAnswersByAccountId(account.id, 50),
+          conversationRepository.listRecentAnswersByAccountId(account.id, 50, automation.mediaId),
         ).resolves.toMatchObject([
           {
             answer: { optionId },
@@ -863,6 +975,262 @@ describeDatabase('PostgreSQL repositories', () => {
           followup: null,
         });
 
+        throw rollbackSignal;
+      });
+    } catch (error) {
+      if (error !== rollbackSignal) throw error;
+    }
+  });
+  it('claims concurrent Story batches once per owner and media while preserving legacy comment defaults', async () => {
+    const peer = postgres(databaseUrl!, { connect_timeout: 10, max: 1, prepare: false });
+    const accounts = createPostgresAccountRepository(sql);
+    const automations = createPostgresAutomationRepository(sql);
+    const executions = createPostgresExecutionRepository(sql);
+    const peerExecutions = createPostgresExecutionRepository(peer);
+    const ownerIds: string[] = [];
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 86_400_000);
+    const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 7).toString('base64'));
+    const sharedStoryId = `shared-story-${randomUUID()}`;
+    const sharedMessageId = `shared-message-${randomUUID()}`;
+    try {
+      for (let index = 0; index < 2; index += 1) {
+        const account = await accounts.upsertConnectedAccount({
+          accessTokenCiphertext: tokenProtector.encrypt('synthetic-token'),
+          instagramUserId: `concurrent-story-owner-${randomUUID()}`,
+          tokenExpiresAt: expiresAt,
+          username: `concurrent_story_owner_${index}`,
+        });
+        ownerIds.push(account.id);
+      }
+      const rules = await Promise.all(
+        [
+          { accountId: ownerIds[0]!, mediaId: sharedStoryId },
+          { accountId: ownerIds[1]!, mediaId: sharedStoryId },
+          { accountId: ownerIds[0]!, mediaId: `another-story-${randomUUID()}` },
+        ].map((owner, index) =>
+          automations.saveAutomation({
+            ...owner,
+            enabled: true,
+            triggerKind: 'story_reply',
+            deliveryMode: 'private',
+            triggerMode: 'all',
+            triggerText: null,
+            replyText: '',
+            privateReplyText: `Story answer ${index}`,
+          }),
+        ),
+      );
+      const inputs = rules.map((rule) => ({
+        automationId: rule.id,
+        mediaId: rule.mediaId,
+        triggerKind: 'story_reply' as const,
+        commenterInstagramId: 'same-sender',
+        commenterUsername: null,
+        commentText: 'Question',
+        instagramCommentId: sharedMessageId,
+        deliveryChannel: 'private' as const,
+        messageText: rule.privateReplyText!,
+        replyWindowExpiresAt: expiresAt,
+        leaseExpiresAt: new Date(now.getTime() + 120_000),
+      }));
+      const results = await Promise.allSettled([
+        executions.claimExecutions(inputs.slice(0, 2)),
+        peerExecutions.claimExecutions(inputs.slice(0, 2)),
+      ]);
+      const claims = results.flatMap((result) => {
+        if (result.status === 'rejected') throw result.reason;
+        return result.value;
+      });
+      expect(claims).toHaveLength(2);
+      const third = await executions.claimExecution(inputs[2]!);
+      expect(third).not.toBeNull();
+      claims.push(third!);
+      expect(new Set(claims.map((claim) => claim.automationId)).size).toBe(3);
+      for (const claim of claims) {
+        const expected = inputs.find((input) => input.automationId === claim.automationId)!;
+        expect(claim).toMatchObject({
+          mediaId: expected.mediaId,
+          messageText: expected.messageText,
+          triggerKind: 'story_reply',
+          replyWindowExpiresAt: expiresAt,
+          instagramCommentId: sharedMessageId,
+          deliveryChannel: 'private',
+        });
+      }
+      await expect(executions.claimExecutions(inputs.slice(0, 2))).resolves.toEqual([]);
+      const [legacyRule] = await sql<{ id: string; media_id: string }[]>`
+        insert into app_private.automations
+          (account_id, connection_id, media_id, trigger_mode, trigger_text, reply_text, delivery_mode, enabled)
+        values (${ownerIds[0]!}, ${ownerIds[0]!}, ${`legacy-${randomUUID()}`}, 'all', null,
+          'Legacy public answer', 'public', true)
+        returning id, media_id
+      `;
+      const legacy = await automations.findByAccountAndMedia(ownerIds[0]!, legacyRule!.media_id);
+      expect(legacy?.triggerKind).toBe('comment');
+      const legacyClaim = await executions.claimExecution({
+        automationId: legacy!.id,
+        mediaId: legacy!.mediaId,
+        commenterInstagramId: 'same-sender',
+        commenterUsername: null,
+        commentText: 'Comment',
+        instagramCommentId: sharedMessageId,
+        deliveryChannel: 'public',
+        messageText: 'Legacy public answer',
+        leaseExpiresAt: new Date(now.getTime() + 120_000),
+      });
+      expect(legacyClaim).toMatchObject({ triggerKind: 'comment', replyWindowExpiresAt: null });
+      const persisted = await sql<{ count: number }[]>`
+        select count(*)::int as count from app_private.executions e
+        join app_private.automations a on a.id=e.automation_id
+        where a.connection_id = any(${ownerIds}::uuid[])
+      `;
+      expect(persisted[0]?.count).toBe(4);
+    } finally {
+      await peer.end({ timeout: 5 });
+      if (ownerIds.length) {
+        await sql.begin(async (tx) => {
+          await tx`delete from app_private.executions where automation_id in
+            (select id from app_private.automations where connection_id = any(${ownerIds}::uuid[]))`;
+          await tx`delete from app_private.automations where connection_id = any(${ownerIds}::uuid[])`;
+          await tx`delete from app_private.instagram_accounts where id = any(${ownerIds}::uuid[])`;
+          await tx`delete from app_private.social_connections where id = any(${ownerIds}::uuid[])`;
+          await tx`delete from app_private.login_identities where user_id = any(${ownerIds}::uuid[])`;
+          await tx`delete from app_private.users where id = any(${ownerIds}::uuid[])`;
+        });
+      }
+    }
+  });
+
+  it('persists private Story rules and preserves the original reply window across retries and follow-ups', async () => {
+    const tokenProtector = new AesGcmTokenProtector(Buffer.alloc(32, 9).toString('base64'));
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const option = { id: randomUUID(), title: 'Details', followUpText: 'Original Story follow-up' };
+    try {
+      await sql.begin(async (tx) => {
+        const accounts = createPostgresAccountRepository(tx);
+        const automations = createPostgresAutomationRepository(tx);
+        const executions = createPostgresExecutionRepository(tx);
+        const conversations = createPostgresDmConversationRepository(tx);
+        const account = await accounts.upsertConnectedAccount({
+          accessTokenCiphertext: tokenProtector.encrypt('story-test-token'),
+          instagramUserId: `story-${randomUUID()}`,
+          tokenExpiresAt: expiresAt,
+          username: 'story_owner',
+        });
+        const ruleInput = {
+          accountId: account.id,
+          triggerKind: 'story_reply' as const,
+          deliveryMode: 'private' as const,
+          enabled: true,
+          mediaId: `story-${randomUUID()}`,
+          privateReplyText: 'Original Story response',
+          quickReplyOptions: [option],
+          replyText: '',
+          triggerMode: 'all' as const,
+          triggerText: null,
+        };
+        const rule = await automations.saveAutomation(ruleInput);
+        expect(rule.triggerKind).toBe('story_reply');
+        expect(
+          (await automations.findByAccountAndMedia(account.id, rule.mediaId))?.triggerKind,
+        ).toBe('story_reply');
+        await expect(
+          tx.savepoint(async (sp) =>
+            createPostgresAutomationRepository(sp).saveAutomation({
+              ...ruleInput,
+              deliveryMode: 'both',
+              replyText: 'Invalid public Story reply',
+            }),
+          ),
+        ).rejects.toMatchObject({
+          code: '23514',
+          constraint_name: 'automations_story_private_only',
+        });
+        const claimInput = {
+          automationId: rule.id,
+          triggerKind: 'story_reply' as const,
+          replyWindowExpiresAt: expiresAt,
+          mediaId: rule.mediaId,
+          commenterInstagramId: 'story-recipient',
+          commenterUsername: null,
+          commentText: 'Tell me more',
+          deliveryChannel: 'private' as const,
+          instagramCommentId: `story-message-${randomUUID()}`,
+          leaseExpiresAt: new Date(now.getTime() + 120_000),
+          messageText: rule.privateReplyText!,
+          quickReplyOptions: [option],
+        };
+        const execution = await executions.claimExecution(claimInput);
+        expect(execution).toMatchObject({
+          triggerKind: 'story_reply',
+          replyWindowExpiresAt: expiresAt,
+        });
+        if (!execution?.leaseId) throw new Error('Story reply execution was not claimed');
+        await expect(executions.claimExecution(claimInput)).resolves.toBeNull();
+        await expect(
+          tx.savepoint(async (sp) =>
+            createPostgresExecutionRepository(sp).claimExecution({
+              ...claimInput,
+              instagramCommentId: `invalid-story-${randomUUID()}`,
+              quickReplyOptions: [],
+              deliveryChannel: 'public',
+            }),
+          ),
+        ).rejects.toMatchObject({
+          code: '23514',
+          constraint_name: 'executions_story_private_only',
+        });
+        await executions.markRetryPending(
+          execution.id,
+          execution.leaseId,
+          { errorCode: 'RATE_LIMITED', errorMessage: 'Retry later', failureKind: 'retryable' },
+          now,
+        );
+        await automations.saveAutomation({
+          ...ruleInput,
+          enabled: false,
+          privateReplyText: 'Changed response',
+          quickReplyOptions: [{ ...option, followUpText: 'Changed follow-up' }],
+        });
+        const retry = (
+          await executions.claimDueRetries(
+            new Date(now.getTime() + 1000),
+            new Date(now.getTime() + 120_000),
+            50,
+          )
+        ).find((entry) => entry.execution.id === execution.id);
+        expect(retry?.execution).toMatchObject({
+          triggerKind: 'story_reply',
+          replyWindowExpiresAt: expiresAt,
+          messageText: 'Original Story response',
+          quickReplyOptions: [option],
+          attemptCount: 2,
+        });
+        if (!retry?.execution.leaseId) throw new Error('Story retry was not leased');
+        await executions.markSucceeded(
+          execution.id,
+          retry.execution.leaseId,
+          'story-reply-provider-id',
+          'story-recipient',
+        );
+        const answer = await conversations.recordInboundAnswer({
+          accountId: account.id,
+          providerMessageId: `story-answer-${randomUUID()}`,
+          senderIgsid: 'story-recipient',
+          text: 'Details',
+          quickReplyPayload: `qr:${execution.id}:${option.id}`,
+          sentAt: new Date(Date.now() + 1000),
+          receivedAt: new Date(),
+        });
+        expect(answer).toMatchObject({
+          answer: { executionId: execution.id, optionId: option.id },
+          followup: { messageText: 'Original Story follow-up' },
+        });
+        expect(
+          (await executions.listRecentByAccountId(account.id, 50, rule.mediaId))[0],
+        ).toMatchObject({ triggerKind: 'story_reply', replyWindowExpiresAt: expiresAt });
         throw rollbackSignal;
       });
     } catch (error) {

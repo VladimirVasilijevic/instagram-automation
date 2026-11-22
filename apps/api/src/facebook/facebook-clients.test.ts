@@ -276,3 +276,119 @@ describe('Facebook Page reply adapters', () => {
     );
   });
 });
+
+describe('Facebook content catalog adapter', () => {
+  it('uses the Page video_reels edge and preserves its exact video identifier', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      response({
+        data: [
+          {
+            id: '456',
+            description: 'Reel caption',
+            permalink_url: 'https://www.facebook.com/reel/456',
+            picture: 'https://cdn.example/reel.jpg',
+          },
+        ],
+        paging: { cursors: { after: 'next-token' }, next: 'https://graph.facebook.com/next' },
+      }),
+    );
+    const client = createFacebookPageClient({ apiVersion: 'v24.0' }, fetcher);
+    const result = await client.listReelPage!({
+      pageId: '123',
+      pageAccessToken: 'page-secret',
+      limit: 3,
+      after: 'prior-token',
+    });
+    expect(result).toMatchObject({
+      media: [{ id: '456', contentKind: 'reel', thumbnailUrl: 'https://cdn.example/reel.jpg' }],
+      after: 'next-token',
+    });
+    const [url, init] = fetcher.mock.calls[0]!;
+    const parsed = new URL(String(url));
+    expect(parsed.pathname).toBe('/v24.0/123/video_reels');
+    expect(parsed.searchParams.get('after')).toBe('prior-token');
+    expect(String(url)).not.toContain('page-secret');
+    expect(init?.headers).toMatchObject({ Authorization: 'Bearer page-secret' });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('keeps Page posts on the posts edge', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response({ data: [{ id: '123_456', message: 'Post' }] }));
+    const client = createFacebookPageClient({ apiVersion: 'v24.0' }, fetcher);
+    const result = await client.listPostPage!({
+      pageId: '123',
+      pageAccessToken: 'page-secret',
+      limit: 3,
+    });
+    expect(result.media[0]).toMatchObject({ id: '123_456', contentKind: 'post' });
+    expect(new URL(String(fetcher.mock.calls[0]![0])).pathname).toBe('/v24.0/123/posts');
+    expect(result.after).toBeNull();
+  });
+
+  it.each(['another-page', undefined])(
+    'rejects direct media ownership %s without guessing post aliases',
+    async (ownerId) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        response({
+          id: '456',
+          from: ownerId ? { id: ownerId } : undefined,
+          permalink_url: 'https://www.facebook.com/reel/456',
+        }),
+      );
+      const client = createFacebookPageClient({ apiVersion: 'v24.0' }, fetcher);
+      expect(
+        await client.findOwnedPost!({
+          pageId: '123',
+          pageAccessToken: 'page-secret',
+          mediaId: '456',
+        }),
+      ).toBeNull();
+      expect(new URL(String(fetcher.mock.calls[0]![0])).pathname).toBe('/v24.0/456');
+      expect(fetcher).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('requires Page Reel edge membership even when a video permalink resembles a Reel', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        response({
+          id: '456',
+          from: { id: '123' },
+          permalink_url: 'https://www.facebook.com/reel/456',
+        }),
+      )
+      .mockResolvedValueOnce(response({ data: [] }));
+    const client = createFacebookPageClient({ apiVersion: 'v24.0' }, fetcher);
+    expect(
+      await client.findOwnedPost!({
+        pageId: '123',
+        pageAccessToken: 'page-secret',
+        mediaId: '456',
+      }),
+    ).toBeNull();
+    expect(new URL(String(fetcher.mock.calls[1]![0])).pathname).toBe('/v24.0/123/video_reels');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts Reel membership using exact provider IDs without guessed aliases', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ id: '456', from: { id: '123' } }))
+      .mockResolvedValueOnce(response({ data: [{ id: '456', description: 'Owned reel' }] }));
+    const client = createFacebookPageClient({ apiVersion: 'v24.0' }, fetcher);
+    expect(
+      await client.findOwnedPost!({
+        pageId: '123',
+        pageAccessToken: 'page-secret',
+        mediaId: '456',
+      }),
+    ).toMatchObject({ id: '456', contentKind: 'reel' });
+    expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      '/v24.0/456',
+      '/v24.0/123/video_reels',
+    ]);
+  });
+});

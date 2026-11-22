@@ -40,6 +40,18 @@ const createFixture = () => {
 beforeEach(() => vi.resetAllMocks());
 
 describe('incoming quick-reply processing', () => {
+  it('does not consume a pending prompt when called with a Story reply', async () => {
+    const f = createFixture();
+    expect(
+      await processIncomingMessage(
+        { ...event, storyId: 'story-id', quickReplyPayload: null },
+        f.dependencies,
+      ),
+    ).toBe('ignored');
+    expect(f.accountRepository.findByInstagramUserId).not.toHaveBeenCalled();
+    expect(f.dmConversationRepository.recordInboundAnswer).not.toHaveBeenCalled();
+    expect(deliverFollowup).not.toHaveBeenCalled();
+  });
   it('ignores messages for accounts that are not connected', async () => {
     const f = createFixture();
     f.accountRepository.findByInstagramUserId.mockResolvedValue(null);

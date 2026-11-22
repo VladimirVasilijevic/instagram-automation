@@ -19,6 +19,8 @@
     "load-test:db:status": "tsx --env-file=../../.env.load-test.local scripts/load-test-migrations.ts status",
     "load-test:setup": "tsx --env-file=../../.env.load-test.local scripts/load-test-data.ts setup",
     "load-test:server": "tsx --env-file=../../.env.load-test.local scripts/load-test-server.ts",
+    "load-test:http": "tsx --env-file=../../.env.load-test.local scripts/load-test-http.ts",
+    "load-test:simulate": "tsx --env-file=../../.env.load-test.local scripts/multi-automation-simulation.ts",
     "load-test:verify": "tsx --env-file=../../.env.load-test.local scripts/load-test-data.ts verify",
     "start": "node dist/server.js",
     "test": "vitest run",

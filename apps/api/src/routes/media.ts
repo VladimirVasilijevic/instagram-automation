@@ -12,6 +12,7 @@ import {
   type SessionMiddlewareDependencies,
 } from '../middleware/session.js';
 import type { TokenProtector } from '../security/token-protector.js';
+import { InvalidMediaCursorError, type MediaCatalog } from '../media/catalog.js';
 
 const mediaItemSchema = z.object({
   caption: z.string().nullable(),
@@ -21,6 +22,7 @@ const mediaItemSchema = z.object({
   permalink: z.string().url().nullable(),
   thumbnailUrl: z.string().url().nullable(),
   timestamp: z.string().nullable(),
+  contentKind: z.enum(['post', 'reel', 'story']).optional(),
 });
 const mediaLimitSchema = z.coerce.number().int().min(1).max(12);
 
@@ -31,6 +33,8 @@ const mediaRoute = createRoute({
   summary: 'List recent posts for the connected social account',
   request: {
     query: z.object({
+      kind: z.enum(['post', 'reel', 'story']).optional(),
+      cursor: z.string().max(4096).optional(),
       limit: z
         .union([z.string(), z.array(z.string())])
         .optional()
@@ -44,7 +48,12 @@ const mediaRoute = createRoute({
     200: {
       description: 'Up to twelve recent media items owned by the signed-in account.',
       content: {
-        'application/json': { schema: z.object({ media: z.array(mediaItemSchema).max(12) }) },
+        'application/json': {
+          schema: z.object({
+            media: z.array(mediaItemSchema).max(12),
+            nextCursor: z.string().nullable().optional(),
+          }),
+        },
       },
     },
     400: {
@@ -68,6 +77,8 @@ const mediaRoute = createRoute({
 
 /** Dependencies for authenticated recent-media requests. */
 export interface MediaRouteDependencies extends SessionMiddlewareDependencies {
+  /** Application catalog shared with selected-media validation. */
+  mediaCatalog?: MediaCatalog;
   /** Facebook Page post listing when Facebook is configured. */
   facebookPageClient?: Pick<FacebookPageClient, 'listRecentPosts'>;
   /** Resolves protected Facebook Page credentials. */
@@ -111,6 +122,40 @@ export const registerMediaRoute = (
         409,
       );
     try {
+      if (dependencies.mediaCatalog) {
+        const kind = context.req.query('kind') as 'post' | 'reel' | 'story' | undefined;
+        if (connection.provider === 'facebook' && kind === 'story')
+          return context.json(
+            {
+              error: {
+                code: 'FACEBOOK_STORIES_UNAVAILABLE',
+                message: 'Facebook Stories automation is not available yet.',
+              },
+            },
+            409,
+          );
+        if (connection.provider === 'facebook' && kind === 'reel')
+          return context.json(
+            {
+              error: {
+                code: 'FACEBOOK_REELS_UNAVAILABLE',
+                message: 'Facebook Reels automation is not available yet.',
+              },
+            },
+            409,
+          );
+        const cursor = context.req.query('cursor');
+        return context.json(
+          await dependencies.mediaCatalog.list({
+            connection,
+            account,
+            limit: parsedLimit.data,
+            ...(kind ? { kind } : {}),
+            ...(cursor ? { cursor } : {}),
+          }),
+          200,
+        );
+      }
       const media =
         connection.provider === 'facebook'
           ? await (async () => {
@@ -144,6 +189,16 @@ export const registerMediaRoute = (
             })();
       return context.json({ media }, 200);
     } catch (error) {
+      if (error instanceof InvalidMediaCursorError)
+        return context.json(
+          {
+            error: {
+              code: 'INVALID_MEDIA_CURSOR',
+              message: 'Reload this content section and try again.',
+            },
+          },
+          400,
+        );
       dependencies.logger.error(
         'Social media request failed',
         error instanceof InstagramMediaError ? error.toLogContext() : toSafeErrorContext(error),

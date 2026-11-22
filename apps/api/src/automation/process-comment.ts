@@ -136,7 +136,7 @@ export const processComment = async (
     account.id,
     event.mediaId,
   );
-  if (!automation) {
+  if (!automation || automation.triggerKind === 'story_reply') {
     return { outcome: COMMENT_PROCESS_OUTCOME.IGNORED, reason: 'no_enabled_automation' };
   }
   const exclusion = evaluateComment(ruleComment, ruleOwner, {

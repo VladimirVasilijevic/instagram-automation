@@ -6,6 +6,7 @@ import {
   type IgnoredCommentProcessResult,
 } from '../automation/process-comment.js';
 import { processIncomingMessage } from '../automation/process-incoming-message.js';
+import { processStoryReply } from '../automation/process-story-reply.js';
 import type {
   AccountRepository,
   AutomationRepository,
@@ -38,7 +39,7 @@ export interface InstagramWebhookRouteDependencies extends SessionMiddlewareDepe
   /** Resolves enabled automations for an owner and commented media item. */
   automationRepository: Pick<
     AutomationRepository,
-    'findByAccountId' | 'findEnabledByAccountAndMedia'
+    'listByAccountId' | 'findEnabledByAccountAndMedia'
   >;
   /** App Secret used solely to authenticate signed webhook delivery bodies. */
   appSecret: string;
@@ -150,8 +151,25 @@ export const registerInstagramWebhookRoutes = (
       messageFollowupStartedCount: 0,
       messageIgnoredCount: 0,
       messageRecordedCount: 0,
+      storyReplySucceededCount: 0,
+      storyReplyFailedCount: 0,
     };
     for (const event of normalized.messageEvents) {
+      if (event.storyId) {
+        if (!dependencies.instagramDirectMessageClient) {
+          messageOutcomeCounts.messageIgnoredCount += 1;
+          continue;
+        }
+        const outcome = await processStoryReply(event, {
+          ...dependencies,
+          instagramDirectMessageClient: dependencies.instagramDirectMessageClient,
+        });
+        if (outcome === 'succeeded') messageOutcomeCounts.storyReplySucceededCount += 1;
+        if (outcome === 'failed') messageOutcomeCounts.storyReplyFailedCount += 1;
+        if (outcome === 'ignored') messageOutcomeCounts.messageIgnoredCount += 1;
+        if (outcome === 'duplicate') messageOutcomeCounts.messageDuplicateCount += 1;
+        continue;
+      }
       if (!dependencies.dmConversationRepository || !dependencies.instagramDirectMessageClient) {
         messageOutcomeCounts.messageIgnoredCount += 1;
         continue;
@@ -192,11 +210,11 @@ export const registerInstagramWebhookRoutes = (
     const { account } = context.get('authenticatedSession');
     if (!account) return context.json({ error: { code: 'INSTAGRAM_CONNECTION_REQUIRED' } }, 409);
     try {
-      const automation = await dependencies.automationRepository.findByAccountId(account.id);
       await dependencies.instagramWebhookClient.subscribeToComments({
         accessToken: dependencies.tokenProtector.decrypt(account.accessTokenCiphertext),
         instagramUserId: account.instagramUserId,
-        includeMessages: Boolean(automation?.quickReplyOptions?.length),
+        // Preserve answers to sent prompts even if their rules were subsequently edited.
+        includeMessages: true,
       });
       return context.body(null, 204);
     } catch (error) {

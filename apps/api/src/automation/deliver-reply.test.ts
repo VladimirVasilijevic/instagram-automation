@@ -227,4 +227,45 @@ describe('reply delivery recovery policy', () => {
       }),
     );
   });
+  it('fails credential decryption before recording dispatch or contacting providers', async () => {
+    const f = fixture();
+    f.dependencies.tokenProtector.decrypt.mockImplementation(() => {
+      throw new Error('secret token material');
+    });
+    expect(await deliverReply(input(execution()), f.dependencies, now)).toBe('failed');
+    expect(f.executionRepository.markFailed).toHaveBeenCalledWith(
+      'execution-id',
+      'lease-id',
+      expect.objectContaining({ errorCode: 'TOKEN_DECRYPTION_FAILED' }),
+    );
+    expect(f.executionRepository.markDispatchStarted).not.toHaveBeenCalled();
+    expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+    expect(f.instagramPrivateReplyClient.sendPrivateReply).not.toHaveBeenCalled();
+    expect(JSON.stringify(vi.mocked(f.dependencies.logger.error).mock.calls)).not.toContain(
+      'secret token material',
+    );
+  });
+
+  it('stops before sending when dispatch lease ownership was lost', async () => {
+    const f = fixture();
+    f.executionRepository.markDispatchStarted.mockResolvedValue(false);
+    await expect(deliverReply(input(execution()), f.dependencies, now)).rejects.toThrow(
+      'lease ownership was lost before dispatch',
+    );
+    expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+    expect(f.executionRepository.markRetryPending).not.toHaveBeenCalled();
+  });
+
+  it('never resends or schedules a retry when completion ownership is lost after sending', async () => {
+    const f = fixture();
+    f.executionRepository.markSucceeded.mockResolvedValue(null);
+    await deliverReply(input(execution()), f.dependencies, now);
+    expect(f.instagramCommentReplyClient.replyToComment).toHaveBeenCalledOnce();
+    expect(f.executionRepository.markUncertain).toHaveBeenCalledWith(
+      'execution-id',
+      'lease-id',
+      expect.objectContaining({ failureKind: 'uncertain' }),
+    );
+    expect(f.executionRepository.markRetryPending).not.toHaveBeenCalled();
+  });
 });

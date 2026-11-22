@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { DELIVERY_MODE, TRIGGER_MODE } from '@instagram-automation/contracts';
-import type { SocialProvider } from '@instagram-automation/contracts';
+import type { SocialProvider, SocialContentKind } from '@instagram-automation/contracts';
 
 import {
   AutomationSaveError,
-  getAutomation,
+  getAutomations,
+  type Automation,
   saveAutomation,
   type DeliveryMode,
   type QuickReplyOption,
   type TriggerMode,
 } from '../api/automation.js';
-import { getRecentMedia, type RecentMedia } from '../api/media.js';
+import { getMediaPage, type RecentMedia } from '../api/media.js';
+import { MediaPicker } from './MediaPicker.js';
 
 type EditorState =
   | { status: 'loading' }
@@ -24,8 +26,26 @@ type EditorState =
 
 type PrivateMessageMode = 'text' | 'quick_replies';
 
-const mediaLabel = (item: RecentMedia): string =>
-  item.caption?.trim() || `${item.mediaType.toLowerCase()} ${item.id}`;
+interface Draft {
+  triggerText: string;
+  triggerMode: TriggerMode;
+  deliveryMode: DeliveryMode;
+  replyText: string;
+  privateReplyText: string;
+  privateMessageMode: PrivateMessageMode;
+  quickReplyOptions: QuickReplyOption[];
+  enabled: boolean;
+}
+const draftFor = (rule?: Automation, story = rule?.triggerKind === 'story_reply'): Draft => ({
+  triggerText: rule?.triggerText ?? '#Hello',
+  triggerMode: rule?.triggerMode ?? TRIGGER_MODE.EXACT,
+  deliveryMode: story ? DELIVERY_MODE.PRIVATE : (rule?.deliveryMode ?? DELIVERY_MODE.PUBLIC),
+  replyText: story ? '' : (rule?.replyText ?? 'Hello! Thanks for commenting.'),
+  privateReplyText: rule?.privateReplyText ?? 'Thanks for commenting!',
+  privateMessageMode: rule?.quickReplyOptions?.length ? 'quick_replies' : 'text',
+  quickReplyOptions: rule?.quickReplyOptions ?? [],
+  enabled: rule?.enabled ?? true,
+});
 
 /** Renders the owner-facing media, trigger, and delivery-channel automation editor. */
 export const AutomationEditor = ({
@@ -51,6 +71,79 @@ export const AutomationEditor = ({
     null,
   );
   const [saved, setSaved] = useState(false);
+  const drafts = useRef<Record<string, Draft>>({});
+  const [rules, setRules] = useState<Record<string, Automation>>({});
+  const [kind, setKind] = useState<SocialContentKind>('post');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
+  const [browseError, setBrowseError] = useState(false);
+  const browseRequest = useRef<AbortController | null>(null);
+  const applyDraft = (draft: Draft) => {
+    setTriggerText(draft.triggerText);
+    setTriggerMode(draft.triggerMode);
+    setDeliveryMode(draft.deliveryMode);
+    setReplyText(draft.replyText);
+    setPrivateReplyText(draft.privateReplyText);
+    setPrivateMessageMode(draft.privateMessageMode);
+    setQuickReplyOptions(draft.quickReplyOptions);
+    setEnabled(draft.enabled);
+  };
+  const selectMedia = (id: string) => {
+    if (saving || id === selectedMediaId) return;
+    if (selectedMediaId)
+      drafts.current[selectedMediaId] = {
+        triggerText,
+        triggerMode,
+        deliveryMode,
+        replyText,
+        privateReplyText,
+        privateMessageMode,
+        quickReplyOptions,
+        enabled,
+      };
+    const story =
+      (state.status === 'ready' &&
+        state.media.find((item) => item.id === id)?.contentKind === 'story') ||
+      rules[id]?.triggerKind === 'story_reply';
+    applyDraft(drafts.current[id] ?? draftFor(rules[id], story));
+    setSelectedMediaId(id);
+    onSelectedMediaChange?.(id);
+    setSaved(false);
+    setSaveError(null);
+  };
+  const browse = async (selectedKind: SocialContentKind, cursor?: string) => {
+    browseRequest.current?.abort();
+    const controller = new AbortController();
+    browseRequest.current = controller;
+    setKind(selectedKind);
+    setBrowsing(true);
+    setBrowseError(false);
+    try {
+      const page = await getMediaPage(
+        { kind: selectedKind, ...(cursor ? { cursor } : {}) },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setState((current) =>
+        current.status === 'ready'
+          ? {
+              ...current,
+              media: [
+                ...new Map(
+                  [...current.media, ...page.media].map((item) => [item.id, item]),
+                ).values(),
+              ],
+            }
+          : current,
+      );
+      setNextCursor(page.nextCursor);
+    } catch {
+      if (!controller.signal.aborted) setBrowseError(true);
+    } finally {
+      if (!controller.signal.aborted) setBrowsing(false);
+    }
+  };
+  useEffect(() => () => browseRequest.current?.abort(), []);
   const providerName = provider === 'facebook' ? 'Facebook Page' : 'Instagram';
   const reconnectPath =
     provider === 'facebook' ? '/api/connections/facebook/start' : '/api/auth/instagram/start';
@@ -61,24 +154,26 @@ export const AutomationEditor = ({
     setState({ status: 'loading' });
     setSaveError(null);
     setSaved(false);
-    void Promise.all([getRecentMedia(controller.signal), getAutomation(controller.signal)])
-      .then(([media, automation]) => {
+    drafts.current = {};
+    setRules({});
+    setKind('post');
+    setBrowseError(false);
+    void Promise.all([
+      getMediaPage({ kind: 'post' }, controller.signal),
+      getAutomations(controller.signal),
+    ])
+      .then(([page, automations]) => {
         if (controller.signal.aborted) return;
-        const savedMediaUnavailable = Boolean(
-          automation && !media.some((item) => item.id === automation.mediaId),
+        const byId = Object.fromEntries(automations.map((rule) => [rule.mediaId, rule]));
+        setRules(byId);
+        setNextCursor(page.nextCursor);
+        setState({ status: 'ready', media: page.media, savedMediaUnavailable: false });
+        const initial = automations.find((rule) =>
+          page.media.some((item) => item.id === rule.mediaId),
         );
-        setState({ status: 'ready', media, savedMediaUnavailable });
-        const initialMediaId = savedMediaUnavailable ? null : (automation?.mediaId ?? null);
-        setSelectedMediaId(initialMediaId ?? '');
-        onSelectedMediaChange?.(initialMediaId);
-        setTriggerText(automation?.triggerText ?? '#Hello');
-        setTriggerMode(automation?.triggerMode ?? TRIGGER_MODE.EXACT);
-        setDeliveryMode(automation?.deliveryMode ?? DELIVERY_MODE.PUBLIC);
-        setReplyText(automation?.replyText ?? 'Hello! Thanks for commenting.');
-        setPrivateReplyText(automation?.privateReplyText ?? 'Thanks for commenting!');
-        setPrivateMessageMode(automation?.quickReplyOptions?.length ? 'quick_replies' : 'text');
-        setQuickReplyOptions(automation?.quickReplyOptions ?? []);
-        setEnabled(automation?.enabled ?? true);
+        setSelectedMediaId(initial?.mediaId ?? '');
+        onSelectedMediaChange?.(initial?.mediaId ?? null);
+        applyDraft(draftFor(initial));
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -89,6 +184,10 @@ export const AutomationEditor = ({
     return () => controller.abort();
   }, [attempt, onSelectedMediaChange]);
 
+  const selectedStory =
+    (state.status === 'ready' &&
+      state.media.find((item) => item.id === selectedMediaId)?.contentKind === 'story') ||
+    rules[selectedMediaId]?.triggerKind === 'story_reply';
   const save = async () => {
     const trimmedTrigger = triggerText.trim();
     const triggerValid =
@@ -112,6 +211,7 @@ export const AutomationEditor = ({
         ));
     if (
       !selectedMediaId ||
+      (selectedStory && deliveryMode !== DELIVERY_MODE.PRIVATE) ||
       !triggerValid ||
       (publicRequired && replyText.trim() === '') ||
       (privateRequired && privateReplyText.trim() === '') ||
@@ -139,6 +239,8 @@ export const AutomationEditor = ({
         triggerMode,
         triggerText: triggerMode === TRIGGER_MODE.ALL ? null : trimmedTrigger,
       });
+      setRules((current) => ({ ...current, [automation.mediaId]: automation }));
+      delete drafts.current[automation.mediaId];
       setDeliveryMode(automation.deliveryMode);
       setSelectedMediaId(automation.mediaId);
       setPrivateReplyText(automation.privateReplyText ?? '');
@@ -190,6 +292,21 @@ export const AutomationEditor = ({
 
   const publicRequired = deliveryMode !== DELIVERY_MODE.PRIVATE;
   const privateRequired = deliveryMode !== DELIVERY_MODE.PUBLIC;
+  const selectedItem = state.media.find((item) => item.id === selectedMediaId);
+  const currentDraft: Draft = {
+    triggerText,
+    triggerMode,
+    deliveryMode,
+    replyText,
+    privateReplyText,
+    privateMessageMode,
+    quickReplyOptions,
+    enabled,
+  };
+  const unsaved =
+    Boolean(selectedMediaId) &&
+    JSON.stringify(currentDraft) !==
+      JSON.stringify(draftFor(rules[selectedMediaId], selectedStory));
   const trimmedTrigger = triggerText.trim();
   const triggerValid =
     triggerMode === TRIGGER_MODE.ALL ||
@@ -199,6 +316,8 @@ export const AutomationEditor = ({
     (triggerMode === TRIGGER_MODE.CONTAINS && /^#?[\p{L}\p{N}_]+$/u.test(trimmedTrigger));
   const canSave =
     Boolean(selectedMediaId) &&
+    (!selectedStory || deliveryMode === DELIVERY_MODE.PRIVATE) &&
+    (!enabled || state.media.some((item) => item.id === selectedMediaId)) &&
     triggerValid &&
     (!publicRequired || replyText.trim() !== '') &&
     (!privateRequired || privateReplyText.trim() !== '') &&
@@ -223,89 +342,132 @@ export const AutomationEditor = ({
           Create your automation
         </h2>
         <p className="mt-2 leading-6 text-[#625b6e]">
-          Choose one recent post, which comments qualify, and where replies should be sent.
+          Choose a post, reel or Story and configure its own rule and replies.
         </p>
+        {selectedMediaId && (
+          <p className="mt-2 text-sm text-[#625b6e]">
+            Editing: {selectedItem?.caption || selectedMediaId}
+            {unsaved ? ' · Unsaved changes' : ''}
+          </p>
+        )}
       </div>
 
-      {state.media.length === 0 ? (
-        <p className="ui-alert ui-alert-warning mt-6">
-          No recent {providerName} posts are available yet. Create a post, then try again.
-        </p>
-      ) : (
-        <fieldset className="mt-6">
-          <legend className="text-sm font-semibold text-[#292638]">1. Select one post</legend>
-          <p className="mt-1 text-sm text-[#625b6e]">
-            Choose the post whose comments should trigger this automation.
+      <fieldset className="mt-6" disabled={saving}>
+        <legend className="text-sm font-semibold text-[#292638]">
+          1. Select one post, reel or Story
+        </legend>
+        <div className="mt-3 flex gap-3" role="group" aria-label="Content sections">
+          <button
+            className="ui-button-secondary"
+            aria-pressed={kind === 'post'}
+            onClick={() => void browse('post')}
+          >
+            Posts
+          </button>
+          <button
+            className="ui-button-secondary"
+            aria-pressed={kind === 'reel'}
+            disabled={provider === 'facebook'}
+            onClick={() => void browse('reel')}
+          >
+            Reels
+          </button>
+          <button
+            className="ui-button-secondary"
+            aria-pressed={kind === 'story'}
+            disabled={provider === 'facebook'}
+            onClick={() => void browse('story')}
+          >
+            Stories
+          </button>
+        </div>
+        {provider === 'facebook' && (
+          <p className="mt-2 text-sm text-[#625b6e]">
+            Facebook Reels and Stories automation is not available yet.
           </p>
-          <div className="mt-3 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
-            {state.media.map((item) => {
-              const selected = item.id === selectedMediaId;
-              const previewUrl = item.thumbnailUrl ?? item.mediaUrl;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={selected}
-                  aria-label={`Select ${mediaLabel(item)}`}
-                  className={`ui-focus relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-white text-left transition hover:border-[#977bc3] ${
-                    selected ? 'border-[#5632a8] ring-2 ring-[#5632a8]/30' : 'border-[#e6e1db]'
-                  }`}
-                  onClick={() => {
-                    setSelectedMediaId(item.id);
-                    onSelectedMediaChange?.(item.id);
-                    setSaved(false);
-                  }}
-                >
-                  {selected && (
-                    <span
-                      className="absolute top-2 right-2 z-10 rounded-full bg-[#5632a8] px-2 py-1 text-xs font-semibold text-white"
-                      aria-hidden="true"
-                    >
-                      Selected
-                    </span>
-                  )}
-                  {previewUrl ? (
-                    <img
-                      className="h-40 w-full bg-[#f5f2ed] object-cover"
-                      src={previewUrl}
-                      alt={item.caption?.trim() || `${item.mediaType} preview`}
-                    />
-                  ) : (
-                    <div className="flex h-40 w-full items-center justify-center bg-[#f5f2ed] text-sm text-[#625b6e]">
-                      Preview unavailable
-                    </div>
-                  )}
-                  <div className="flex flex-1 flex-col p-3">
-                    <p className="text-xs font-semibold tracking-wide text-[#5632a8] uppercase">
-                      {item.mediaType}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-[#433d50]">
-                      {item.caption || 'No caption'}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+        )}
+        {browsing && (
+          <p role="status">
+            Loading {kind === 'story' ? 'Stories' : kind === 'post' ? 'posts' : 'reels'}…
+          </p>
+        )}
+        {browseError && (
+          <p role="alert">We could not load this section. Select the section again to retry.</p>
+        )}
+        {!browsing &&
+          !browseError &&
+          state.media.filter((item) => item.contentKind === kind).length === 0 && (
+            <p className="ui-alert ui-alert-warning mt-4">
+              No {providerName} {kind === 'story' ? 'Stories' : kind === 'post' ? 'posts' : 'reels'}{' '}
+              are available yet.
+            </p>
+          )}
+        <MediaPicker
+          media={state.media.filter((item) => item.contentKind === kind)}
+          selectedMediaId={selectedMediaId}
+          rules={rules}
+          disabled={saving}
+          onSelect={selectMedia}
+        />
+        {nextCursor && !browseError && (
+          <button
+            className="ui-button-secondary mt-3"
+            disabled={browsing}
+            onClick={() => void browse(kind, nextCursor)}
+          >
+            Load more {kind === 'story' ? 'Stories' : kind === 'post' ? 'posts' : 'reels'}
+          </button>
+        )}
+      </fieldset>
+      {Object.values(rules).some(
+        (rule) => !state.media.some((item) => item.id === rule.mediaId),
+      ) && (
+        <fieldset className="mt-5" disabled={saving}>
+          <legend className="font-semibold">Other saved automations</legend>
+          <p className="mt-2 text-sm">
+            This saved content is outside the loaded catalog. Select a rule to review it or disable
+            it.
+          </p>
+          {Object.values(rules)
+            .filter((rule) => !state.media.some((item) => item.id === rule.mediaId))
+            .map((rule) => (
+              <button
+                key={rule.mediaId}
+                className="ui-button-secondary mt-2 mr-2"
+                aria-pressed={selectedMediaId === rule.mediaId}
+                onClick={() => selectMedia(rule.mediaId)}
+              >
+                Select saved {rule.triggerKind === 'story_reply' ? 'Story' : 'post'} {rule.mediaId}{' '}
+                · {rule.enabled ? 'Enabled' : 'Disabled'}
+              </button>
+            ))}
         </fieldset>
       )}
-
-      {state.savedMediaUnavailable && (
+      {selectedMediaId && !state.media.some((item) => item.id === selectedMediaId) && (
         <p role="alert" className="ui-alert ui-alert-warning mt-4">
-          Your saved post is no longer among the 12 most recent posts. Select a current post before
-          saving changes.
+          This saved {selectedStory ? 'Story' : 'post'} is outside the loaded catalog. Disable its
+          automation or load the content before enabling changes.
+        </p>
+      )}
+      {selectedMediaId && (
+        <p className="mt-3 text-sm">
+          Editing{' '}
+          {state.media.find((item) => item.id === selectedMediaId)?.caption || selectedMediaId}.
+          Changes apply only to this post.
         </p>
       )}
 
       <div className="mt-8 grid gap-6 border-t border-[var(--app-border)] pt-6 lg:grid-cols-2">
         <fieldset>
-          <legend className="text-sm font-semibold text-[#292638]">2. Comment trigger</legend>
+          <legend className="text-sm font-semibold text-[#292638]">
+            {selectedStory ? '2. Story reply trigger' : '2. Comment trigger'}
+          </legend>
           <div className="mt-2 grid gap-2">
             {(
               [
                 [TRIGGER_MODE.EXACT, 'Exact text'],
                 [TRIGGER_MODE.CONTAINS, 'Contains whole word or hashtag'],
-                [TRIGGER_MODE.ALL, 'Every top-level comment'],
+                [TRIGGER_MODE.ALL, selectedStory ? 'Every Story reply' : 'Every top-level comment'],
               ] as const
             ).map(([value, label]) => (
               <label
@@ -332,7 +494,7 @@ export const AutomationEditor = ({
                 {triggerMode === TRIGGER_MODE.EXACT ? 'Text to match' : 'Word or hashtag'}
               </span>
               <input
-                aria-label="Comment trigger text"
+                aria-label={selectedStory ? 'Story reply trigger text' : 'Comment trigger text'}
                 className="ui-input mt-2 block"
                 value={triggerText}
                 onChange={(event) => {
@@ -342,7 +504,9 @@ export const AutomationEditor = ({
               />
               <span className="mt-2 block text-sm text-[#625b6e]">
                 {triggerMode === TRIGGER_MODE.EXACT
-                  ? 'The complete comment must match. Capitalization and surrounding spaces are ignored.'
+                  ? selectedStory
+                    ? 'The complete Story reply must match. Capitalization and surrounding spaces are ignored.'
+                    : 'The complete comment must match. Capitalization and surrounding spaces are ignored.'
                   : 'Enter one complete word or hashtag. Capitalization is ignored.'}
               </span>
             </label>
@@ -353,9 +517,11 @@ export const AutomationEditor = ({
           <div className="mt-2 grid gap-2">
             {(
               [
-                [DELIVERY_MODE.PUBLIC, 'Public reply only'],
+                ...(selectedStory ? [] : ([[DELIVERY_MODE.PUBLIC, 'Public reply only']] as const)),
                 [DELIVERY_MODE.PRIVATE, 'Private DM only'],
-                [DELIVERY_MODE.BOTH, 'Public reply and private DM'],
+                ...(selectedStory
+                  ? []
+                  : ([[DELIVERY_MODE.BOTH, 'Public reply and private DM']] as const)),
               ] as const
             ).map(([value, label]) => (
               <label
@@ -446,7 +612,9 @@ export const AutomationEditor = ({
                   }}
                 />
                 <span className="mt-2 block text-sm text-[#625b6e]">
-                  One private reply can be sent for each qualifying comment.
+                  {selectedStory
+                    ? 'A private reply is sent when a person replies to this Story and their text matches your rule.'
+                    : 'One private reply can be sent for each qualifying comment.'}
                 </span>
               </label>
               {privateMessageMode === 'quick_replies' && (

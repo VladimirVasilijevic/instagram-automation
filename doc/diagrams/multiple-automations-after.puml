@@ -1,0 +1,36 @@
+@startuml
+title Multiple automations and shared media catalog
+skinparam shadowing false
+class SocialConnection
+class Automation {
+  connection_id
+  media_id
+  UNIQUE(connection_id, media_id)
+  trigger
+  delivery
+}
+class Execution {
+  automation_id
+  media_id snapshot
+  channel
+}
+SocialConnection "1" -- "0..*" Automation
+Automation "1" -- "0..*" Execution
+interface MediaCatalog {
+  list(owner, section, cursor)
+  findOwned(owner, mediaId)
+}
+class InstagramAdapter
+class FacebookPageAdapter
+class MediaPicker
+class AutomationEditor
+MediaPicker --> MediaCatalog : Posts / Instagram Reels
+AutomationEditor --> Automation : selected media only
+MediaCatalog <|.. InstagramAdapter
+MediaCatalog <|.. FacebookPageAdapter
+note right of Execution
+Shared trigger evaluation,
+public/private delivery,
+quick replies and follow-ups.
+end note
+@enduml

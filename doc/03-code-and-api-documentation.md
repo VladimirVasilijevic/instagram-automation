@@ -1,5 +1,8 @@
 # Code and API Documentation
 
+For the current per-media automation and paginated Posts/Instagram Reels/Stories contracts, see
+[Multiple automations, Instagram Reels and Stories](07-multiple-automations-and-reels.md).
+
 ## Purpose
 
 The codebase has complementary forms of executable documentation:

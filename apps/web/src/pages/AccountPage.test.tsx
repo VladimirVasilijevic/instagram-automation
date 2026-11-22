@@ -3,17 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getCurrentViewer, logout } from '../api/auth.js';
 import { getCapabilities } from '../api/capabilities.js';
-import { getAutomation } from '../api/automation.js';
+import { getAutomations } from '../api/automation.js';
 import { getRecentExecutions } from '../api/executions.js';
 import { getPendingFacebookPages, selectFacebookPage } from '../api/facebook-pages.js';
 import { getRecentDmAnswers } from '../api/dm-answers.js';
 import { getMaintenanceHealth } from '../api/maintenance-health.js';
-import { getRecentMedia } from '../api/media.js';
+import { getMediaPage } from '../api/media.js';
 import { AccountPage } from './AccountPage.js';
 
 vi.mock('../api/auth.js', () => ({ getCurrentViewer: vi.fn(), logout: vi.fn() }));
 vi.mock('../api/capabilities.js', () => ({ getCapabilities: vi.fn() }));
-vi.mock('../api/automation.js', () => ({ getAutomation: vi.fn(), saveAutomation: vi.fn() }));
+vi.mock('../api/automation.js', () => ({ getAutomations: vi.fn(), saveAutomation: vi.fn() }));
 vi.mock('../api/executions.js', () => ({ getRecentExecutions: vi.fn() }));
 vi.mock('../api/facebook-pages.js', () => ({
   getPendingFacebookPages: vi.fn(),
@@ -21,7 +21,7 @@ vi.mock('../api/facebook-pages.js', () => ({
 }));
 vi.mock('../api/dm-answers.js', () => ({ getRecentDmAnswers: vi.fn() }));
 vi.mock('../api/maintenance-health.js', () => ({ getMaintenanceHealth: vi.fn() }));
-vi.mock('../api/media.js', () => ({ getRecentMedia: vi.fn() }));
+vi.mock('../api/media.js', () => ({ getMediaPage: vi.fn() }));
 
 const instagramViewer = {
   user: { id: 'user-id', displayName: 'Ava' },
@@ -47,8 +47,8 @@ const facebookViewer = {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(getCapabilities).mockResolvedValue({ facebookLoginEnabled: true });
-  vi.mocked(getRecentMedia).mockResolvedValue([]);
-  vi.mocked(getAutomation).mockResolvedValue(null);
+  vi.mocked(getMediaPage).mockResolvedValue({ media: [], nextCursor: null });
+  vi.mocked(getAutomations).mockResolvedValue([]);
   vi.mocked(getRecentExecutions).mockResolvedValue([]);
   vi.mocked(getRecentDmAnswers).mockResolvedValue([]);
   vi.mocked(getMaintenanceHealth).mockResolvedValue({
@@ -199,4 +199,41 @@ describe('ReplyKit account screens', () => {
     expect(screen.queryByLabelText('Account menu for Ava')).not.toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
   });
+});
+
+it('updates activity filtering when the owner selects a different post in the editor', async () => {
+  window.history.replaceState(null, '', '/app');
+  vi.mocked(getCurrentViewer).mockResolvedValue(instagramViewer);
+  const post = {
+    id: 'first-post',
+    contentKind: 'post' as const,
+    mediaType: 'IMAGE',
+    caption: 'First workspace post',
+    mediaUrl: null,
+    thumbnailUrl: null,
+    timestamp: null,
+    permalink: null,
+  };
+  vi.mocked(getMediaPage).mockResolvedValue({
+    media: [post, { ...post, id: 'second-post', caption: 'Second workspace post' }],
+    nextCursor: null,
+  });
+  render(<AccountPage />);
+  const first = await screen.findByRole('button', { name: 'Select First workspace post' });
+  expect(getRecentExecutions).not.toHaveBeenCalled();
+  expect(getRecentDmAnswers).not.toHaveBeenCalled();
+  fireEvent.click(first);
+  await waitFor(() =>
+    expect(getRecentExecutions).toHaveBeenCalledWith(expect.any(AbortSignal), 'first-post'),
+  );
+  await waitFor(() =>
+    expect(getRecentDmAnswers).toHaveBeenCalledWith(expect.any(AbortSignal), 'first-post'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Select Second workspace post' }));
+  await waitFor(() =>
+    expect(getRecentExecutions).toHaveBeenLastCalledWith(expect.any(AbortSignal), 'second-post'),
+  );
+  await waitFor(() =>
+    expect(getRecentDmAnswers).toHaveBeenLastCalledWith(expect.any(AbortSignal), 'second-post'),
+  );
 });

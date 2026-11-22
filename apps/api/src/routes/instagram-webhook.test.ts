@@ -83,7 +83,9 @@ const createFixture = () => {
   const logger = { error: vi.fn(), info: vi.fn() };
   const accountRepository = { findByInstagramUserId: vi.fn() };
   const automationRepository = {
-    findByAccountId: vi.fn(),
+    findByAccountId: vi.fn().mockResolvedValue(null),
+    findByAccountAndMedia: vi.fn().mockResolvedValue(null),
+    listByAccountId: vi.fn().mockResolvedValue([]),
     findEnabledByAccountAndMedia: vi.fn(),
     saveAutomation: vi.fn(),
   };
@@ -164,6 +166,43 @@ const createFixture = () => {
 };
 
 describe('Instagram webhook routes', () => {
+  it('routes a Story reply separately from pending quick-reply answers', async () => {
+    const f = createFixture();
+    f.accountRepository.findByInstagramUserId.mockResolvedValue(account);
+    const body = JSON.stringify({
+      object: 'instagram',
+      entry: [
+        {
+          id: account.instagramUserId,
+          messaging: [
+            {
+              sender: { id: 'person-id' },
+              recipient: { id: account.instagramUserId },
+              timestamp: Date.now() - 1000,
+              message: {
+                mid: 'story-message-id',
+                text: 'Yes',
+                reply_to: { story: { id: 'story-id', url: 'https://example.com/story' } },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const response = await f.app.request('/api/webhooks/instagram', {
+      method: 'POST',
+      headers: { 'x-hub-signature-256': signature(body) },
+      body,
+    });
+    expect(response.status).toBe(200);
+    expect(f.automationRepository.findEnabledByAccountAndMedia).toHaveBeenCalledWith(
+      account.id,
+      'story-id',
+    );
+    expect(f.dmConversationRepository.recordInboundAnswer).not.toHaveBeenCalled();
+    expect(f.executionRepository.claimExecutions).not.toHaveBeenCalled();
+  });
+
   it("echoes Meta's challenge only for a valid verification request", async () => {
     const f = createFixture();
     const response = await f.app.request(
@@ -191,6 +230,8 @@ describe('Instagram webhook routes', () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('EVENT_RECEIVED');
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
+      storyReplySucceededCount: 0,
+      storyReplyFailedCount: 0,
       commentEventCount: 1,
       messageEventCount: 0,
       messageDuplicateCount: 0,
@@ -276,6 +317,8 @@ describe('Instagram webhook routes', () => {
       'reply-id',
     );
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
+      storyReplySucceededCount: 0,
+      storyReplyFailedCount: 0,
       commentEventCount: 1,
       messageEventCount: 0,
       messageDuplicateCount: 0,
@@ -312,6 +355,8 @@ describe('Instagram webhook routes', () => {
     await expect(response.text()).resolves.toBe('EVENT_RECEIVED');
     expect(f.accountRepository.findByInstagramUserId).not.toHaveBeenCalled();
     expect(f.logger.info).toHaveBeenCalledWith('Instagram webhook processed', {
+      storyReplySucceededCount: 0,
+      storyReplyFailedCount: 0,
       commentEventCount: 0,
       messageEventCount: 0,
       messageDuplicateCount: 0,
@@ -423,7 +468,22 @@ describe('Instagram webhook routes', () => {
     expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith({
       accessToken: 'private-access-token',
       instagramUserId: account.instagramUserId,
-      includeMessages: false,
+      includeMessages: true,
     });
+  });
+  it('retains message subscriptions for sent prompts even after all rules are disabled', async () => {
+    const f = createFixture();
+    f.automationRepository.listByAccountId.mockResolvedValue([
+      { enabled: false, quickReplyOptions: [] },
+      { enabled: false, quickReplyOptions: [{ id: 'choice-id' }] },
+    ]);
+    const response = await f.app.request('/api/webhooks/instagram/subscription', {
+      method: 'POST',
+      headers: f.headers,
+    });
+    expect(response.status).toBe(204);
+    expect(f.instagramWebhookClient.subscribeToComments).toHaveBeenCalledWith(
+      expect.objectContaining({ includeMessages: true }),
+    );
   });
 });

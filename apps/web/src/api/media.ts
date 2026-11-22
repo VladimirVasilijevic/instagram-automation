@@ -1,20 +1,7 @@
+import type { SocialMediaItem, SocialContentKind } from '@instagram-automation/contracts';
+
 /** A recent media item returned by the authenticated application API. */
-export interface RecentMedia {
-  /** Opaque provider post or media identifier. */
-  id: string;
-  /** Optional post caption or message. */
-  caption: string | null;
-  /** Optional canonical provider URL. */
-  permalink: string | null;
-  /** Provider media type, such as IMAGE or VIDEO. */
-  mediaType: string;
-  /** Optional media asset URL. */
-  mediaUrl: string | null;
-  /** Optional preview asset URL. */
-  thumbnailUrl: string | null;
-  /** Optional provider timestamp. */
-  timestamp: string | null;
-}
+export type RecentMedia = SocialMediaItem;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -38,6 +25,9 @@ const request = async (path: string, signal?: AbortSignal): Promise<Response> =>
 const readMedia = (value: unknown): RecentMedia => {
   if (
     !isRecord(value) ||
+    (value.contentKind !== 'post' &&
+      value.contentKind !== 'reel' &&
+      value.contentKind !== 'story') ||
     typeof value.id !== 'string' ||
     value.id.trim() === '' ||
     typeof value.mediaType !== 'string' ||
@@ -52,6 +42,7 @@ const readMedia = (value: unknown): RecentMedia => {
   }
   return {
     id: value.id,
+    contentKind: value.contentKind,
     caption: value.caption,
     mediaType: value.mediaType,
     mediaUrl: value.mediaUrl,
@@ -61,15 +52,31 @@ const readMedia = (value: unknown): RecentMedia => {
   };
 };
 
-/** Loads up to twelve recent media items through the same-origin authenticated API. */
-export const getRecentMedia = async (signal?: AbortSignal): Promise<RecentMedia[]> => {
-  const response = await request('/api/media?limit=12', signal);
+/** One provider-owned catalog page, with an opaque continuation cursor. */
+export interface MediaPage {
+  media: RecentMedia[];
+  nextCursor: string | null;
+}
+
+/** Loads a section of the selected connection’s catalog. */
+export const getMediaPage = async (
+  input: { kind: SocialContentKind; cursor?: string },
+  signal?: AbortSignal,
+): Promise<MediaPage> => {
+  const query = new URLSearchParams({ limit: '12', kind: input.kind });
+  if (input.cursor) query.set('cursor', input.cursor);
+  const response = await request(`/api/media?${query}`, signal);
   if (!response.ok) throw new Error('Media service is unavailable. Please try again.');
   try {
     const payload: unknown = await response.json();
-    if (!isRecord(payload) || !Array.isArray(payload.media) || payload.media.length > 12)
-      throw new Error('Invalid media list');
-    return payload.media.map(readMedia);
+    if (
+      !isRecord(payload) ||
+      !Array.isArray(payload.media) ||
+      payload.media.length > 12 ||
+      !isNullableString(payload.nextCursor)
+    )
+      throw new Error('Invalid media page');
+    return { media: payload.media.map(readMedia), nextCursor: payload.nextCursor };
   } catch (error) {
     throw new Error('Media service returned an invalid response. Please try again.', {
       cause: error,
