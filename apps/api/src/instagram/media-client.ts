@@ -252,7 +252,9 @@ const parseJson = (text: string, httpStatus: number): unknown => {
   try {
     // Instagram IDs can exceed Number.MAX_SAFE_INTEGER. Node preserves the original numeric literal.
     return JSON.parse(text, (key, value: unknown, context?: { source?: string }) =>
-      key === 'id' && typeof value === 'number' && context?.source ? context.source : value,
+      (key === 'id' || key === 'user_id') && typeof value === 'number' && context?.source
+        ? context.source
+        : value,
     ) as unknown;
   } catch (error) {
     throw new InstagramMediaError({
@@ -276,6 +278,10 @@ const catalogPageSchema = z.object({
     .optional(),
 });
 const catalogFields = [...mediaFields, 'media_product_type', 'owner'].join(',');
+const authenticatedProfileSchema = z.object({
+  id: z.string().trim().min(1),
+  user_id: z.string().trim().min(1),
+});
 const normalizeCatalogItem = (item: z.infer<typeof catalogItemSchema>): SocialMediaItem => ({
   id: item.id,
   caption: item.caption ?? null,
@@ -375,12 +381,30 @@ export const createInstagramMediaClient = (
         diagnostics: { stage: 'media', reason: 'invalid_response' },
       });
     if (
-      result.data.owner?.id !== instagramUserId ||
+      !result.data.owner?.id ||
       (result.data.media_product_type === 'STORY' &&
         !isActiveStory(result.data.timestamp, now())) ||
       result.data.media_product_type === 'AD'
     )
       return null;
+    if (result.data.owner.id !== instagramUserId) {
+      // Instagram Login stores user_id, while media.owner.id can use the profile id namespace.
+      // Resolve both from the same authenticated token and bind them to the connected account.
+      const profileUrl = new URL(`https://graph.instagram.com/${config.apiVersion}/me`);
+      profileUrl.searchParams.set('fields', 'id,user_id');
+      const profile = authenticatedProfileSchema.safeParse(
+        await readCatalogJson(profileUrl, accessToken, fetcher),
+      );
+      if (!profile.success)
+        throw new InstagramMediaError({
+          diagnostics: { stage: 'media', reason: 'invalid_response' },
+        });
+      if (
+        (instagramUserId !== profile.data.user_id && instagramUserId !== profile.data.id) ||
+        (result.data.owner.id !== profile.data.id && result.data.owner.id !== profile.data.user_id)
+      )
+        return null;
+    }
     return normalizeCatalogItem(result.data);
   },
   async listRecentMedia({ accessToken, instagramUserId, limit }): Promise<InstagramMedia[]> {

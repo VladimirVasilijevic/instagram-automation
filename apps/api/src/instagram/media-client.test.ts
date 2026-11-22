@@ -199,14 +199,126 @@ describe('Instagram catalog adapter', () => {
     async (ownerId) => {
       const fetcher = vi
         .fn<typeof fetch>()
-        .mockResolvedValue(json({ ...media, owner: ownerId ? { id: ownerId } : undefined }));
+        .mockImplementation(async (url) =>
+          new URL(String(url)).pathname.endsWith('/me')
+            ? json({ id: 'canonical-owner', user_id: input.instagramUserId })
+            : json({ ...media, owner: ownerId ? { id: ownerId } : undefined }),
+        );
       expect(
         await createInstagramMediaClient(config, fetcher).findOwnedMedia!({
           ...input,
           mediaId: media.id,
         }),
       ).toBeNull();
-      expect(fetcher).toHaveBeenCalledOnce();
+      expect(fetcher).toHaveBeenCalledTimes(ownerId ? 2 : 1);
+    },
+  );
+
+  it.each(['FEED', 'REELS', 'STORY'] as const)(
+    'accepts owned %s media when Login user_id differs from media owner.id',
+    async (product) => {
+      const canonicalId = '28795203740169755';
+      const now = Date.parse('2026-11-22T12:00:00Z');
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+        new URL(String(url)).pathname.endsWith('/me')
+          ? json({ id: canonicalId, user_id: input.instagramUserId })
+          : json({
+              ...media,
+              timestamp: '2026-11-22T11:00:00Z',
+              media_product_type: product,
+              owner: { id: canonicalId },
+            }),
+      );
+      expect(
+        await createInstagramMediaClient(config, fetcher, () => now).findOwnedMedia!({
+          ...input,
+          mediaId: media.id,
+        }),
+      ).toMatchObject({
+        id: media.id,
+        contentKind: product === 'STORY' ? 'story' : product === 'REELS' ? 'reel' : 'post',
+      });
+      const [url, request] = fetcher.mock.calls[1]!;
+      expect(new URL(String(url)).pathname).toBe('/v24.0/me');
+      expect(new URL(String(url)).searchParams.get('fields')).toBe('id,user_id');
+      expect(String(url)).not.toContain(input.accessToken);
+      expect(request?.headers).toEqual({ Authorization: `Bearer ${input.accessToken}` });
+    },
+  );
+
+  it.each([
+    ['foreign media', { id: 'canonical-owner', user_id: input.instagramUserId }, 'foreign-owner'],
+    [
+      'token for another account',
+      { id: 'foreign-owner', user_id: 'foreign-login-user' },
+      'foreign-owner',
+    ],
+  ])('rejects %s despite a successful profile lookup', async (_label, profile, owner) => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url) =>
+        new URL(String(url)).pathname.endsWith('/me')
+          ? json(profile)
+          : json({ ...media, owner: { id: owner } }),
+      );
+    expect(
+      await createInstagramMediaClient(config, fetcher).findOwnedMedia!({
+        ...input,
+        mediaId: media.id,
+      }),
+    ).toBeNull();
+  });
+
+  it('preserves both numeric ID namespaces without rounding when resolving ownership', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url) =>
+        new URL(String(url)).pathname.endsWith('/me')
+          ? new Response('{"id":28795203740169755,"user_id":17841400000000001}')
+          : json({ ...media, owner: { id: '28795203740169755' } }),
+      );
+    expect(
+      await createInstagramMediaClient(config, fetcher).findOwnedMedia!({
+        ...input,
+        mediaId: media.id,
+      }),
+    ).toMatchObject({ id: media.id });
+  });
+
+  it('accepts the same verified identity when the connection already stores profile.id', async () => {
+    const canonicalId = '28795203740169755';
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url) =>
+        new URL(String(url)).pathname.endsWith('/me')
+          ? json({ id: canonicalId, user_id: input.instagramUserId })
+          : json({ ...media, owner: { id: input.instagramUserId } }),
+      );
+    expect(
+      await createInstagramMediaClient(config, fetcher).findOwnedMedia!({
+        ...input,
+        instagramUserId: canonicalId,
+        mediaId: media.id,
+      }),
+    ).toMatchObject({ id: media.id });
+  });
+
+  it.each([{}, { id: 'canonical-owner' }, { id: '', user_id: input.instagramUserId }])(
+    'fails closed when the profile identity is incomplete: %j',
+    async (profile) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockImplementation(async (url) =>
+          new URL(String(url)).pathname.endsWith('/me')
+            ? json(profile)
+            : json({ ...media, owner: { id: 'canonical-owner' } }),
+        );
+      await expect(
+        createInstagramMediaClient(config, fetcher).findOwnedMedia!({
+          ...input,
+          mediaId: media.id,
+        }),
+      ).rejects.toBeInstanceOf(InstagramMediaError);
     },
   );
 
@@ -274,7 +386,11 @@ describe('Instagram Stories catalog', () => {
     async (_name, timestamp, ownerId, accepted) => {
       const fetcher = vi
         .fn<typeof fetch>()
-        .mockResolvedValue(json({ ...active, timestamp, owner: { id: ownerId } }));
+        .mockImplementation(async (url) =>
+          new URL(String(url)).pathname.endsWith('/me')
+            ? json({ id: 'canonical-owner', user_id: input.instagramUserId })
+            : json({ ...active, timestamp, owner: { id: ownerId } }),
+        );
       const result = await createInstagramMediaClient(config, fetcher, () => now).findOwnedMedia!({
         ...input,
         mediaId: '1001',
