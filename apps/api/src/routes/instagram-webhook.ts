@@ -146,6 +146,7 @@ export const registerInstagramWebhookRoutes = (
       if (result.outcome === COMMENT_PROCESS_OUTCOME.SUCCEEDED) outcomeCounts.succeededCount += 1;
     }
     const unsupportedEventCounts = normalized.unsupportedEventCounts;
+    const messagingRejectionCounts = normalized.messagingRejectionCounts;
     const messageOutcomeCounts = {
       messageDuplicateCount: 0,
       messageFollowupStartedCount: 0,
@@ -199,6 +200,12 @@ export const registerInstagramWebhookRoutes = (
       ignoredOwnCommentCount: ignoredReasonCounts.own_comment,
       ignoredTriggerNotMatchedCount: ignoredReasonCounts.trigger_not_matched,
       unsupportedMessagingEventCount: unsupportedEventCounts.messaging,
+      messagingRejectedInvalidMessageIdCount: messagingRejectionCounts.invalid_message_id,
+      messagingRejectedInvalidPayloadCount: messagingRejectionCounts.invalid_payload,
+      messagingRejectedEchoCount: messagingRejectionCounts.echo,
+      messagingRejectedOwnSenderCount: messagingRejectionCounts.own_sender,
+      messagingRejectedRecipientMismatchCount: messagingRejectionCounts.recipient_mismatch,
+      messagingRejectedUnsupportedContentCount: messagingRejectionCounts.unsupported_content,
       unsupportedOtherChangeEventCount: unsupportedEventCounts.other_change,
       unsupportedOtherEntryEventCount: unsupportedEventCounts.other_entry,
     });

@@ -41,6 +41,8 @@ export interface IncomingMessageEvent {
 }
 
 const identifier = z.string().trim().min(1).max(128);
+// Application defensive bound for opaque message IDs, not a provider specification.
+const messageIdentifier = z.string().trim().min(1).max(1_024);
 const commentValueSchema = z.object({
   from: z
     .object({
@@ -60,12 +62,31 @@ const incomingMessageSchema = z.object({
   timestamp: z.number().int().nonnegative().max(8_640_000_000_000_000),
   message: z.object({
     is_echo: z.boolean().optional(),
-    mid: identifier,
+    mid: messageIdentifier,
     quick_reply: z.object({ payload: z.string().min(1).max(1_000) }).optional(),
     reply_to: z.object({ story: z.object({ id: identifier }).optional() }).optional(),
     text: z.string().max(2_200).optional(),
   }),
 });
+/** Fixed categories for rejected messaging events, without private payload details. */
+export type MessagingRejectionReason =
+  | 'invalid_message_id'
+  | 'invalid_payload'
+  | 'echo'
+  | 'own_sender'
+  | 'recipient_mismatch'
+  | 'unsupported_content';
+
+/** Creates independent counters for the first applicable rejection reason per messaging event. */
+export const createMessagingRejectionCounts = (): Record<MessagingRejectionReason, number> => ({
+  invalid_message_id: 0,
+  invalid_payload: 0,
+  echo: 0,
+  own_sender: 0,
+  recipient_mismatch: 0,
+  unsupported_content: 0,
+});
+
 /** Safe categories for signed Instagram events this application does not process. */
 export type UnsupportedWebhookEventKind = 'messaging' | 'other_change' | 'other_entry';
 const envelopeSchema = z.object({
@@ -95,6 +116,8 @@ export interface ValidCommentEventNormalization {
   events: CommentEvent[];
   /** Valid inbound DMs; quick replies and typed messages are included. */
   messageEvents: IncomingMessageEvent[];
+  /** Fixed rejection counts without raw values, validation paths, or errors. */
+  messagingRejectionCounts: Record<MessagingRejectionReason, number>;
   /** Aggregate unsupported-event categories without retaining any event payload values. */
   unsupportedEventCounts: Record<UnsupportedWebhookEventKind, number>;
   /** Identifies a successful normalization. */
@@ -128,22 +151,38 @@ export const normalizeCommentEvents = (
   const events: CommentEvent[] = [];
   const messageEvents: IncomingMessageEvent[] = [];
   const unsupportedEventCounts = createUnsupportedWebhookEventCounts();
+  const messagingRejectionCounts = createMessagingRejectionCounts();
+  const rejectMessage = (reason: MessagingRejectionReason): void => {
+    unsupportedEventCounts.messaging += 1;
+    messagingRejectionCounts[reason] += 1;
+  };
   for (const entry of envelope.data.entry) {
     const addIncomingMessage = (item: unknown): void => {
       const parsed = incomingMessageSchema.safeParse(item);
       if (!parsed.success) {
-        unsupportedEventCounts.messaging += 1;
+        rejectMessage(
+          parsed.error.issues.some(
+            (issue) => issue.path[0] === 'message' && issue.path[1] === 'mid',
+          )
+            ? 'invalid_message_id'
+            : 'invalid_payload',
+        );
         return;
       }
       const { message, sender, recipient, timestamp } = parsed.data;
       const text = message.text?.trim() ? message.text : null;
-      if (
-        message.is_echo === true ||
-        sender.id === entry.id ||
-        recipient.id !== entry.id ||
-        (text === null && message.quick_reply === undefined)
-      ) {
-        unsupportedEventCounts.messaging += 1;
+      const rejectionReason: MessagingRejectionReason | null =
+        message.is_echo === true
+          ? 'echo'
+          : sender.id === entry.id
+            ? 'own_sender'
+            : recipient.id !== entry.id
+              ? 'recipient_mismatch'
+              : text === null && message.quick_reply === undefined
+                ? 'unsupported_content'
+                : null;
+      if (rejectionReason) {
+        rejectMessage(rejectionReason);
         return;
       }
       messageEvents.push({
@@ -186,5 +225,5 @@ export const normalizeCommentEvents = (
     if (changes.length === 0 && entry.messaging === undefined)
       unsupportedEventCounts.other_entry += 1;
   }
-  return { events, messageEvents, success: true, unsupportedEventCounts };
+  return { events, messageEvents, messagingRejectionCounts, success: true, unsupportedEventCounts };
 };

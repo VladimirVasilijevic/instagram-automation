@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeCommentEvents } from './webhook-events.js';
+import { createMessagingRejectionCounts, normalizeCommentEvents } from './webhook-events.js';
 
 describe('normalizeCommentEvents', () => {
   it('retains Story identity without retaining the Story URL', () => {
@@ -71,6 +71,7 @@ describe('normalizeCommentEvents', () => {
 
     expect(result).toEqual({
       events: [],
+      messagingRejectionCounts: createMessagingRejectionCounts(),
       messageEvents: [],
       success: true,
       unsupportedEventCounts: { messaging: 0, other_change: 1, other_entry: 0 },
@@ -91,6 +92,7 @@ describe('normalizeCommentEvents', () => {
 
     expect(result).toEqual({
       events: [],
+      messagingRejectionCounts: { ...createMessagingRejectionCounts(), invalid_message_id: 1 },
       messageEvents: [],
       success: true,
       unsupportedEventCounts: { messaging: 1, other_change: 0, other_entry: 0 },
@@ -137,6 +139,7 @@ describe('normalizeCommentEvents', () => {
 
     expect(result).toEqual({
       events: [],
+      messagingRejectionCounts: createMessagingRejectionCounts(),
       messageEvents: [
         {
           instagramAccountId: 'business-id',
@@ -222,6 +225,13 @@ describe('normalizeCommentEvents', () => {
 
     expect(result).toEqual({
       events: [],
+      messagingRejectionCounts: {
+        ...createMessagingRejectionCounts(),
+        echo: 1,
+        invalid_message_id: 1,
+        recipient_mismatch: 1,
+        unsupported_content: 1,
+      },
       messageEvents: [],
       success: true,
       unsupportedEventCounts: { messaging: 4, other_change: 0, other_entry: 0 },
@@ -356,3 +366,129 @@ describe('Story message envelope variants', () => {
     else throw new Error('Echo should be ignored safely');
   });
 });
+
+describe.each(['messaging', 'messages change'])(
+  'messaging rejection diagnostics: %s',
+  (envelope) => {
+    const message = {
+      sender: { id: 'person' },
+      recipient: { id: 'owner' },
+      timestamp: 1_767_000_000_000,
+      message: {
+        mid: 'opaque-id',
+        text: 'Private message text',
+        reply_to: { story: { id: 'story-id', url: 'https://private.example/story' } },
+      },
+    };
+    const normalize = (item: unknown, owner = 'owner') =>
+      normalizeCommentEvents({
+        object: 'instagram',
+        entry: [
+          {
+            id: owner,
+            ...(envelope === 'messaging'
+              ? { messaging: [item] }
+              : { changes: [{ field: 'messages', value: item }] }),
+          },
+        ],
+      });
+
+    it.each([128, 129, 200, 1024])(
+      'accepts and trims an opaque message ID of length %i',
+      (length) => {
+        const mid = 'm'.repeat(length);
+        const result = normalize({ ...message, message: { ...message.message, mid: ` ${mid} ` } });
+        expect(result).toMatchObject({
+          success: true,
+          messageEvents: [{ messageId: mid, storyId: 'story-id' }],
+          messagingRejectionCounts: createMessagingRejectionCounts(),
+          unsupportedEventCounts: { messaging: 0, other_change: 0, other_entry: 0 },
+        });
+      },
+    );
+
+    it.each(['', '   ', 'm'.repeat(1025)])('rejects blank or oversized message IDs %#', (mid) => {
+      expect(normalize({ ...message, message: { ...message.message, mid } })).toEqual({
+        success: true,
+        events: [],
+        messageEvents: [],
+        messagingRejectionCounts: { ...createMessagingRejectionCounts(), invalid_message_id: 1 },
+        unsupportedEventCounts: { messaging: 1, other_change: 0, other_entry: 0 },
+      });
+    });
+
+    it.each(['sender', 'recipient'])('preserves the 128-character %s account ID bound', (field) => {
+      const result = normalize({ ...message, [field]: { id: 'a'.repeat(129) } });
+      expect(result).toMatchObject({
+        success: true,
+        messageEvents: [],
+        messagingRejectionCounts: { ...createMessagingRejectionCounts(), invalid_payload: 1 },
+        unsupportedEventCounts: { messaging: 1 },
+      });
+    });
+
+    it('preserves the entry account ID limit', () => {
+      expect(normalize(message, 'a'.repeat(129))).toEqual({ success: false });
+    });
+
+    it.each([
+      {
+        reason: 'invalid_message_id',
+        item: {
+          ...message,
+          timestamp: 'invalid private timestamp',
+          message: { ...message.message, mid: ' ', is_echo: true },
+        },
+      },
+      {
+        reason: 'invalid_payload',
+        item: {
+          ...message,
+          timestamp: 'invalid private timestamp',
+          message: { ...message.message, is_echo: true },
+        },
+      },
+      {
+        reason: 'echo',
+        item: {
+          ...message,
+          sender: { id: 'owner' },
+          recipient: { id: 'other' },
+          message: { mid: 'private-id', is_echo: true },
+        },
+      },
+      {
+        reason: 'own_sender',
+        item: {
+          ...message,
+          sender: { id: 'owner' },
+          recipient: { id: 'other' },
+          message: { mid: 'private-id' },
+        },
+      },
+      {
+        reason: 'recipient_mismatch',
+        item: { ...message, recipient: { id: 'other' }, message: { mid: 'private-id' } },
+      },
+      {
+        reason: 'unsupported_content',
+        item: {
+          ...message,
+          message: {
+            mid: 'private-id',
+            attachments: [{ type: 'image', url: 'https://private.example/image' }],
+          },
+        },
+      },
+    ])('records only $reason with no private values or validation details', ({ reason, item }) => {
+      const result = normalize(item);
+      expect(result).toEqual({
+        success: true,
+        events: [],
+        messageEvents: [],
+        messagingRejectionCounts: { ...createMessagingRejectionCounts(), [reason]: 1 },
+        unsupportedEventCounts: { messaging: 1, other_change: 0, other_entry: 0 },
+      });
+    });
+  },
+);

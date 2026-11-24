@@ -96,6 +96,11 @@ const createFixture = () => {
   const instagramPrivateReplyClient = {
     sendPrivateReply: vi.fn().mockResolvedValue({ replyId: 'private-reply-id' }),
   };
+  const instagramDirectMessageClient = {
+    sendDirectMessage: vi
+      .fn()
+      .mockResolvedValue({ recipientId: 'person-id', replyId: 'dm-reply-id' }),
+  };
   const executionRepository = {
     claimExecutions: vi.fn().mockResolvedValue([]),
     listRecentByAccountId: vi.fn(),
@@ -143,7 +148,7 @@ const createFixture = () => {
       accountRepository,
       appSecret,
       instagramCommentReplyClient,
-      instagramDirectMessageClient: { sendDirectMessage: vi.fn() },
+      instagramDirectMessageClient,
       instagramPrivateReplyClient,
       tokenProtector,
       verifyToken,
@@ -159,6 +164,7 @@ const createFixture = () => {
     headers: { Cookie: `igauto_session=${sessionToken.token}` },
     instagramWebhookClient,
     instagramCommentReplyClient,
+    instagramDirectMessageClient,
     executionRepository,
     dmConversationRepository,
     logger,
@@ -166,42 +172,108 @@ const createFixture = () => {
 };
 
 describe('Instagram webhook routes', () => {
-  it('routes a Story reply separately from pending quick-reply answers', async () => {
-    const f = createFixture();
-    f.accountRepository.findByInstagramUserId.mockResolvedValue(account);
-    const body = JSON.stringify({
-      object: 'instagram',
-      entry: [
-        {
-          id: account.instagramUserId,
-          messaging: [
-            {
-              sender: { id: 'person-id' },
-              recipient: { id: account.instagramUserId },
-              timestamp: Date.now() - 1000,
-              message: {
-                mid: 'story-message-id',
-                text: 'Yes',
-                reply_to: { story: { id: 'story-id', url: 'https://example.com/story' } },
+  it.each(['story-message-id', 'm'.repeat(200)])(
+    'claims and sends a signed Story reply once for message ID %s',
+    async (messageId) => {
+      const f = createFixture();
+      f.accountRepository.findByInstagramUserId.mockResolvedValue(account);
+      f.automationRepository.findEnabledByAccountAndMedia.mockResolvedValue({
+        id: 'story-automation-id',
+        triggerKind: 'story_reply',
+        deliveryMode: 'private',
+        privateReplyText: 'Private Story answer',
+        triggerMode: 'all',
+        triggerText: null,
+        quickReplyOptions: [],
+      });
+      f.executionRepository.claimExecutions.mockImplementationOnce(async ([claim]) => [
+        { ...claim, id: 'story-execution-id', leaseId: 'story-lease-id', attemptCount: 1 },
+      ]);
+      f.executionRepository.markDispatchStarted.mockResolvedValue(true);
+      f.executionRepository.markSucceeded.mockResolvedValue({ id: 'story-execution-id' });
+      const body = JSON.stringify({
+        object: 'instagram',
+        entry: [
+          {
+            id: account.instagramUserId,
+            messaging: [
+              {
+                sender: { id: 'person-id' },
+                recipient: { id: account.instagramUserId },
+                timestamp: Date.now() - 1000,
+                message: {
+                  mid: messageId,
+                  text: 'Yes',
+                  reply_to: { story: { id: 'story-id', url: 'https://example.com/story' } },
+                },
               },
-            },
-          ],
-        },
-      ],
-    });
-    const response = await f.app.request('/api/webhooks/instagram', {
-      method: 'POST',
-      headers: { 'x-hub-signature-256': signature(body) },
-      body,
-    });
-    expect(response.status).toBe(200);
-    expect(f.automationRepository.findEnabledByAccountAndMedia).toHaveBeenCalledWith(
-      account.id,
-      'story-id',
-    );
-    expect(f.dmConversationRepository.recordInboundAnswer).not.toHaveBeenCalled();
-    expect(f.executionRepository.claimExecutions).not.toHaveBeenCalled();
-  });
+            ],
+          },
+        ],
+      });
+      const response = await f.app.request('/api/webhooks/instagram', {
+        method: 'POST',
+        headers: { 'x-hub-signature-256': signature(body) },
+        body,
+      });
+      expect(response.status).toBe(200);
+      expect(f.automationRepository.findEnabledByAccountAndMedia).toHaveBeenCalledWith(
+        account.id,
+        'story-id',
+      );
+      expect(f.dmConversationRepository.recordInboundAnswer).not.toHaveBeenCalled();
+      expect(f.executionRepository.claimExecutions).toHaveBeenCalledWith([
+        expect.objectContaining({
+          instagramCommentId: messageId,
+          mediaId: 'story-id',
+          triggerKind: 'story_reply',
+          deliveryChannel: 'private',
+          commenterInstagramId: 'person-id',
+        }),
+      ]);
+      expect(f.instagramDirectMessageClient.sendDirectMessage).toHaveBeenCalledWith({
+        accessToken: 'private-access-token',
+        instagramUserId: account.instagramUserId,
+        recipientId: 'person-id',
+        message: 'Private Story answer',
+      });
+      expect(f.executionRepository.markSucceeded).toHaveBeenCalledWith(
+        'story-execution-id',
+        'story-lease-id',
+        'dm-reply-id',
+        'person-id',
+      );
+      expect(f.logger.info).toHaveBeenLastCalledWith(
+        'Instagram webhook processed',
+        expect.objectContaining({ messageEventCount: 1, storyReplySucceededCount: 1 }),
+      );
+      const replay = await f.app.request('/api/webhooks/instagram', {
+        method: 'POST',
+        headers: { 'x-hub-signature-256': signature(body) },
+        body,
+      });
+      expect(replay.status).toBe(200);
+      expect(f.executionRepository.claimExecutions).toHaveBeenCalledTimes(2);
+      expect(f.instagramDirectMessageClient.sendDirectMessage).toHaveBeenCalledTimes(1);
+      expect(f.dmConversationRepository.recordInboundAnswer).not.toHaveBeenCalled();
+      expect(f.instagramCommentReplyClient.replyToComment).not.toHaveBeenCalled();
+      expect(f.logger.info).toHaveBeenLastCalledWith(
+        'Instagram webhook processed',
+        expect.objectContaining({ messageDuplicateCount: 1, storyReplySucceededCount: 0 }),
+      );
+      const logs = JSON.stringify([f.logger.info.mock.calls, f.logger.error.mock.calls]);
+      for (const privateValue of [
+        messageId,
+        'story-id',
+        'person-id',
+        account.instagramUserId,
+        'Yes',
+        'Private Story answer',
+        body,
+      ])
+        expect(logs).not.toContain(privateValue);
+    },
+  );
 
   it("echoes Meta's challenge only for a valid verification request", async () => {
     const f = createFixture();
@@ -249,6 +321,12 @@ describe('Instagram webhook routes', () => {
       ignoredTriggerNotMatchedCount: 0,
       succeededCount: 0,
       unsupportedMessagingEventCount: 0,
+      messagingRejectedInvalidMessageIdCount: 0,
+      messagingRejectedInvalidPayloadCount: 0,
+      messagingRejectedEchoCount: 0,
+      messagingRejectedOwnSenderCount: 0,
+      messagingRejectedRecipientMismatchCount: 0,
+      messagingRejectedUnsupportedContentCount: 0,
       unsupportedOtherChangeEventCount: 0,
       unsupportedOtherEntryEventCount: 0,
     });
@@ -336,6 +414,12 @@ describe('Instagram webhook routes', () => {
       ignoredTriggerNotMatchedCount: 0,
       succeededCount: 1,
       unsupportedMessagingEventCount: 0,
+      messagingRejectedInvalidMessageIdCount: 0,
+      messagingRejectedInvalidPayloadCount: 0,
+      messagingRejectedEchoCount: 0,
+      messagingRejectedOwnSenderCount: 0,
+      messagingRejectedRecipientMismatchCount: 0,
+      messagingRejectedUnsupportedContentCount: 0,
       unsupportedOtherChangeEventCount: 0,
       unsupportedOtherEntryEventCount: 0,
     });
@@ -374,10 +458,87 @@ describe('Instagram webhook routes', () => {
       ignoredTriggerNotMatchedCount: 0,
       succeededCount: 0,
       unsupportedMessagingEventCount: 1,
+      messagingRejectedInvalidMessageIdCount: 1,
+      messagingRejectedInvalidPayloadCount: 0,
+      messagingRejectedEchoCount: 0,
+      messagingRejectedOwnSenderCount: 0,
+      messagingRejectedRecipientMismatchCount: 0,
+      messagingRejectedUnsupportedContentCount: 0,
       unsupportedOtherChangeEventCount: 0,
       unsupportedOtherEntryEventCount: 0,
     });
     expect(JSON.stringify(f.logger.info.mock.calls)).not.toContain('private message body');
+  });
+
+  it('logs only flat safe rejection counts for signed rejected messages', async () => {
+    const f = createFixture();
+    const event = {
+      sender: { id: 'private-sender-id' },
+      recipient: { id: account.instagramUserId },
+      timestamp: Date.now(),
+      message: { mid: 'private-message-id', text: 'private rejected text' },
+    };
+    const body = JSON.stringify({
+      object: 'instagram',
+      entry: [
+        {
+          id: account.instagramUserId,
+          messaging: [
+            { ...event, message: { ...event.message, mid: 'x'.repeat(1_025) } },
+            { ...event, timestamp: 'private invalid timestamp' },
+            { ...event, message: { ...event.message, is_echo: true } },
+            { ...event, sender: { id: account.instagramUserId } },
+            { ...event, recipient: { id: 'private-other-recipient' } },
+            {
+              ...event,
+              message: {
+                mid: event.message.mid,
+                attachments: [{ type: 'image', payload: { url: 'https://example.com/private' } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const response = await f.app.request('/api/webhooks/instagram', {
+      method: 'POST',
+      headers: { 'x-hub-signature-256': signature(body) },
+      body,
+    });
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('EVENT_RECEIVED');
+    expect(f.logger.info).toHaveBeenCalledExactlyOnceWith(
+      'Instagram webhook processed',
+      expect.objectContaining({
+        messageEventCount: 0,
+        unsupportedMessagingEventCount: 6,
+        messagingRejectedInvalidMessageIdCount: 1,
+        messagingRejectedInvalidPayloadCount: 1,
+        messagingRejectedEchoCount: 1,
+        messagingRejectedOwnSenderCount: 1,
+        messagingRejectedRecipientMismatchCount: 1,
+        messagingRejectedUnsupportedContentCount: 1,
+      }),
+    );
+    const context = f.logger.info.mock.calls[0]![1];
+    expect(Object.values(context).every((value) => typeof value === 'number')).toBe(true);
+    const logs = JSON.stringify([f.logger.info.mock.calls, f.logger.error.mock.calls]);
+    for (const privateValue of [
+      body,
+      event.message.mid,
+      event.message.text,
+      event.sender.id,
+      account.instagramUserId,
+      'private-other-recipient',
+      'private invalid timestamp',
+      'https://example.com/private',
+      'x'.repeat(1_025),
+    ])
+      expect(logs).not.toContain(privateValue);
+    expect(f.logger.error).not.toHaveBeenCalled();
+    expect(f.accountRepository.findByInstagramUserId).not.toHaveBeenCalled();
+    expect(f.executionRepository.claimExecutions).not.toHaveBeenCalled();
+    expect(f.instagramDirectMessageClient.sendDirectMessage).not.toHaveBeenCalled();
   });
 
   it('records a signed incoming quick reply without logging its payload', async () => {
